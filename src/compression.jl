@@ -78,32 +78,32 @@ function build_linearMap(axis,f;blk = 512)
     return lm
 end
 
-abstract type AbstractCompressor end
-struct HssCompressor{T,G} <: AbstractCompressor
+abstract type AbstractCompression end
+struct HssCompression{T,G} <: AbstractCompression
     atol::T
     rtol::T
     kest::G
 end
-HssCompressor(; atol = 1E-6, rtol = 1E-6, kest = 20) = HssCompressor(atol,rtol,kest)
-struct NONCompressor <: AbstractCompressor end
+HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 20) = HssCompression(atol,rtol,kest)
+struct NONCompression <: AbstractCompression end
 
 
-function (compressor :: HssCompressor)(axis,f)
+function (Compression :: HssCompression)(axis,f)
     lm = build_linearMap(axis, f)
     bs  = size(f(axis[1],axis[1]),1)
     cc = bisection_cluster(length(axis)*bs)
-    r = randcompress_adaptive(lm,cc,cc,atol = compressor.atol, rtol = compressor.rtol, kest = compressor.kest)
-    recompress!(r,atol = compressor.atol, rtol = compressor.rtol)
+    r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
+    recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
     return r
 end 
-function (compressor :: HssCompressor)(tab::HssMatrix)
-    return recompress!(tab,atol = compressor.atol, rtol = compressor.rtol)
+function (Compression :: HssCompression)(tab::HssMatrix)
+    return recompress!(tab,atol = Compression.atol, rtol = Compression.rtol)
 end
-function (compressor :: HssCompressor)(tab::AbstractArray)
-    return hss(tab,atol = compressor.atol, rtol = compressor.rtol)
+function (Compression :: HssCompression)(tab::AbstractArray)
+    return hss(tab,atol = Compression.atol, rtol = Compression.rtol)
 end
 
-function (compressor :: NONCompressor)(axis,f)
+function (Compression :: NONCompression)(axis,f)
     f00 = f(axis[1],axis[1]) 
     bs = size(f00,1)
     r = Array{eltype(f00),2}(undef, bs*length(axis),bs*length(axis))
@@ -114,10 +114,10 @@ function (compressor :: NONCompressor)(axis,f)
     end
     return r
 end 
-function (compressor :: NONCompressor)(tab::AbstractArray)
+function (Compression :: NONCompression)(tab::AbstractArray)
     return tab
 end
 
-function(compressor::AbstractCompressor)(g::G) where G<:AbstractGreenFunction
-    G(axis(g),dirac(g),compressor(regular(g)),blocksize(g))
+function(Compression::AbstractCompression)(g::G) where G<:AbstractGreenFunction
+    G(axis(g),dirac(g),Compression(regular(g)),blocksize(g))
 end

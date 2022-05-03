@@ -30,12 +30,12 @@ function _extract_blockdiag(m::AbstractMatrix{T},bs,d::Int = 0) where T
         return _adapt(m,sparse(I,J,V,size(m)...))
     end
 end
-function extract_blockdiag(m::AbstractMatrix{T},bs,d = 0; compressor = HssCompressor()) where T
-    return sum(_extract_blockdiag(m,bs,_d) for _d in d) |> compressor
+function extract_blockdiag(m::AbstractMatrix{T},bs,d = 0; compression = HssCompression()) where T
+    return sum(_extract_blockdiag(m,bs,_d) for _d in d) |> compression
 end
 
 #=
-function blockdiag(A::AbstractArray{T,3};compressor = HssCompressor()) where T
+function blockdiag(A::AbstractArray{T,3};compression = HssCompression()) where T
     @assert size(A,1) == size(A,2)
     bs = size(A,1)
     N = size(A,3)
@@ -49,10 +49,10 @@ function blockdiag(A::AbstractArray{T,3};compressor = HssCompressor()) where T
         blk,j = blockindex(J[k],bs)
         V[k] = A[i,j,blk]
     end
-    return compressor(sparse(I,J,V))
+    return compression(sparse(I,J,V))
 end
 =#
-function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compressor = HssCompressor()) where T
+function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compression = HssCompression()) where T
     shift_I = d < 0 ? abs(d) : 0
     shift_J = d > 0 ? d : 0
     @assert size(A,1) == size(A,2)
@@ -62,7 +62,7 @@ function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compressor = HssCompres
     J = [(t+shift_J-1)*bs+jb for ib in 1:bs, jb in 1:bs, t = 1:N]
     return sparse(I[:],J[:],A[:],(N+abs(d))*bs,(N+abs(d))*bs) |> hss
 end
-function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer = 0;compressor = HssCompressor()) where T
+function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer = 0;compression = HssCompression()) where T
     _A = zeros(T,size(A[1])..., length(A))
     for p = 1:length(A)
         for j = 1:size(A[1],2)
@@ -71,7 +71,7 @@ function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer = 0;compr
             end
         end
     end
-    blockdiag(_A,d,compressor = compressor)
+    blockdiag(_A,d,compression = compression)
 end
 function row(A::AbstractMatrix,r,bs = 1)
     J = reshape([j for i in (r-1)*bs+1:r*bs, j in 1:size(A,2)], :)

@@ -6,10 +6,13 @@ using HssMatrices
 using StaticArrays
 using LsqFit
 
+
+include("test_kernels.jl")
+
 @testset "NonEquilibriumGreenFunction.jl" for T = [Float32,Float64,ComplexF32,ComplexF64], Gr = (RetardedGreenFunction,AdvancedGreenFunction,GreenFunction)
     bs = 2
     N = 128
-    Dt = 1.
+    Dt = 0.5
     ax = LinRange(-Dt,Dt,N)
     foo(x,y) = T.([x x+y; x-y y])
     foo(x) = T.([x 2x; 0 x])
@@ -30,8 +33,8 @@ using LsqFit
         x = randn(T,size(lm,1));
         @test x'*lm ≈ x'*A
         @test A*x ≈ lm*x
-        compressor = HssCompressor(atol = atol, rtol = rtol, kest = kest)
-        hssA = compressor(ax,foo)
+        compression = HssCompression(atol = atol, rtol = rtol, kest = kest)
+        hssA = compression(ax,foo)
         @test norm(A-hssA)/norm(A) ≤ c*rtol || norm(A-hssA) ≤ c*atol
     end
 
@@ -59,7 +62,7 @@ using LsqFit
                 A[blockrange(it,bs),blockrange(itp,bs)] .= foo(ax[it],ax[itp])
             end
         end
-        GR = Gr(ax,foo,foo, compressor = NONCompressor());
+        GR = Gr(ax,foo,foo, compression = NONCompression());
         @test A == regular(GR)
     end
     
@@ -92,7 +95,7 @@ end
     atol = 1E-5
     rtol = 1E-5
     kest = 20
-    compressor = HssCompressor(atol = atol, rtol = rtol, kest = kest)
+    compression = HssCompression(atol = atol, rtol = rtol, kest = kest)
     f_c(t,tp) = exp(-(t-tp))
     g_c(t,tp) = exp(-2*(t-tp))
     gf(t,tp) = exp(tp-t) - exp(2*tp-2*t)
@@ -102,9 +105,9 @@ end
     for p = 3:7
         _N = 2^p
         ax = LinRange(t0,t1,2^p)
-        G = RetardedGreenFunction(ax,x->T(0),g_c, compressor = compressor)
-        F = RetardedGreenFunction(ax,x->T(0),f_c, compressor = compressor)
-        GF = RetardedGreenFunction(ax,x->T(0),gf, compressor = compressor)
+        G = RetardedGreenFunction(ax,x->T(0),g_c, compression = compression)
+        F = RetardedGreenFunction(ax,x->T(0),f_c, compression = compression)
+        GF = RetardedGreenFunction(ax,x->T(0),gf, compression = compression)
         n_gf = cc_prod(retarded(G), retarded(F),ax)
         err = norm((retarded(GF).-n_gf))./norm(retarded(GF))
         push!(xs,_N)
@@ -151,10 +154,10 @@ end
     atol = 1E-5
     rtol = 1E-5
     kest = 20
-    compressor = HssCompressor(atol = atol, rtol = rtol, kest = kest)
+    compression = HssCompression(atol = atol, rtol = rtol, kest = kest)
 
-    G = RetardedGreenFunction(ax,g,g, compressor = compressor);
-    K = RetardedGreenFunction(ax,x->@SMatrix([T(0)]),k, compressor = compressor);
+    G = RetardedGreenFunction(ax,g,g, compression = compression);
+    K = RetardedGreenFunction(ax,x->@SMatrix([T(0)]),k, compression = compression);
     Gf = solve_dyson(G,K);
     @test (dirac(Gf) - dirac(G))/norm(dirac(G)) |> norm ≈ 0
 end

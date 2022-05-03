@@ -32,7 +32,6 @@ struct GreenFunction{A,D,R} <: AbstractGreenFunction{A,D,R}
 end
 
 RetardedOrAdvanced = Union{RetardedGreenFunction,AdvancedGreenFunction}
-
 #Construction utilities
 
 for G in (:GreenFunction,:RetardedGreenFunction,:AdvancedGreenFunction)
@@ -49,14 +48,14 @@ for (G,croped) in [
         (:AdvancedGreenFunction,:( (x,y) -> x<=y ? freg(x,y) : zero(f00) ))
          ]
     @eval begin
-        function $G(axis,fδ,freg; compressor = HssCompressor())
+        function $G(axis,fδ,freg; compression = HssCompression())
             #-For Retarded / Advanced Green functions, we enforce that the relevant part
             #of the Green function is zero.
             #-For GreenFunction the quadrature rule does not require the value at (t,t)
             #that can be poorly defined
             f00 = freg(axis[1],axis[1])
             bs = size(f00,1)
-            r = compressor(axis, $croped)
+            r = compression(axis, $croped)
             δ = zeros(eltype(f00),bs,bs,length(axis))
             Threads.@threads for i = 1:length(axis)
                 δ[:,:,i] .= fδ(axis[i]) 
@@ -120,21 +119,21 @@ for op in (:*,:/)
     end
 end
 =#
-function _integral_operator(a::AbstractMatrix{T},bs; compressor = HssCompressor()) where T
+function _integral_operator(a::AbstractMatrix{T},bs; compression = HssCompression()) where T
     #TODO improve for integral of the type R/A*K ou K*R/A
-    bd_a = extract_blockdiag(a,bs, compressor = compressor)
+    bd_a = extract_blockdiag(a,bs, compression = compression)
     A = a-T(0.5)*bd_a
     return A,bd_a
 end
 
 
-function _prod(δ::AbstractArray{T,3},r::AbstractArray{T,2}; compressor = HssCompressor()) where T
-    matrix_δ = blockdiag(δ, compressor = compressor)
+function _prod(δ::AbstractArray{T,3},r::AbstractArray{T,2}; compression = HssCompression()) where T
+    matrix_δ = blockdiag(δ, compression = compression)
     δr = matrix_δ * r
     return δr
 end
-function _prod(r::AbstractArray{T,2}, δ::AbstractArray{T,3};compressor = HssCompressor()) where T
-    matrix_δ = blockdiag(δ, compressor = compressor)
+function _prod(r::AbstractArray{T,2}, δ::AbstractArray{T,3};compression = HssCompression()) where T
+    matrix_δ = blockdiag(δ, compression = compression)
     rδ = r*matrix_δ 
     return rδ
 end
@@ -143,62 +142,62 @@ function _prod(δl::AbstractArray{T,3},δr::AbstractArray{T,3}) where T
     return batched_mul(δl, δr)
 end
 
-function cc_prod(g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function cc_prod(g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compression = HssCompression()) where T
     bs = div(size(g,1),length(axis))
     @assert size(g,1) % length(axis) == 0
-    dg = extract_blockdiag(g,bs,compressor = compressor)
-    dk = extract_blockdiag(k,bs,compressor = compressor)
+    dg = extract_blockdiag(g,bs,compression = compression)
+    dk = extract_blockdiag(k,bs,compression = compression)
     G = g - T(0.5)*dg
     K = k - T(0.5)*dk
     S = G*K
-    s = S - extract_blockdiag(S,bs, compressor = compressor) # Diagonal is zero
+    s = S - extract_blockdiag(S,bs, compression = compression) # Diagonal is zero
     return T(step(axis))*s
 end
 
-function (*)(g::RA,k::RA,; compressor = HssCompressor()) where {RA <: RetardedOrAdvanced}
+function (*)(g::RA,k::RA,; compression = HssCompression()) where {RA <: RetardedOrAdvanced}
     @assert iscompatible(g,k)
     δ = _prod(dirac(g),dirac(k))
-    reg = cc_prod(regular(g),regular(k), axis(g), compressor = compressor)
+    reg = cc_prod(regular(g),regular(k), axis(g), compression = compression)
     #reg = eltype(g)(step(axis(g)))*regular(g)*regular(k)
-    reg += _prod(dirac(g),regular(k),compressor = compressor)
-    reg += _prod(regular(g),dirac(k),compressor = compressor)
-    return RA(axis(g),δ,compressor(reg),blocksize(g))
+    reg += _prod(dirac(g),regular(k),compression = compression)
+    reg += _prod(regular(g),dirac(k),compression = compression)
+    return RA(axis(g),δ,compression(reg),blocksize(g))
 end
 
-function (*)(g::AbstractGreenFunction,k::AbstractGreenFunction; compressor = HssCompressor())
+function (*)(g::AbstractGreenFunction,k::AbstractGreenFunction; compression = HssCompression())
     @assert iscompatible(g,k)
     δ = _prod(dirac(g),dirac(k))
-    reg = _prod(g, k, regular(g),regular(k), axis(g), compressor = compressor)
+    reg = _prod(g, k, regular(g),regular(k), axis(g), compression = compression)
     #reg = eltype(g)(step(axis(g)))*regular(g)*regular(k)
-    reg += _prod(dirac(g),regular(k),compressor = compressor)
-    reg += _prod(regular(g),dirac(k),compressor = compressor)
-    return GreenFunction(axis(g),δ,compressor(reg),blocksize(g))
+    reg += _prod(dirac(g),regular(k),compression = compression)
+    reg += _prod(regular(g),dirac(k),compression = compression)
+    return GreenFunction(axis(g),δ,compression(reg),blocksize(g))
 end
 
 
-function _prod(::GreenFunction,::RetardedGreenFunction, g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function _prod(::GreenFunction,::RetardedGreenFunction, g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compression = HssCompression()) where T
     #First we dress g with integration weights
     bs = div(size(g,1),length(axis))
     g_op = g - T(0.5)*col(g,length(axis),bs)
     g_op *= step(axis)
-    k_op = k - T(0.5)*extract_blockdiag(k,bs,compressor = compressor)
-    g_op,k_op = compressor.( (g_op,k_op) )
+    k_op = k - T(0.5)*extract_blockdiag(k,bs,compression = compression)
+    g_op,k_op = compression.( (g_op,k_op) )
     gk = g_op * k_op
     gk = gk - col(gk,length(axis),bs)
-    return compressor(gk)
+    return compression(gk)
 end
 
 #Here
-function _prod(::GreenFunction,::AdvancedGreenFunction,g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function _prod(::GreenFunction,::AdvancedGreenFunction,g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compression = HssCompression()) where T
     #First we dress g with integration weights
     bs = div(size(g,1),length(axis))
     g_op = g - T(0.5)*col(g,1,bs)
     g_op -= T(0.5)*col(g,length(axis),bs)
-    g_op += T(1+1/2 -1)*extract_blockdiag(g_op,bs,[-1,1], compressor = compressor) + 
-    T(0-1)*extract_blockdiag(g_op,bs,0, compressor = compressor)
+    g_op += T(1+1/2 -1)*extract_blockdiag(g_op,bs,[-1,1], compression = compression) + 
+    T(0-1)*extract_blockdiag(g_op,bs,0, compression = compression)
     g_op = step(axis)*g_op
-    k_op = k - T(0.5)*extract_blockdiag(k,bs,compressor = compressor)
-    g_op,k_op = compressor.( (g_op,k_op) )
+    k_op = k - T(0.5)*extract_blockdiag(k,bs,compression = compression)
+    g_op,k_op = compression.( (g_op,k_op) )
     gk = g_op* k_op
     #Apply corrections
     gk = gk - col(gk,1,bs)
@@ -208,22 +207,22 @@ function _prod(::GreenFunction,::AdvancedGreenFunction,g::AbstractArray{T,2},k::
             for t = 1:length(axis)-1]
     c_p = [(3/4-1)*step(axis)*bd_g[blockrange(t,bs),blockrange(t-1,bs)]*bd_k[blockrange(t-1,bs),blockrange(t-1,bs)] 
             for t = 2:length(axis)]
-    correction = blockdiag(c_m,-1,compressor = compressor)+blockdiag(c_p,1,compressor = compressor)
+    correction = blockdiag(c_m,-1,compression = compression)+blockdiag(c_p,1,compression = compression)
     gk -= correction
-    return compressor(gk)
+    return compression(gk)
 end
 
 #Here
-function _prod(::RetardedGreenFunction, ::GreenFunction, k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function _prod(::RetardedGreenFunction, ::GreenFunction, k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compression = HssCompression()) where T
     bs = div(size(g,1),length(axis))
     g_op = g - T(0.5)*row(g,1,bs)
     g_op -= T(0.5)*row(g,length(axis),bs)
     # #=
-    g_op += T(1+1/2 -1)*extract_blockdiag(g_op,bs,[-1,1], compressor = compressor) + 
-    T(0-1)*extract_blockdiag(g_op,bs,0, compressor = compressor) # =#!!!
+    g_op += T(1+1/2 -1)*extract_blockdiag(g_op,bs,[-1,1], compression = compression) + 
+    T(0-1)*extract_blockdiag(g_op,bs,0, compression = compression) # =#!!!
     g_op = step(axis) * g_op
-    k_op = k - T(0.5)*extract_blockdiag(k,bs,compressor = compressor)
-    g_op,k_op = compressor.( (g_op,k_op) )
+    k_op = k - T(0.5)*extract_blockdiag(k,bs,compression = compression)
+    g_op,k_op = compression.( (g_op,k_op) )
     kg = k_op*g_op
     #Correction
     bd_g = extract_blockdiag(g,bs,[-1,0,1])
@@ -232,51 +231,51 @@ function _prod(::RetardedGreenFunction, ::GreenFunction, k::AbstractArray{T,2},g
             for t = 1:length(axis)-1]
     c_p = [(3/4-1/2)*step(axis)*bd_g[blockrange(t,bs),blockrange(t-1,bs)]*bd_k[blockrange(t-1,bs),blockrange(t-1,bs)] 
             for t = 2:length(axis) ]
-    correction = blockdiag(c_m,-1,compressor = compressor)+blockdiag(c_p,1,compressor = compressor)
+    correction = blockdiag(c_m,-1,compression = compression)+blockdiag(c_p,1,compression = compression)
     kg -= correction
     kg = kg - row(kg,1,bs)
-    return compressor(kg)
+    return compression(kg)
 end
 
-function _prod(::AdvancedGreenFunction, ::GreenFunction, k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function _prod(::AdvancedGreenFunction, ::GreenFunction, k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compression = HssCompression()) where T
     bs = div(size(g,1),length(axis))
     g_op = g - T(0.5)*row(g,length(axis),bs)
     g_op = step(axis) * g_op
-    k_op = k - T(0.5)*extract_blockdiag(k,bs,compressor = compressor)
-    g_op,k_op = compressor.( (g_op,k_op) )
+    k_op = k - T(0.5)*extract_blockdiag(k,bs,compression = compression)
+    g_op,k_op = compression.( (g_op,k_op) )
     kg = k_op*g_op
     kg = kg - row(kg,length(axis),bs)
-    return compressor(kg)
+    return compression(kg)
 end
 
-function _prod(::GreenFunction, ::GreenFunction, g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function _prod(::GreenFunction, ::GreenFunction, g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compression = HssCompression()) where T
     bs = div(size(g,1),length(axis))
     g_op = g - T(0.5)*row(g,length(axis),bs)
     g_op = step(axis) * g_op
-    g_op = compressor(g_op)
+    g_op = compression(g_op)
     gk = g_op*k
-    return compressor(gk)
+    return compression(gk)
 end
 
 #=
-function vpc_prod(g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function vpc_prod(g::AbstractArray{T,2},k::AbstractArray{T,2},axis; compression = HssCompression()) where T
     #First we dress g with integration weights
     bs = div(size(g,1),length(axis))
-    correction = T(1-(1/2-2/9))*extract_blockdiag(g,bs,[-2,2],compressor = compressor) +
-    T(1-11/9)*extract_blockdiag(g,bs,[-1,1],compressor = compressor) - extract_blockdiag(g,bs,0,compressor = compressor)
+    correction = T(1-(1/2-2/9))*extract_blockdiag(g,bs,[-2,2],compression = compression) +
+    T(1-11/9)*extract_blockdiag(g,bs,[-1,1],compression = compression) - extract_blockdiag(g,bs,0,compression = compression)
     g_op = g + correction
-    compressor(g_op) #recompress inplace g
+    compression(g_op) #recompress inplace g
     g_op *= step(axis)
     return g_op * k
 end
 
-function cvp_prod(k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compressor = HssCompressor()) where T
+function cvp_prod(k::AbstractArray{T,2},g::AbstractArray{T,2},axis; compression = HssCompression()) where T
     #First we dress g with integration weights
     bs = div(size(g,1),length(axis))
-    correction = T(1-(1/2-2/9))*extract_blockdiag(g,bs,[-2,2],compressor = compressor) +
-    T(1-11/9)*extract_blockdiag(g,bs,[-1,1],compressor  = compressor) - extract_blockdiag(g,bs,0,compressor  = compressor)
+    correction = T(1-(1/2-2/9))*extract_blockdiag(g,bs,[-2,2],compression = compression) +
+    T(1-11/9)*extract_blockdiag(g,bs,[-1,1],compression  = compression) - extract_blockdiag(g,bs,0,compression  = compression)
     g_op = g + correction
-    compressor(g_op) #recompress inplace g
+    compression(g_op) #recompress inplace g
     g_op *= step(axis)
     return k*g_op
 end
