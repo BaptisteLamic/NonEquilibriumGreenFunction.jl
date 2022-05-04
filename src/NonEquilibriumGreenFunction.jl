@@ -23,7 +23,8 @@ export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGree
 export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
 export build_greenfunction, build_linearMap,blockrange,blockindex, col, row
-export AbstractKernel, RetardedKernel, AdvancedKernel, SumKernel, TimeLocalKernel
+
+export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, SumKernel, TimeLocalKernel
 export NONCompression, HssCompression
 export solve_dyson
 export cc_prod, extract_blockdiag, blockdiag

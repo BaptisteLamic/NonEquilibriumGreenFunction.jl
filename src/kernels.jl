@@ -12,6 +12,12 @@ struct AdvancedKernel{T,A,M,C} <: AbstractKernel{T,A,M,C}
     blocksize::Int
     compression::C
 end
+struct Kernel{T,A,M,C} <: AbstractKernel{T,A,M,C}
+    axis::A
+    matrix::M
+    blocksize::Int
+    compression::C
+end
 struct TimeLocalKernel{T,A,M,C} <: AbstractKernel{T,A,M,C}  
     axis::A
     matrix::M
@@ -47,6 +53,16 @@ function AdvancedKernel(axis,f; compression = HssCompression())
     f_masked = (x,y) -> x<=y ? f(x,y) : zero(f00)
     matrix = compression(axis,f_masked)
     AdvancedKernel(axis,matrix,bs,compression)
+end
+
+function Kernel(axis, matrix, blocksize::Int, compression)
+    Kernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
+end
+function Kernel(axis,f; compression = HssCompression())
+    f00 = f(axis[1],axis[1])
+    bs = size(f00,1)
+    matrix = compression(axis,f)
+    Kernel(axis,matrix,bs,compression)
 end
 
 function TimeLocalKernel(axis, matrix, blocksize::Int, compression)
@@ -85,9 +101,30 @@ function getindex(A::SumKernel,I::Vararg{Int,2})
     A.kernelL[I...] + A.kernelR[I...]
 end
 
+## Define printing functions
+function Base.show(io::IO, k::K) where {T, A, M, C, K<:AbstractKernel{T, A, M, C}}
+    print(io, "$K\n")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", k::K) where {T, A, M, C, K<:AbstractKernel{T, A, M, C}}
+    show(io, k)
+    println(io,"axis = $(axis(k))")
+    println(io,"blocksize = $(blocksize(k))")
+    println(io,"compression = $(compression(k))")
+end
+
+## Define utility functions
+
 function iscompatible(g::AbstractKernel,k::AbstractKernel)
      axis(g) == axis(k) && blocksize(g) == blocksize(k) && compression(g) == compression(k)
 end
+
+isretarded(::K) where {K <: Union{RetardedKernel,TimeLocalKernel}} = true
+isretarded(::SumKernel{T,A,M,C,L,R}) where {T,A,M,C,L,R} = isretarded(L) && isretarded(R)
+
+isadvanced(::K) where {K <: Union{AdvancedKernel,TimeLocalKernel}} = true
+isadvanced(::SumKernel{T,A,M,C,L,R}) where {T,A,M,C,L,R} = isadvanced(L) && isadvanced(R)
+
 
 ##Algebra
 ### Scalar operations defined by metaprogramming
@@ -206,6 +243,115 @@ function *(gl::Ker, gr::Ker) where Ker<:Union{RetardedKernel,AdvancedKernel}
                 compression(gl)
             )
 end
+#### Retarded * Advanced and Advanced * Retarded
+#= 
+For the trapz rule and neglecting the side effect that should be absorbed
+in propoer definition of the problem the same rule apply
+=#
+function *(gl::L,gr::R) where { L <: Union{RetardedKernel,AdvancedKernel}, R<: Union{RetardedKernel,AdvancedKernel} }
+    @assert iscompatible(gl,gr)
+    bs = blocksize(gl)
+    dl = extract_blockdiag(gl.matrix,bs,compression = compression(gl))
+    dr = extract_blockdiag(gr.matrix,bs,compression = compression(gl))
+    T = eltype(dl)
+    weighted_L = gl.matrix - T(0.5)*dl
+    weighted_R = gr.matrix - T(0.5)*dr
+    biased_result = weighted_L * weighted_R
+    correction = T(1/4)*dl*dr
+    result = biased_result + correction
+    result *= T(step(axis(gl)))
+    return Kernel(axis(gl),
+                result,
+                blocksize(gl),
+                compression(gl)
+            )
+end
+#### Kernel * Advanced and Kernel * Retarded
+#= 
+For the trapz rule and neglecting the side effect that should be absorbed
+in propoer definition of the problem the same rule apply
+=#
+function *(gl::Kernel,gr::R) where R<: Union{RetardedKernel,AdvancedKernel}
+    @assert iscompatible(gl,gr)
+    bs = blocksize(gl)
+    dr = extract_blockdiag(gr.matrix,bs,compression = compression(gl))
+    T = eltype(dr)
+    weighted_L = gl.matrix
+    weighted_R = gr.matrix - T(0.5)*dr
+    result = weighted_L * weighted_R
+    result *= T(step(axis(gl)))
+    return Kernel(axis(gl),
+                result,
+                blocksize(gl),
+                compression(gl)
+            )
+end
+
+#### Retarded * Kernel and Advanced * Kernel
+#= 
+For the trapz rule and neglecting the side effect that should be absorbed
+in propoer definition of the problem the same rule apply
+=#
+function *(gl::L,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
+    @assert iscompatible(gl,gr)
+    bs = blocksize(gl)
+    dl = extract_blockdiag(gl.matrix,bs,compression = compression(gl))
+    T = eltype(dl)
+    weighted_L = gl.matrix - T(0.5)*dl
+    weighted_R = gr.matrix 
+    result = weighted_L * weighted_R
+    result *= T(step(axis(gl)))
+    return Kernel(axis(gl),
+                result,
+                blocksize(gl),
+                compression(gl)
+            )
+end
+
+#### Retarded * Kernel and Advanced * Kernel
+#= 
+For the trapz rule and neglecting the side effect that should be absorbed
+in propoer definition of the problem the same rule apply
+=#
+function *(gl::Kernel,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
+    @assert iscompatible(gl,gr)
+    bs = blocksize(gl)
+    T = eltype(gl.matrix)
+    weighted_L = gl.matrix
+    weighted_R = gr.matrix 
+    result = weighted_L * weighted_R
+    result *= T(step(axis(gl)))
+    return Kernel(axis(gl),
+                result,
+                blocksize(gl),
+                compression(gl)
+            )
+end
+
+#### SumKernel * AbstractKernel
+function *(gl::SumKernel,gr::AbstractKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl.kernelL * gr + gl.kernelR * gr 
+end
+#### AbstractKernel * SumKernel
+function *(gl::AbstractKernel,gr::SumKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl * gr.kernelL  + gl * gr.kernelR 
+end
+#### SumKernel * SumKernel
+#=
+Required to avoid type ambiguity ?
+=#
+function *(gl::SumKernel,gr::SumKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl * gr.kernelL  + gl * gr.kernelR 
+end
+
+
+#### Intercept the generic rule to multiply AbstractArray
 function *(gl::AbstractKernel, gr::AbstractKernel)
-    error("Not implemented")
+    error("$(typeof(gl)) * $(typeof(gr)): not implemented")
 end
