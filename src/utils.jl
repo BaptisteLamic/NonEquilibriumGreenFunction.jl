@@ -1,3 +1,6 @@
+
+full(A::AbstractArray) = Array(A)
+
 @inline blockrange(i,bs) = (i-1)*bs+1:i*bs
 @inline function blockindex(p::Number,bs)
     a,i = divrem(p-1,bs)
@@ -60,7 +63,7 @@ function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compression = HssCompre
     N = size(A,3)
     I = [(t+shift_I-1)*bs+ib for ib in 1:bs, jb in 1:bs, t = 1:N]
     J = [(t+shift_J-1)*bs+jb for ib in 1:bs, jb in 1:bs, t = 1:N]
-    return sparse(I[:],J[:],A[:],(N+abs(d))*bs,(N+abs(d))*bs) |> hss
+    return sparse(I[:],J[:],A[:],(N+abs(d))*bs,(N+abs(d))*bs) |> compression
 end
 function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer = 0;compression = HssCompression()) where T
     _A = zeros(T,size(A[1])..., length(A))

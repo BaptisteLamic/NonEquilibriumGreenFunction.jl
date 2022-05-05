@@ -14,10 +14,11 @@ using NNlib
 using SpecialFunctions
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
-import Base: getindex
+import Base: getindex, step
+import Base: similar, zero
 import HssMatrices: full
-full(A::AbstractArray) = Array(A)
 import SparseArrays: blockdiag
+import LinearAlgebra.I
 
 export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGreenFunction
 export axis, retarded, advanced, regular, dirac, blocksize
@@ -25,6 +26,8 @@ export getindex
 export build_greenfunction, build_linearMap,blockrange,blockindex, col, row
 
 export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, SumKernel, TimeLocalKernel
+export NullKernel
+export isretarded, isadvanced, timelocal_part, nonlocal_part
 export NONCompression, HssCompression
 export solve_dyson
 export cc_prod, extract_blockdiag, blockdiag
@@ -34,5 +37,6 @@ include("dyson.jl")
 include("utils.jl")
 include("physics.jl")
 include("kernels.jl")
+include("kernel_solve.jl")
 
 end

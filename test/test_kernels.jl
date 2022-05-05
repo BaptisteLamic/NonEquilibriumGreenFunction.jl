@@ -1,5 +1,9 @@
 @testset "$T kernels.jl" for T = [Float32,Float64,ComplexF64]
-    
+    # "safety" factor
+    c = 50.
+    # increase tolerance for Float32 and ComplexF32
+    tol = max(1E-6,50*eps(real(T)))
+
     bs = 2
     N = 128
     Dt = 0.5
@@ -126,6 +130,33 @@
             _diff[p,q] = norm( PROD[p,q] - _int ) 
             integral[p,q] = norm( _int ) 
         end
-        @test norm(_diff)/norm(integral) < 1E-15
+        @test norm(_diff)/norm(integral) < tol
+    end
+    @testset "convolution TimeLocalKernel $KerR" for KerR in (RetardedKernel, AdvancedKernel, Kernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        gooL(x, y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        gooL(x) = gooL(x,x)
+        gooR(x, y) = sigma0^4*exp( -( (x+x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+
+        GL = TimeLocalKernel(ax,gooL, compression = NONCompression())
+        GR = KerR(ax,gooR, compression = NONCompression())
+        PR = GL*GR
+        @test typeof(PR) == typeof(GR)
+        @test norm( GL[:,:]*GR[:,:] - PR[:,:] ) < tol 
+    end
+    @testset "convolution $KerL TimeLocalKernel" for KerL in (RetardedKernel, AdvancedKernel, Kernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        gooL(x, y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        gooL(x) = gooL(x,x)
+        gooR(x, y) = sigma0^4*exp( -( (x+x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        gooR(x) = gooR(x,x)
+
+        GL = KerL(ax,gooL, compression = NONCompression())
+        GR = TimeLocalKernel(ax,gooR, compression = NONCompression())
+        PR = GL*GR
+        @test typeof(PR) == typeof(GL)
+        @test norm( GL[:,:]*GR[:,:] - PR[:,:] ) < tol 
     end
 end

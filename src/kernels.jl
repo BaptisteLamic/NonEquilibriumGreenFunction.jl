@@ -1,33 +1,38 @@
-abstract type AbstractKernel{T,A,M <: AbstractArray, C <: AbstractCompression} <: AbstractArray{AbstractArray{T,2},2} end
+abstract type AbstractKernel{T,A, C <: AbstractCompression} <: AbstractArray{AbstractArray{T,2},2} end
 
-struct RetardedKernel{T,A,M,C} <: AbstractKernel{T,A,M,C}
+struct RetardedKernel{T,A,M,C} <: AbstractKernel{T,A,C}
     axis::A
     matrix::M
     blocksize::Int
     compression::C
 end
-struct AdvancedKernel{T,A,M,C} <: AbstractKernel{T,A,M,C}
+struct AdvancedKernel{T,A,M,C} <: AbstractKernel{T,A,C}
     axis::A
     matrix::M
     blocksize::Int
     compression::C
 end
-struct Kernel{T,A,M,C} <: AbstractKernel{T,A,M,C}
+struct Kernel{T,A,M,C} <: AbstractKernel{T,A,C}
     axis::A
     matrix::M
     blocksize::Int
     compression::C
 end
-struct TimeLocalKernel{T,A,M,C} <: AbstractKernel{T,A,M,C}  
+struct TimeLocalKernel{T,A,M,C} <: AbstractKernel{T,A,C}  
     axis::A
     matrix::M
     blocksize::Int
     compression::C
 end
-struct SumKernel{T,A,M,C,L<:AbstractKernel{T,A,M,C},R<:AbstractKernel{T,A,M,C}} <: AbstractKernel{T,A,M,C}
+struct SumKernel{T,A,C,L<:AbstractKernel{T,A,C},R<:AbstractKernel{T,A,C}} <: AbstractKernel{T,A,C}
     axis::A
     kernelL::L
     kernelR::R
+    blocksize::Int
+    compression::C
+end
+struct NullKernel{T,A,C} <: AbstractKernel{T,A,C}
+    axis::A
     blocksize::Int
     compression::C
 end
@@ -68,6 +73,11 @@ end
 function TimeLocalKernel(axis, matrix, blocksize::Int, compression)
     TimeLocalKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
 end
+function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression )
+    N = length(axis)*blocksize
+    matrix = sparse(u,N,N) .|> eltype(u) |> compression
+    TimeLocalKernel(axis,matrix,blocksize,compression)
+end
 function TimeLocalKernel(axis,f; compression = HssCompression())
     f00 = f(axis[1],axis[1])
     bs = size(f00,1)
@@ -79,12 +89,19 @@ function TimeLocalKernel(axis,f; compression = HssCompression())
     TimeLocalKernel(axis,matrix,bs,compression)
 end
 
-function SumKernel(kernelL::AbstractKernel{T, A, M, C}, kernelR::AbstractKernel{T, A, M ,C}) where {T, A, M, C}
+function SumKernel(kernelL::AbstractKernel{T, A, C}, kernelR::AbstractKernel{T, A ,C}) where {T, A, C}
     @assert iscompatible(kernelL, kernelR)
     cp = compression(kernelL)
     bs = blocksize(kernelL)
     ax = axis(kernelL)
-    SumKernel{T,A,M,C,typeof(kernelL),typeof(kernelR)}(ax, kernelL, kernelR, bs, cp)
+    SumKernel{T,A,C,typeof(kernelL),typeof(kernelR)}(ax, kernelL, kernelR, bs, cp)
+end
+
+function NullKernel(axis, matrix, blocksize::Int, compression)
+    NullKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, blocksize, compression)
+end
+function NullKernel(k::AbstractKernel{T,A,C}) where {T,A,C}
+    NullKernel{T,A,C}(axis(k), blocksize(k), compression(k))
 end
 
 ## Define getter 
@@ -101,12 +118,16 @@ function getindex(A::SumKernel,I::Vararg{Int,2})
     A.kernelL[I...] + A.kernelR[I...]
 end
 
+function similar(A::AbstractKernel,matrix::AbstractArray)
+    typeof(A)(axis(A), matrix, blocksize(A), compression(A))
+end
+
 ## Define printing functions
-function Base.show(io::IO, k::K) where {T, A, M, C, K<:AbstractKernel{T, A, M, C}}
+function Base.show(io::IO, k::K) where {T, A, C, K<:AbstractKernel{T, A, C}}
     print(io, "$K\n")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", k::K) where {T, A, M, C, K<:AbstractKernel{T, A, M, C}}
+function Base.show(io::IO, ::MIME"text/plain", k::K) where {T, A, M, C, K<:AbstractKernel{T, A, C}}
     show(io, k)
     println(io,"axis = $(axis(k))")
     println(io,"blocksize = $(blocksize(k))")
@@ -119,12 +140,31 @@ function iscompatible(g::AbstractKernel,k::AbstractKernel)
      axis(g) == axis(k) && blocksize(g) == blocksize(k) && compression(g) == compression(k)
 end
 
-isretarded(::K) where {K <: Union{RetardedKernel,TimeLocalKernel}} = true
-isretarded(::SumKernel{T,A,M,C,L,R}) where {T,A,M,C,L,R} = isretarded(L) && isretarded(R)
+isretarded(::K) where K<: AbstractKernel = false
+isretarded(::K) where {K <: Union{RetardedKernel,TimeLocalKernel,NullKernel}} = true
+function isretarded(k::SumKernel)
+    isretarded(k.kernelL) && isretarded(k.kernelR)
+end
 
-isadvanced(::K) where {K <: Union{AdvancedKernel,TimeLocalKernel}} = true
-isadvanced(::SumKernel{T,A,M,C,L,R}) where {T,A,M,C,L,R} = isadvanced(L) && isadvanced(R)
+isadvanced(::K) where K<: AbstractKernel = false
+isadvanced(::K) where {K <: Union{AdvancedKernel,TimeLocalKernel,NullKernel}} = true
+function isadvanced(k::SumKernel)
+    isadvanced(k.kernelL) && isadvanced(k.kernelR)
+end
+#=
+We should adapt the names here
+=#
+nonlocal_part(k::AbstractKernel) = k
+nonlocal_part(k::TimeLocalKernel) = NullKernel(k)
+nonlocal_part(k::SumKernel) = nonlocal_part(k.kernelR) + nonlocal_part(k.kernelL)
 
+timelocal_part(k::TimeLocalKernel) = k
+timelocal_part(k::AbstractKernel) = NullKernel(k)
+timelocal_part(k::SumKernel) = timelocal_part(k.kernelL) + timelocal_part(k.kernelR)
+
+function step(k::AbstractKernel{T,A,C}) where {T,A,C}
+    T( step( axis( k ) ) )
+end
 
 ##Algebra
 ### Scalar operations defined by metaprogramming
@@ -140,10 +180,16 @@ end
 for op in (:*,:\)
     @eval begin
         function $op(λ::Number,g::SumKernel)
-            kl =  compression(g)($op(λ,g.kernelL))
-            kr =  compression(g)($op(λ,g.kernelR))
+            kl =  $op(λ,g.kernelL)
+            kr =  $op(λ,g.kernelR)
             return SumKernel(axis(g),kl,kr, blocksize(g),compression(g))
         end
+    end
+end
+#### Specialized version for NullKernel
+for op in (:*,:\)
+    @eval begin
+        $op(λ::Number,g::NullKernel) = g
     end
 end
 ### Sign changes 
@@ -159,14 +205,32 @@ end
 for op in (:+,:-)
     @eval begin
         function $op(g::SumKernel)           
-            kl =  compression(g)($op(g.kernelL))
-            kr =  compression(g)($op(g.kernelR))
+            kl =  $op(g.kernelL)
+            kr =  $op(g.kernelR)
             return SumKernel(kl, kr)
         end
     end
 end
+#### Specialized version for NullKernel
+for op in (:+,:-)
+    @eval begin
+        $op(g::NullKernel) = g
+    end
+end
 
 ### +Group operation on Kernel-Kernel operations
+####General variant
+for op in (:+,:-)
+    @eval begin
+        function $op(gl::AbstractKernel,gr::AbstractKernel)
+            iscompatible(gl, gr)
+            SumKernel(  
+                gl,
+                $op(gr)
+                )
+        end
+    end
+end
 #### operations on sames objects
 for op in (:+,:-)
     @eval begin
@@ -193,22 +257,55 @@ for op in (:+,:-)
         end
     end
 end
-####General variant
+####Specialized for NullKernel
 for op in (:+,:-)
     @eval begin
-        function $op(gl::AbstractKernel,gr::AbstractKernel)
+        function $op(gl::NullKernel,gr::AbstractKernel)
             iscompatible(gl, gr)
-            SumKernel(  
-                gl,
-                $op(gr)
-                )
+            $op(gr)
+        end
+    end
+end
+for op in (:+,:-)
+    @eval begin
+        function $op(gl::AbstractKernel,gr::NullKernel)
+            iscompatible(gl, gr)
+            gl
+        end
+    end
+end
+for op in (:+,:-)
+    @eval begin
+        function $op(gl::NullKernel,gr::NullKernel)
+            iscompatible(gl, gr)
+            gl
         end
     end
 end
 
+####Specialized for UniformScaling
+for op in (:+,:-)
+    @eval begin
+        function $op(gl::UniformScaling,gr::AbstractKernel{T,A,C}) where {T,A,C}
+            _I = T(gl.λ)*I
+            TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr)) + gr
+        end
+    end
+end
+for op in (:+,:-)
+    @eval begin
+        function $op(gl::AbstractKernel{T,A,C},gr::UniformScaling) where {T,A,C}
+            _I = T(gr.λ)*I
+            gl + TimeLocalKernel(axis(gl),_I,blocksize(gl),compression(gl))
+        end
+    end
+end
+
+
+
 ### Products
 #### TimeLocalKernels
-function *(gl::TimeLocalKernel,gr::Union{RetardedKernel,AdvancedKernel,TimeLocalKernel}) 
+function _prod(gl::TimeLocalKernel,gr::AbstractKernel) 
     @assert iscompatible(gl,gr)
     typeof(gr)(axis(gl),
         gl.matrix*gr.matrix,
@@ -216,7 +313,18 @@ function *(gl::TimeLocalKernel,gr::Union{RetardedKernel,AdvancedKernel,TimeLocal
         compression(gl)
     )
 end
-function *(gl::Union{RetardedKernel,AdvancedKernel,TimeLocalKernel},gr::TimeLocalKernel) 
+function _prod(gl::AbstractKernel,gr::TimeLocalKernel) 
+    @assert iscompatible(gl,gr)
+    typeof(gl)(axis(gl),
+        gl.matrix*gr.matrix,
+        blocksize(gl),
+        compression(gl)
+    )
+end
+#=
+We must define the following function to fix ambiguity
+=#
+function _prod(gl::TimeLocalKernel,gr::TimeLocalKernel) 
     @assert iscompatible(gl,gr)
     typeof(gr)(axis(gl),
         gl.matrix*gr.matrix,
@@ -225,7 +333,7 @@ function *(gl::Union{RetardedKernel,AdvancedKernel,TimeLocalKernel},gr::TimeLoca
     )
 end
 #### RetardedKernel
-function *(gl::Ker, gr::Ker) where Ker<:Union{RetardedKernel,AdvancedKernel}
+function _prod(gl::Ker, gr::Ker) where Ker<:Union{RetardedKernel,AdvancedKernel}
     #TODO check this code
     @assert iscompatible(gl,gr)
     bs = blocksize(gl)
@@ -248,7 +356,7 @@ end
 For the trapz rule and neglecting the side effect that should be absorbed
 in propoer definition of the problem the same rule apply
 =#
-function *(gl::L,gr::R) where { L <: Union{RetardedKernel,AdvancedKernel}, R<: Union{RetardedKernel,AdvancedKernel} }
+function _prod(gl::L,gr::R) where { L <: Union{RetardedKernel,AdvancedKernel}, R<: Union{RetardedKernel,AdvancedKernel} }
     @assert iscompatible(gl,gr)
     bs = blocksize(gl)
     dl = extract_blockdiag(gl.matrix,bs,compression = compression(gl))
@@ -271,7 +379,7 @@ end
 For the trapz rule and neglecting the side effect that should be absorbed
 in propoer definition of the problem the same rule apply
 =#
-function *(gl::Kernel,gr::R) where R<: Union{RetardedKernel,AdvancedKernel}
+function _prod(gl::Kernel,gr::R) where R<: Union{RetardedKernel,AdvancedKernel}
     @assert iscompatible(gl,gr)
     bs = blocksize(gl)
     dr = extract_blockdiag(gr.matrix,bs,compression = compression(gl))
@@ -292,7 +400,7 @@ end
 For the trapz rule and neglecting the side effect that should be absorbed
 in propoer definition of the problem the same rule apply
 =#
-function *(gl::L,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
+function _prod(gl::L,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
     @assert iscompatible(gl,gr)
     bs = blocksize(gl)
     dl = extract_blockdiag(gl.matrix,bs,compression = compression(gl))
@@ -313,7 +421,7 @@ end
 For the trapz rule and neglecting the side effect that should be absorbed
 in propoer definition of the problem the same rule apply
 =#
-function *(gl::Kernel,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
+function _prod(gl::Kernel,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
     @assert iscompatible(gl,gr)
     bs = blocksize(gl)
     T = eltype(gl.matrix)
@@ -327,31 +435,47 @@ function *(gl::Kernel,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
                 compression(gl)
             )
 end
+#### NullKernel rules
+function _prod(gl::NullKernel,gr::AbstractKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl
+end
+function _prod(gl::AbstractKernel,gr::NullKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gr
+end
+function _prod(gl::NullKernel,gr::NullKernel)
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl
+end
+#### Intercept the generic rule to multiply AbstractArray
+function _prod(gl::AbstractKernel, gr::AbstractKernel)
+    error("$(typeof(gl)) * $(typeof(gr)): not implemented")
+end
 
 #### SumKernel * AbstractKernel
 function *(gl::SumKernel,gr::AbstractKernel)
-    #TODO check this code}
     @assert iscompatible(gl,gr)
-    return gl.kernelL * gr + gl.kernelR * gr 
+    return _prod(gl.kernelL, gr) + _prod(gl.kernelR, gr) 
 end
 #### AbstractKernel * SumKernel
 function *(gl::AbstractKernel,gr::SumKernel)
-    #TODO check this code}
     @assert iscompatible(gl,gr)
-    return gl * gr.kernelL  + gl * gr.kernelR 
+    return _prod(gl,gr.kernelL)  + _prod(gl, gr.kernelR) 
 end
 #### SumKernel * SumKernel
 #=
-Required to avoid type ambiguity ?
+Required to avoid type ambiguity 
 =#
 function *(gl::SumKernel,gr::SumKernel)
-    #TODO check this code}
     @assert iscompatible(gl,gr)
-    return gl * gr.kernelL  + gl * gr.kernelR 
+    return gl*gr.kernelL  + gl*gr.kernelR 
 end
-
-
-#### Intercept the generic rule to multiply AbstractArray
-function *(gl::AbstractKernel, gr::AbstractKernel)
-    error("$(typeof(gl)) * $(typeof(gr)): not implemented")
+#### AbstractKernel * AbstractKernel
+function *(gl::AbstractKernel,gr::AbstractKernel)
+    @assert iscompatible(gl,gr)
+    return _prod(gl,gr) 
 end
