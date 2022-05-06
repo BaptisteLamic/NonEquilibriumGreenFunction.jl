@@ -28,6 +28,7 @@ export build_greenfunction, build_linearMap,blockrange,blockindex, col, row
 export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, SumKernel, TimeLocalKernel
 export NullKernel
 export isretarded, isadvanced, timelocal_part, nonlocal_part
+export StationaryBlockMatrix
 export NONCompression, HssCompression
 export solve_dyson
 export cc_prod, extract_blockdiag, blockdiag
@@ -38,5 +39,6 @@ include("utils.jl")
 include("physics.jl")
 include("kernels.jl")
 include("kernel_solve.jl")
+include("stationary_matrix.jl")
 
 end
