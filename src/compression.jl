@@ -13,7 +13,7 @@ function build_CirculantlinearMap(ax0,f)
     Threads.@threads for i = 1:length(ax)
         m[:,:,i] .= f(ax[i],0) 
     end
-    A = StationaryBlockMatrix(m)
+    A = BlockCirculantMatrix(m)
     my_mul!(y,_,x) = _mul!(y,A,x)
     my_cmul!(y,_,x) = _cmul!(y,A,x)
     my_getindex(I,J) = getindex(A,I,J)

@@ -479,3 +479,11 @@ function *(gl::AbstractKernel,gr::AbstractKernel)
     @assert iscompatible(gl,gr)
     return _prod(gl,gr) 
 end
+
+
+#=
+
+
+export JULIA_DEPOT_PATH="D:/DevTools/.julia:$JULIA_DEPOT_PATH"
+
+=#

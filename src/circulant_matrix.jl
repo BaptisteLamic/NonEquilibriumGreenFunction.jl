@@ -1,16 +1,16 @@
-struct StationaryBlockMatrix{T} <: AbstractMatrix{T}
+struct BlockCirculantMatrix{T} <: AbstractMatrix{T}
     data::Array{T,3}
 end
-function StationaryBlockMatrix(data)
+function BlockCirculantMatrix(data)
     @assert size(data,1) == size(data,2)
-    StationaryBlockMatrix{eltype(data)}(data)
+    BlockCirculantMatrix{eltype(data)}(data)
 end
-blocksize(A::StationaryBlockMatrix) = size(A.data,1) 
-function size(A::StationaryBlockMatrix)
+blocksize(A::BlockCirculantMatrix) = size(A.data,1) 
+function size(A::BlockCirculantMatrix)
     n = blocksize(A)*(size(A.data,3) ÷ 2 +  1)
     return (n,n)
 end
-function getindex(A::StationaryBlockMatrix, I::Vararg{Int,2})
+function getindex(A::BlockCirculantMatrix, I::Vararg{Int,2})
     n = size(A,1) ÷ blocksize(A)
     blck_i, s_i = blockindex(I[1],blocksize(A))
     blck_j, s_j = blockindex(I[2],blocksize(A))
@@ -24,7 +24,7 @@ function _pad_for_convolution(x)
     r[:,:,size(x,3)+1:end] .= 0
     return r
 end
-function _g_conv!(r,A::StationaryBlockMatrix,x,f)
+function _g_conv!(r,A::BlockCirculantMatrix,x,f)
     reshaped_x =  permutedims(reshape(x,blocksize(A),:,size(x,2)),(1,3,2))
     padded_x = _pad_for_convolution(reshaped_x)
     fft_x = fft(ifftshift(padded_x,3),3)
@@ -47,18 +47,18 @@ function _g_conv!(r,A::StationaryBlockMatrix,x,f)
         return r .= _r  .|>eltype(A)
     end
 end
-function _mul!(r,A::StationaryBlockMatrix,x)
+function _mul!(r,A::BlockCirculantMatrix,x)
     _g_conv!(r,A,x,identity)
 end
-function _mul(A::StationaryBlockMatrix,x)
+function _mul(A::BlockCirculantMatrix,x)
     r = similar(x)
     _mul!(r,A,x)
     return r
 end
-function _cmul!(r,A::StationaryBlockMatrix,x)
+function _cmul!(r,A::BlockCirculantMatrix,x)
     _g_conv!(r,A,x,batched_adjoint)
 end
-function _cmul(A::StationaryBlockMatrix,x)
+function _cmul(A::BlockCirculantMatrix,x)
     r = similar(x)
     _cmul!(r,A,x)
     return r

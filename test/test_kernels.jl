@@ -10,6 +10,9 @@
     ax = LinRange(-Dt,Dt,N)
     foo(x,y) = T.([x x+y; x-y y])
     foo(x) = T.([x 2x; 0 x])
+    
+    foo_st(x) = T.([x 2x; 0 x])
+    foo_st(x,y) = foo_st(x-y)
 
     @testset "$Ker construction" for Ker = (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
         A = randn(T,bs*N,bs*N)
@@ -33,6 +36,10 @@
         end
         GB = Ker(ax,foo, compression = NONCompression());
         @test B == GB.matrix 
+
+        GA = Ker(ax,foo, compression = NONCompression(),stationary = true)
+        GB = Ker(ax,foo, compression = NONCompression(),stationary = false)
+        @test GA.matrix - GB.matrix |> norm < tol
     end
 
     @testset "SumKernel construction" begin
