@@ -1,4 +1,27 @@
+function build_CirculantlinearMap(ax0,f)
+    f00 = f(ax0[1],ax0[1])
+    T = eltype(f00)
+    bs = size(f00,1)
+    N = length(ax0)*bs
+    @assert size(f00,1) == size(f00,2)
+    ax = (1-N:N-1)*step(ax0) 
+    ax = ax.-ax[end].+ax[end]
+   # (ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
+
+    m = zeros(eltype(f00),bs,bs,length(ax))
+    Threads.@threads for i = 1:length(ax)
+        m[:,:,i] .= f(ax[i],0) 
+    end
+    A = StationaryBlockMatrix(m)
+    my_mul!(y,_,x) = _mul!(y,A,x)
+    my_cmul!(y,_,x) = _cmul!(y,A,x)
+    my_getindex(I,J) = getindex(A,I,J)
+
+
+    lm = LinearMap{T}(N,N,my_mul!,my_cmul!, my_getindex)
+    return lm
+end
 
 function build_linearMap(axis,f;blk = 512)
     f00 = f(axis[1],axis[1])
@@ -88,8 +111,8 @@ HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 20) = HssCompression(atol,rtol
 struct NONCompression <: AbstractCompression end
 
 
-function (Compression :: HssCompression)(axis,f)
-    lm = build_linearMap(axis, f)
+function (Compression :: HssCompression)(axis,f;stationary = false)
+    lm = stationary ? build_CirculantlinearMap(axis,f) : build_linearMap(axis, f)
     bs  = size(f(axis[1],axis[1]),1)
     cc = bisection_cluster(length(axis)*bs)
     r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
@@ -103,7 +126,7 @@ function (Compression :: HssCompression)(tab::AbstractArray)
     return hss(tab,atol = Compression.atol, rtol = Compression.rtol)
 end
 
-function (Compression :: NONCompression)(axis,f)
+function (Compression :: NONCompression)(axis,f; stationary = false)
     f00 = f(axis[1],axis[1]) 
     bs = size(f00,1)
     r = Array{eltype(f00),2}(undef, bs*length(axis),bs*length(axis))

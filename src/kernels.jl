@@ -41,32 +41,32 @@ end
 function RetardedKernel(axis, matrix, blocksize::Int, compression)
     RetardedKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
 end
-function RetardedKernel(axis,f; compression = HssCompression())
+function RetardedKernel(axis,f; compression = HssCompression(), stationary = false)
     f00 = f(axis[1],axis[1])
     bs = size(f00,1)
     f_masked = (x,y) -> x>=y ? f(x,y) : zero(f00)
-    matrix = compression(axis,f_masked)
+    matrix = compression(axis,f_masked,stationary = stationary)
     RetardedKernel(axis,matrix,bs,compression)
 end
 
 function AdvancedKernel(axis, matrix, blocksize::Int, compression)
     AdvancedKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
 end
-function AdvancedKernel(axis,f; compression = HssCompression())
+function AdvancedKernel(axis,f; compression = HssCompression(), stationary = false)
     f00 = f(axis[1],axis[1])
     bs = size(f00,1)
     f_masked = (x,y) -> x<=y ? f(x,y) : zero(f00)
-    matrix = compression(axis,f_masked)
+    matrix = compression(axis,f_masked, stationary = stationary)
     AdvancedKernel(axis,matrix,bs,compression)
 end
 
 function Kernel(axis, matrix, blocksize::Int, compression)
     Kernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
 end
-function Kernel(axis,f; compression = HssCompression())
+function Kernel(axis,f; compression = HssCompression(), stationary = false)
     f00 = f(axis[1],axis[1])
     bs = size(f00,1)
-    matrix = compression(axis,f)
+    matrix = compression(axis,f, stationary = stationary)
     Kernel(axis,matrix,bs,compression)
 end
 
@@ -78,7 +78,7 @@ function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression )
     matrix = sparse(u,N,N) .|> eltype(u) |> compression
     TimeLocalKernel(axis,matrix,blocksize,compression)
 end
-function TimeLocalKernel(axis,f; compression = HssCompression())
+function TimeLocalKernel(axis,f; compression = HssCompression(), stationary = false)
     f00 = f(axis[1],axis[1])
     bs = size(f00,1)
     δ = zeros(eltype(f00),bs,bs,length(axis))

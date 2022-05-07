@@ -12,6 +12,7 @@ using LinearAlgebra
 using StatsBase
 using NNlib
 using SpecialFunctions
+using FFTW
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: getindex, step
@@ -23,7 +24,7 @@ import LinearAlgebra.I
 export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGreenFunction
 export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
-export build_greenfunction, build_linearMap,blockrange,blockindex, col, row
+export build_greenfunction, build_linearMap,blockrange,blockindex, col, row, build_CirculantlinearMap
 
 export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, SumKernel, TimeLocalKernel
 export NullKernel
