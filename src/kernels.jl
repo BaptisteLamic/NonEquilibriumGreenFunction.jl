@@ -79,7 +79,7 @@ function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression )
     TimeLocalKernel(axis,matrix,blocksize,compression)
 end
 function TimeLocalKernel(axis,f; compression = HssCompression(), stationary = false)
-    f00 = f(axis[1],axis[1])
+    f00 = f(axis[1])
     bs = size(f00,1)
     δ = zeros(eltype(f00),bs,bs,length(axis))
     Threads.@threads for i = 1:length(axis)
@@ -116,6 +116,9 @@ function getindex(A::AbstractKernel,I::Vararg{Int,2})
 end
 function getindex(A::SumKernel,I::Vararg{Int,2})
     A.kernelL[I...] + A.kernelR[I...]
+end
+function getindex(K::NullKernel{T,A,C},I::Vararg{Int,2}) where {T,A,C}
+    return zeros(T,blocksize(K), blocksize(K))
 end
 
 function similar(A::AbstractKernel,matrix::AbstractArray)
@@ -288,14 +291,14 @@ for op in (:+,:-)
     @eval begin
         function $op(gl::UniformScaling,gr::AbstractKernel{T,A,C}) where {T,A,C}
             _I = T(gl.λ)*I
-            TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr)) + gr
+            TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr)) + $op(gr)
         end
     end
 end
 for op in (:+,:-)
     @eval begin
         function $op(gl::AbstractKernel{T,A,C},gr::UniformScaling) where {T,A,C}
-            _I = T(gr.λ)*I
+            _I = $op(T(gr.λ))*I
             gl + TimeLocalKernel(axis(gl),_I,blocksize(gl),compression(gl))
         end
     end
@@ -436,21 +439,46 @@ function _prod(gl::Kernel,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKer
             )
 end
 #### NullKernel rules
-function _prod(gl::NullKernel,gr::AbstractKernel)
+function _prod(gl::NullKernel,gr::K) where {K<:AbstractKernel}
     #TODO check this code}
     @assert iscompatible(gl,gr)
     return gl
 end
-function _prod(gl::AbstractKernel,gr::NullKernel)
+function _prod(gl::K,gr::NullKernel) where {K<:AbstractKernel}
     #TODO check this code}
     @assert iscompatible(gl,gr)
     return gr
+end
+function _prod(gl::K,gr::NullKernel) where {K<:AbstractKernel}
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gr
+end
+function _prod(gl::TimeLocalKernel,gr::NullKernel) where {K<:AbstractKernel}
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gr
+end
+function _prod(gl::NullKernel,gr::TimeLocalKernel) where {K<:AbstractKernel}
+    #TODO check this code}
+    @assert iscompatible(gl,gr)
+    return gl
 end
 function _prod(gl::NullKernel,gr::NullKernel)
     #TODO check this code}
     @assert iscompatible(gl,gr)
     return gl
 end
+####Specialized for UniformScaling
+function _prod(gl::UniformScaling,gr::AbstractKernel{T,A,C}) where {T,A,C}
+    _I = T(gl.λ)*I
+    TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr))*gr
+end
+function _prod(gl::AbstractKernel{T,A,C},gr::UniformScaling) where {T,A,C}
+    _I = T(gr.λ)*I
+    TimeLocalKernel(axis(gl),_I,blocksize(gl),compression(gl))*gr
+end
+
 #### Intercept the generic rule to multiply AbstractArray
 function _prod(gl::AbstractKernel, gr::AbstractKernel)
     error("$(typeof(gl)) * $(typeof(gr)): not implemented")
@@ -480,10 +508,19 @@ function *(gl::AbstractKernel,gr::AbstractKernel)
     return _prod(gl,gr) 
 end
 
-
-#=
-
-
-export JULIA_DEPOT_PATH="D:/DevTools/.julia:$JULIA_DEPOT_PATH"
-
-=#
+function adjoint(g::Kernel) 
+    return similar(g,g.matrix')
+end
+function adjoint(g::RetardedKernel) 
+    return AdvancedKernel(axis(g),g.matrix',blocksize(g),compression(g))
+end
+function adjoint(g::AdvancedKernel) 
+    return RetardedKernel(axis(g),g.matrix',blocksize(g),compression(g))
+end
+function adjoint(g::K) where K <: Union{TimeLocalKernel,Kernel}
+    K(axis(g),g.matrix',blocksize(g),compression(g))
+end
+adjoint(g::NullKernel) = g
+function adjoint(g::SumKernel) 
+    return g.kernelL'+g.kernelR'
+end

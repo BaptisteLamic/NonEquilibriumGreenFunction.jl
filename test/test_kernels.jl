@@ -166,4 +166,60 @@
         @test typeof(PR) == typeof(GL)
         @test norm( GL[:,:]*GR[:,:] - PR[:,:] ) < tol 
     end
+
+    @testset "convolution SumKernel{$KerL,$KerR} * $Ker" for KerL in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel),
+            KerR in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel), Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        gooL(x, y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        gooL(x) = gooL(x,x)
+        gooR(x, y) = sigma0^4*exp( -( (x+x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        gooR(x) = gooR(x,x)
+        goo(x,y) = gooL(x,y)*gooR(x,y)+gooR(x,y)
+        goo(x) = goo(x,x)
+
+        GL = KerL(ax,gooL, compression = NONCompression())
+        GR = KerR(ax,gooR, compression = NONCompression())
+        SG = SumKernel(GL,GR)
+        G = Ker(ax,goo, compression = NONCompression())
+        PR = SG*G
+        @test SG.kernelL*G + SG.kernelR*G == PR
+    end
+    @testset "convolution UniformScaling * $Ker" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        goo(x) = goo(x,x)
+        G = Ker(ax,goo, compression = NONCompression())
+        α = T(-0.3)
+        PR = (α*I) * G
+        @test PR == α*G
+    end
+    @testset "convolution $Ker * UniformScaling" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        goo(x) = goo(x,x)
+        G = Ker(ax,goo, compression = NONCompression())
+        α = T(-0.3)
+        PR =  G*(α*I)
+        @test PR == α*G
+    end
+    @testset "convolution NullKernel * $Ker" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        goo(x) = goo(x,x)
+        G = Ker(ax,goo, compression = NONCompression())
+        @test NullKernel(G) * G == NullKernel(G)
+    end
+    @testset "convolution $Ker * NullKernel" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+        x0 = Dt/4.5
+        sigma0 = Dt/5
+        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
+        goo(x) = goo(x,x)
+        G = Ker(ax,goo, compression = NONCompression())
+        @test G*NullKernel(G) == NullKernel(G)
+    end
+
 end

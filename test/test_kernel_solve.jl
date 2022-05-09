@@ -23,7 +23,7 @@
         @test norm(A*(A\B) - B) < tol
     end
 
-    @testset "$T solve_dyson" for T = [Float32,Float64,ComplexF64]
+    @testset "$T solve_dyson" begin
         g(x) = T(sin(9*x))
         g(x,y) = g(x-y)
         k(x) = T(-cos(9*x))

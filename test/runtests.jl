@@ -6,9 +6,9 @@ using HssMatrices
 using StaticArrays
 using LsqFit
 
-
 include("test_kernels.jl")
 include("test_kernel_solve.jl")
+
 
 @testset "NonEquilibriumGreenFunction.jl" for T = [Float32,Float64,ComplexF32,ComplexF64], Gr = (RetardedGreenFunction,AdvancedGreenFunction,GreenFunction)
     bs = 2
