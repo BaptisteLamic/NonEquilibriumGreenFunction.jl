@@ -97,3 +97,9 @@ end
 function _adapt(::G,a) where {G<:AbstractArray}
     return G(a)
 end
+function _adapt(a::AbstractArray)
+    return Array(a)
+end
+function _adapt(a::HssMatrix)
+    return a
+end

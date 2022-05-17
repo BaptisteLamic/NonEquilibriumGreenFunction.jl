@@ -1,13 +1,13 @@
-@testset "$T kernels.jl" for T = [Float32,Float64,ComplexF64]
+@testset "$T kernels.jl" for T = [Float64,ComplexF64]
     # "safety" factor
-    c = 50.
+    c = 100
     # increase tolerance for Float32 and ComplexF32
-    tol = max(1E-6,50*eps(real(T)))
+    tol = c*max(1E-6,eps(real(T)))
 
     bs = 2
     N = 128
     Dt = 0.5
-    ax = LinRange(-Dt,Dt,N)
+    ax = LinRange(-Dt/2,Dt,N)
     foo(x,y) = T.([x x+y; x-y y])
     foo(x) = T.([x 2x; 0 x])
     
@@ -37,9 +37,18 @@
         GB = Ker(ax,foo, compression = NONCompression());
         @test B == GB.matrix 
 
-        GA = Ker(ax,foo, compression = NONCompression(),stationary = true)
-        GB = Ker(ax,foo, compression = NONCompression(),stationary = false)
+        GA = Ker(ax,foo_st, compression = NONCompression(),stationary = true)
+        GB = Ker(ax,foo_st, compression = NONCompression(),stationary = false)
         @test GA.matrix - GB.matrix |> norm < tol
+
+        GA = Ker(ax,foo, compression = HssCompression(),stationary = false)
+        GB = Ker(ax,foo, compression = NONCompression(),stationary = false)
+        @test full(GA.matrix) - GB.matrix |> norm < tol
+
+        
+        GA = Ker(ax,foo_st, compression = HssCompression(),stationary = true)
+        GB = Ker(ax,foo_st, compression = NONCompression(),stationary = true)
+        @test full(GA.matrix) - GB.matrix |> norm < tol
     end
 
     @testset "SumKernel construction" begin

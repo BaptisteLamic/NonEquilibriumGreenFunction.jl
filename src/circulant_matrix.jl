@@ -5,6 +5,7 @@ function BlockCirculantMatrix(data)
     @assert size(data,1) == size(data,2)
     BlockCirculantMatrix{eltype(data)}(data)
 end
+
 blocksize(A::BlockCirculantMatrix) = size(A.data,1) 
 function size(A::BlockCirculantMatrix)
     n = blocksize(A)*(size(A.data,3) ÷ 2 +  1)
@@ -63,4 +64,3 @@ function _cmul(A::BlockCirculantMatrix,x)
     _cmul!(r,A,x)
     return r
 end
-#

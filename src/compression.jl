@@ -2,24 +2,24 @@ function build_CirculantlinearMap(ax0,f)
     f00 = f(ax0[1],ax0[1])
     T = eltype(f00)
     bs = size(f00,1)
-    N = length(ax0)*bs
+    N = length(ax0)
     @assert size(f00,1) == size(f00,2)
     ax = (1-N:N-1)*step(ax0) 
-    ax = ax.-ax[end].+ax[end]
    # (ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
-
 
     m = zeros(eltype(f00),bs,bs,length(ax))
     Threads.@threads for i = 1:length(ax)
         m[:,:,i] .= f(ax[i],0) 
     end
     A = BlockCirculantMatrix(m)
+    return build_CirculantlinearMap(A::BlockCirculantMatrix)
+end
+
+function build_CirculantlinearMap(A::BlockCirculantMatrix)
     my_mul!(y,_,x) = _mul!(y,A,x)
     my_cmul!(y,_,x) = _cmul!(y,A,x)
     my_getindex(I,J) = getindex(A,I,J)
-
-
-    lm = LinearMap{T}(N,N,my_mul!,my_cmul!, my_getindex)
+    lm = LinearMap{eltype(A)}(size(A,1),size(A,2),my_mul!,my_cmul!, my_getindex)
     return lm
 end
 
@@ -107,7 +107,7 @@ struct HssCompression{T,G} <: AbstractCompression
     rtol::T
     kest::G
 end
-HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 20) = HssCompression(atol,rtol,kest)
+HssCompression(; atol = 1E-10, rtol = 1E-10, kest = 20) = HssCompression(atol,rtol,kest)
 struct NONCompression <: AbstractCompression end
 
 
@@ -125,6 +125,12 @@ end
 function (Compression :: HssCompression)(tab::AbstractArray)
     return hss(tab,atol = Compression.atol, rtol = Compression.rtol)
 end
+function (Compression :: HssCompression)(axis, tab::BlockCirculantMatrix)
+    lm =  build_CirculantlinearMap(tab)
+    cc = bisection_cluster(size(tab,1))
+    r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
+    recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
+end
 
 function (Compression :: NONCompression)(axis,f; stationary = false)
     f00 = f(axis[1],axis[1]) 
@@ -136,7 +142,12 @@ function (Compression :: NONCompression)(axis,f; stationary = false)
         end
     end
     return r
-end 
+end
+function (Compression :: NONCompression)(axis, tab::BlockCirculantMatrix)
+    lm =  build_CirculantlinearMap(tab)
+    cc = bisection_cluster(size(tab,1))
+    return tab[:,:]
+end
 function (Compression :: NONCompression)(tab::AbstractArray)
     return tab
 end

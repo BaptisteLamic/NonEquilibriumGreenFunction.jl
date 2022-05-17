@@ -13,13 +13,16 @@ using StatsBase
 using NNlib
 using SpecialFunctions
 using FFTW
+using DSP
+using StaticArrays
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: getindex, step
 import Base: similar, zero
-import HssMatrices: full
+import HssMatrices: full, compress
 import SparseArrays: blockdiag
 import LinearAlgebra.I
+import LinearAlgebra.diag
 
 export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGreenFunction
 export axis, retarded, advanced, regular, dirac, blocksize
@@ -32,14 +35,17 @@ export isretarded, isadvanced, timelocal_part, nonlocal_part
 export BlockCirculantMatrix
 export NONCompression, HssCompression
 export solve_dyson
+export energy2time
 export cc_prod, extract_blockdiag, blockdiag
+export pauli, pauliRAK
+export matrix
+export energy2RetardedKernel
 include("greenfunction.jl")
+include("circulant_matrix.jl")
 include("compression.jl")
 include("dyson.jl")
 include("utils.jl")
-include("physics.jl")
 include("kernels.jl")
 include("kernel_solve.jl")
-include("circulant_matrix.jl")
-
+include("physics.jl")
 end

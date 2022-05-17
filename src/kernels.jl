@@ -449,11 +449,6 @@ function _prod(gl::K,gr::NullKernel) where {K<:AbstractKernel}
     @assert iscompatible(gl,gr)
     return gr
 end
-function _prod(gl::K,gr::NullKernel) where {K<:AbstractKernel}
-    #TODO check this code}
-    @assert iscompatible(gl,gr)
-    return gr
-end
 function _prod(gl::TimeLocalKernel,gr::NullKernel) where {K<:AbstractKernel}
     #TODO check this code}
     @assert iscompatible(gl,gr)
@@ -487,12 +482,12 @@ end
 #### SumKernel * AbstractKernel
 function *(gl::SumKernel,gr::AbstractKernel)
     @assert iscompatible(gl,gr)
-    return _prod(gl.kernelL, gr) + _prod(gl.kernelR, gr) 
+    return gl.kernelL * gr + gl.kernelR * gr 
 end
 #### AbstractKernel * SumKernel
 function *(gl::AbstractKernel,gr::SumKernel)
     @assert iscompatible(gl,gr)
-    return _prod(gl,gr.kernelL)  + _prod(gl, gr.kernelR) 
+    return gl*gr.kernelL  + gl * gr.kernelR
 end
 #### SumKernel * SumKernel
 #=
@@ -509,18 +504,54 @@ function *(gl::AbstractKernel,gr::AbstractKernel)
 end
 
 function adjoint(g::Kernel) 
-    return similar(g,g.matrix')
+    return similar(g, _adapt( g.matrix' ) )
 end
 function adjoint(g::RetardedKernel) 
-    return AdvancedKernel(axis(g),g.matrix',blocksize(g),compression(g))
+    return AdvancedKernel(axis(g),_adapt( g.matrix' ),blocksize(g),compression(g))
 end
 function adjoint(g::AdvancedKernel) 
-    return RetardedKernel(axis(g),g.matrix',blocksize(g),compression(g))
+    return RetardedKernel(axis(g),_adapt( g.matrix' ),blocksize(g),compression(g))
 end
 function adjoint(g::K) where K <: Union{TimeLocalKernel,Kernel}
-    K(axis(g),g.matrix',blocksize(g),compression(g))
+    K(axis(g),_adapt( g.matrix' ),blocksize(g),compression(g))
 end
 adjoint(g::NullKernel) = g
 function adjoint(g::SumKernel) 
-    return g.kernelL'+g.kernelR'
+    return g.kernelL'+g.kernelR' 
+end
+function compress(A::AbstractKernel)
+    A
+end
+function compress(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
+    g.compression(g.matrix)
+    return g
+end
+
+function tr(A::NullKernel)
+    A[1,1]
+end
+function tr(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
+    step(axis(K))*tr(g.matrix)
+end
+
+function diag(A::NullKernel)
+    N = length(axis)*blocksize
+    return diag(spzeros(A[1,1],N,N) |> compression(A))
+end
+function diag(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel}
+    diag(g.matrix)
+end
+function diag(g::SumKernel)
+    return diag(g.kernelL) + diag(g.kernelR)
+end
+
+function matrix(A::NullKernel)
+    N = length(axis)*blocksize
+    return spzeros(A[1,1],N,N) |> compression(A)
+end
+function matrix(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel}
+    g.matrix
+end
+function matrix(g::SumKernel)
+    return matrix(g.kernelL) + matrix(g.kernelR)
 end
