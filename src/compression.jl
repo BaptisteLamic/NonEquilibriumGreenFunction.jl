@@ -106,28 +106,29 @@ struct HssCompression{T,G} <: AbstractCompression
     atol::T
     rtol::T
     kest::G
+    leafsize::G
 end
-HssCompression(; atol = 1E-10, rtol = 1E-10, kest = 20) = HssCompression(atol,rtol,kest)
+HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 40, leafsize=128) = HssCompression(atol,rtol,kest,leafsize)
 struct NONCompression <: AbstractCompression end
 
 
 function (Compression :: HssCompression)(axis,f;stationary = false)
     lm = stationary ? build_CirculantlinearMap(axis,f) : build_linearMap(axis, f)
     bs  = size(f(axis[1],axis[1]),1)
-    cc = bisection_cluster(length(axis)*bs)
+    cc = bisection_cluster(length(axis)*bs,leafsize = Compression.leafsize)
     r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
     recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
     return r
 end 
 function (Compression :: HssCompression)(tab::HssMatrix)
-    return recompress!(tab,atol = Compression.atol, rtol = Compression.rtol)
+    return recompress!(tab,atol = Compression.atol, rtol = Compression.rtol,  leafsize = Compression.leafsize)
 end
 function (Compression :: HssCompression)(tab::AbstractArray)
-    return hss(tab,atol = Compression.atol, rtol = Compression.rtol)
+    return hss(tab,atol = Compression.atol, rtol = Compression.rtol, leafsize = Compression.leafsize)
 end
 function (Compression :: HssCompression)(axis, tab::BlockCirculantMatrix)
     lm =  build_CirculantlinearMap(tab)
-    cc = bisection_cluster(size(tab,1))
+    cc = bisection_cluster(size(tab,1),leafsize = Compression.leafsize)
     r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
     recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
 end
@@ -144,8 +145,6 @@ function (Compression :: NONCompression)(axis,f; stationary = false)
     return r
 end
 function (Compression :: NONCompression)(axis, tab::BlockCirculantMatrix)
-    lm =  build_CirculantlinearMap(tab)
-    cc = bisection_cluster(size(tab,1))
     return tab[:,:]
 end
 function (Compression :: NONCompression)(tab::AbstractArray)

@@ -7,6 +7,7 @@ using StaticArrays
 using LsqFit
 
 include("test_physics.jl")
+include("test_BlockCirculantMatrix.jl")
 include("test_kernels.jl")
 include("test_kernel_solve.jl")
 

@@ -319,6 +319,7 @@ end
 function _prod(gl::AbstractKernel,gr::TimeLocalKernel) 
     @assert iscompatible(gl,gr)
     typeof(gl)(axis(gl),
+    
         gl.matrix*gr.matrix,
         blocksize(gl),
         compression(gl)
@@ -333,6 +334,7 @@ function _prod(gl::TimeLocalKernel,gr::TimeLocalKernel)
         gl.matrix*gr.matrix,
         blocksize(gl),
         compression(gl)
+
     )
 end
 #### RetardedKernel

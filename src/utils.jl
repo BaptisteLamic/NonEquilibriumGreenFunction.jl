@@ -30,7 +30,7 @@ function _extract_blockdiag(m::AbstractMatrix{T},bs,d::Int = 0) where T
         I = [(blk+shift_I-1)*bs+j for p = 1:bs, j = 1:bs, blk = 1:N-abs(d) ]
         I = reshape(I,:)
         V = [m[I[k],J[k]] for k = 1:length(I)]
-        return _adapt(m,sparse(I,J,V,size(m)...))
+        return sparse(I,J,V,size(m)...)
     end
 end
 function extract_blockdiag(m::AbstractMatrix{T},bs,d = 0; compression = HssCompression()) where T

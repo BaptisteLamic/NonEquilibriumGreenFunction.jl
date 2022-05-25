@@ -40,6 +40,7 @@ export cc_prod, extract_blockdiag, blockdiag
 export pauli, pauliRAK
 export matrix
 export energy2RetardedKernel
+export compression
 include("greenfunction.jl")
 include("circulant_matrix.jl")
 include("compression.jl")
