@@ -11,12 +11,12 @@
     end
     σ  = 12
     t_ax = (1-N:N-1)*Dt
-    A = energy2time(x-> dnorm(x,σ),N,Dt, 1)
+    A = energy2time(x-> dnorm(x,σ),N,Dt)
     σ  = 12
     dt = 0.005
     N = 2048
     t_ax = (1-N:N-1)*dt
-    A = energy2time(x-> dnorm(x,σ),N,dt, 0)
+    A = energy2time(x-> dnorm(x,σ),N,dt)
     ntf =  A.data[:] 
     atf = ifft_dnorm.(t_ax, σ)
     @test norm(ntf-atf)/norm(atf) < 1E-3

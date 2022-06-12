@@ -26,7 +26,7 @@ function thermal_kernel(t,β)
     end
 end
 
-function energy2time(f, N, δt, wparam = 0.1; window = tukey) where Ker<:AbstractKernel
+function energy2time(f, N, δt)
     f00 = f(0)
     bs = size(f00,1)
     δE = π/(N * δt)
@@ -39,10 +39,10 @@ function energy2time(f, N, δt, wparam = 0.1; window = tukey) where Ker<:Abstrac
     t_m = fftshift( fft( ifftshift( E_m, 3), 3 ), 3 )
     A = BlockCirculantMatrix(t_m)
 end
-function energy2RetardedKernel(f,K,t_ax,wparam = 1//8; window = gaussian, compression = HssCompression())
+function energy2RetardedKernel(f,K,t_ax; compression = HssCompression())
     N = length(t_ax)
     δt = step(t_ax)
-    A =  energy2time(f, N, δt, wparam; window = window)
+    A =  energy2time(f, N, δt)
     for k = 1:length(t_ax)-1
         A.data[:,:,k] .*= 0
     end

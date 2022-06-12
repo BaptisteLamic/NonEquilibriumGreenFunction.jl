@@ -32,7 +32,7 @@ function \(A::SumKernel,B::RetardedKernel)
     diag_Ar = extract_blockdiag(Ar.matrix,bs, compression = cp)
     diag_B = extract_blockdiag(B.matrix,bs, compression = cp)
     A_op = step(Ar)*(Ar.matrix - 1//2 * diag_Ar) + Aδ.matrix
-    sol_biased = similar(B,A_op\(B.matrix - 1//2 * diag_B))
+    sol_biased = similar(B,A_op\cp(B.matrix - 1//2 * diag_B))
     correction = similar(B,Aδ.matrix \ diag_B - extract_blockdiag(sol_biased.matrix,bs, compression = cp))
     return sol_biased + correction
 end
@@ -48,10 +48,6 @@ function \(A::SumKernel,B::TimeLocalKernel)
     return Xδ + Xr
 end
 
-function \(A::RetardedKernel,B::TimeLocalKernel)
-    @assert iscompatible(A,B)
-    return NullKernel(A)
-end
 function \(A::RetardedKernel, B::RetardedKernel)
     @assert iscompatible(A,B)
     cp=compression(A)

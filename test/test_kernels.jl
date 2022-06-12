@@ -6,12 +6,13 @@
 
     bs = 2
     N = 128
-    Dt = 0.5
+    Dt = 2.
     ax = LinRange(-Dt/2,Dt,N)
-    foo(x,y) = T.([x x+y; x-y y])
-    foo(x) = T.([x 2x; 0 x])
+
+    foo(x,y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
+    foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
     
-    foo_st(x) = T.([x 2x; 0 x])
+    foo_st(x) =  T <: Complex ? T.( 1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
     foo_st(x,y) = foo_st(x-y)
 
     @testset "$Ker construction" for Ker = (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)

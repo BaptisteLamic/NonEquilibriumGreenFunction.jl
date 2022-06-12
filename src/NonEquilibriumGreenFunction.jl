@@ -15,6 +15,7 @@ using SpecialFunctions
 using FFTW
 using DSP
 using StaticArrays
+using BlockArrays
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: getindex, step
@@ -38,9 +39,11 @@ export solve_dyson
 export energy2time
 export cc_prod, extract_blockdiag, blockdiag
 export pauli, pauliRAK
+export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
+
 include("greenfunction.jl")
 include("circulant_matrix.jl")
 include("compression.jl")
@@ -49,4 +52,5 @@ include("utils.jl")
 include("kernels.jl")
 include("kernel_solve.jl")
 include("physics.jl")
+include("RAKMatrices.jl")
 end

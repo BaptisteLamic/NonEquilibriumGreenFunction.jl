@@ -111,6 +111,36 @@ compression(g::AbstractKernel) = g.compression
 axis(g::AbstractKernel) = g.axis
 size(g::AbstractKernel) = ( length(axis(g)), length(axis(g)) )
 
+
+function _getindex(A::AbstractKernel, index::Vararg{T,2}) where T
+    #assume that the index are sorted
+    I = index[1]
+    J = index[2]
+    sbk = blocksize(A)
+    n_blocks = length(I)*length(J)
+    bk_I = union(blockrange.( I, sbk )...)
+    bk_J = union(blockrange.( J, sbk )...)
+    values = matrix(A)[bk_I,bk_J]
+    blocked_arrays = [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
+end
+getindex(A::AbstractKernel,i::Int, j::Int) = getindex(A,[i], [j])[1]
+getindex(A::AbstractKernel,i::Int, j::AbstractRange) = getindex(A, [i], j)[:]
+getindex(A::AbstractKernel, i::AbstractRange, j::Int) = getindex(A, i, [j])[:]
+getindex(A::AbstractKernel,i::AbstractRange, j::AbstractRange) = getindex(A, collect(i), collect(j))
+getindex(A::AbstractKernel,::Colon, ::Colon) = getindex(A,1:size(A,1),1:size(A,2))
+getindex(A::AbstractKernel, i, ::Colon) = getindex(A,i, 1:size(A,2))
+getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), j)
+
+function getindex(A::AbstractKernel, I::Vector{Int},J::Vector{Int})
+    Ip = sortperm(I); Jp = sortperm(J)
+    if (length(I) == 0 || length(J) == 0) 
+        return Matrix{eltype(A)}(undef, length(I), length(J))
+    else
+        return _getindex(A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
+    end
+end
+
+
 function getindex(A::AbstractKernel,I::Vararg{Int,2}) 
     A.matrix[blockrange(I[1], blocksize(A) ), blockrange(I[2], blocksize(A) )]
 end
@@ -310,10 +340,10 @@ end
 #### TimeLocalKernels
 function _prod(gl::TimeLocalKernel,gr::AbstractKernel) 
     @assert iscompatible(gl,gr)
-    typeof(gr)(axis(gl),
+    typeof(gr)(axis(gr),
         gl.matrix*gr.matrix,
-        blocksize(gl),
-        compression(gl)
+        blocksize(gr),
+        compression(gr)
     )
 end
 function _prod(gl::AbstractKernel,gr::TimeLocalKernel) 
@@ -551,7 +581,7 @@ function matrix(A::NullKernel)
     N = length(axis)*blocksize
     return spzeros(A[1,1],N,N) |> compression(A)
 end
-function matrix(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel}
+function matrix(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel,TimeLocalKernel}
     g.matrix
 end
 function matrix(g::SumKernel)
