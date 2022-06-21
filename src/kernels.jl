@@ -36,7 +36,7 @@ struct NullKernel{T,A,C} <: AbstractKernel{T,A,C}
     blocksize::Int
     compression::C
 end
-
+scalartype(K::AbstractKernel{T,A, C}) where {T, A, C} = T
 ### Definitions of the constructors
 function RetardedKernel(axis, matrix, blocksize::Int, compression)
     RetardedKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, matrix, blocksize, compression)
@@ -112,26 +112,49 @@ axis(g::AbstractKernel) = g.axis
 size(g::AbstractKernel) = ( length(axis(g)), length(axis(g)) )
 
 
-function _getindex(A::AbstractKernel, index::Vararg{T,2}) where T
+function _getindex(A::AbstractKernel, I, J)
     #assume that the index are sorted
-    I = index[1]
-    J = index[2]
     sbk = blocksize(A)
-    n_blocks = length(I)*length(J)
-    bk_I = union(blockrange.( I, sbk )...)
-    bk_J = union(blockrange.( J, sbk )...)
+    bk_I = vcat(blockrange.( I, sbk )...)
+    bk_J = vcat(blockrange.( J, sbk )...)
     values = matrix(A)[bk_I,bk_J]
-    blocked_arrays = [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
+    r = [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
+    return r
 end
+
+function _getindex(A::NullKernel, I, J)
+    #assume that the index are sorted
+    sbk = blocksize(A)
+    bk_I = vcat(blockrange.( I, sbk )...)
+    bk_J = vcat(blockrange.( J, sbk )...)
+    values = zeros(scalartype(A),length(bk_I), length(bk_J))
+    return [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
+end
+
+function getindex(A::AbstractKernel,i::Int,j::Int)
+    bs = blocksize(A)
+    return matrix(A)[blockrange(i,bs),blockrange(j,bs)]
+end
+function getindex(A::SumKernel,i::Int,j::Int)
+    r = A.kernelL[i,j]
+    r .+= A.kernelR[i,j]
+    return r
+    
+end
+function getindex(A::NullKernel,i::Int,j::Int)
+    return zeros(scalartype(A), blocksize(A), blocksize(A))
+end
+
 getindex(A::AbstractKernel,i::Int, j::Int) = getindex(A,[i], [j])[1]
-getindex(A::AbstractKernel,i::Int, j::AbstractRange) = getindex(A, [i], j)[:]
-getindex(A::AbstractKernel, i::AbstractRange, j::Int) = getindex(A, i, [j])[:]
-getindex(A::AbstractKernel,i::AbstractRange, j::AbstractRange) = getindex(A, collect(i), collect(j))
+getindex(A::AbstractKernel,i::Int, j) = getindex(A, [i], j)[:]
+getindex(A::AbstractKernel, i, j::Int) = getindex(A, i, [j])[:]
 getindex(A::AbstractKernel,::Colon, ::Colon) = getindex(A,1:size(A,1),1:size(A,2))
 getindex(A::AbstractKernel, i, ::Colon) = getindex(A,i, 1:size(A,2))
-getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), j)
+getindex(A::AbstractKernel, i::Int, ::Colon) = getindex(A,[i], 1:size(A,2))
+getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), j)[:]
+getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), [j])[:]
 
-function getindex(A::AbstractKernel, I::Vector{Int},J::Vector{Int})
+function getindex(A::AbstractKernel, I,J)
     Ip = sortperm(I); Jp = sortperm(J)
     if (length(I) == 0 || length(J) == 0) 
         return Matrix{eltype(A)}(undef, length(I), length(J))
@@ -139,18 +162,14 @@ function getindex(A::AbstractKernel, I::Vector{Int},J::Vector{Int})
         return _getindex(A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 end
-
-
-function getindex(A::AbstractKernel,I::Vararg{Int,2}) 
-    A.matrix[blockrange(I[1], blocksize(A) ), blockrange(I[2], blocksize(A) )]
-end
+#=
 function getindex(A::SumKernel,I::Vararg{Int,2})
     A.kernelL[I...] + A.kernelR[I...]
 end
 function getindex(K::NullKernel{T,A,C},I::Vararg{Int,2}) where {T,A,C}
     return zeros(T,blocksize(K), blocksize(K))
 end
-
+=#
 function similar(A::AbstractKernel,matrix::AbstractArray)
     typeof(A)(axis(A), matrix, blocksize(A), compression(A))
 end
@@ -578,8 +597,8 @@ function diag(g::SumKernel)
 end
 
 function matrix(A::NullKernel)
-    N = length(axis)*blocksize
-    return spzeros(A[1,1],N,N) |> compression(A)
+    N = length(axis(A))*blocksize(A)
+    return spzeros(scalartype(A),N,N) |> compression(A)
 end
 function matrix(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel,TimeLocalKernel}
     g.matrix
