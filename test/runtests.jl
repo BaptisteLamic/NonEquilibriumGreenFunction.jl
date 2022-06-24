@@ -11,6 +11,25 @@ include("test_BlockCirculantMatrix.jl")
 include("test_kernels.jl")
 include("test_kernel_solve.jl")
 
+@testset "HODLRMatrices.jl" for T in [Float32, Float64, ComplexF32, ComplexF64]
+    # "safety" factor
+    c = 50.
+    # increase tolerance for Float32 and ComplexF32
+    tol = max(1E-6,50*eps(real(T)))
+    opts = HODLROptions(T,atol = tol, rtol = tol)
+    function check_tol(A,B)
+        A = Array(A)
+        B = Array(B)
+        norm(A - B)/norm(A) ≤ c*opts.rtol || norm(A - full(B)) ≤ c*opts.atol
+    end 
+    @testset "compression $T" begin
+        ax = -12:0.01:12
+        A = [exp(-abs(x-y-1)) for x in ax, y in ax]
+        hodlr = HODLRMatrix(A)
+        @test check_tol(A,hodlr)
+    end
+
+end
 
 @testset "NonEquilibriumGreenFunction.jl" for T = [Float32,Float64,ComplexF32,ComplexF64], Gr = (RetardedGreenFunction,AdvancedGreenFunction,GreenFunction)
     bs = 2

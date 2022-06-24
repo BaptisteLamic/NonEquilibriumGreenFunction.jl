@@ -27,41 +27,45 @@ function RAKMatrix(R,A,K; order)
 end
 
 RAKMatrix(R,K; order) = RAKMatrix(R,R',K, order = order)
+scalartype(A::RAKMatrix) = scalartype(A.data[1])
+#=
 
-function _getindex!(out,A::RAKMatrix, I,J) where T
-    #assume that the index are sorted
-    sbk = blocksize(A)
+=#
+function getindex!(out,A::RAKMatrix, I,J) where T
+    bs = blocksize(A)
     values = [A.data[p,q][I,J] for p = 1:2, q = 1:2]
-    for i = 1:length(I)
-        for j = 1:length(J) 
-            @show [values[1,1][i,j] values[1,2][i,j]; values[2,1][i,j] values[2,2][i,j] ]
-            @show out
-            out[i,j] = [values[1,1][i,j] values[1,2][i,j]; values[2,1][i,j] values[2,2][i,j] ]
+    Threads.@threads for i = 1:length(I)
+        for j = 1:length(J)
+            for p = 1:2
+                for q = 1:2
+                    out[i,j][blockrange(p,bs),blockrange(q,bs)] .= values[p,q][i,j]
+                end
+            end 
         end
     end
     return out
 end
-
 function getindex!(out,A::RAKMatrix,i::Int, j::Int)
     return out .= [ A.data[1,1][i,j] A.data[1,2][i,j] ; A.data[2,1][i,j] A.data[2,2][i,j] ]
 end
-getindex!(out,A::RAKMatrix,i::Int, j) = getindex!(out,A, [i], j)[:]
-getindex!(out,A::RAKMatrix, i, j::Int) = getindex!(out,A, i, [j])[:]
+getindex!(out,A::RAKMatrix,i::Int, j) = reshape(getindex!(out,A, [i], j),:)
+getindex!(out,A::RAKMatrix, i, j::Int) = reshape(getindex!(out,A, i, [j]),:)
 getindex!(out,A::RAKMatrix,::Colon, ::Colon) = getindex!(out,A,1:size(A,1),1:size(A,2))
 getindex!(out,A::RAKMatrix, i, ::Colon) = getindex!(out,A,i, 1:size(A,2))
 getindex!(out,A::RAKMatrix, ::Colon, j) = getindex!(out,A,1:size(A,1), j)
-getindex!(out,A::RAKMatrix, i::Int, ::Colon) = getindex!(out,A,i::Int, 1:size(A,2))[1]
-getindex!(out,A::RAKMatrix, ::Colon, j::Int) = getindex!(out,A,1:size(A,1), j::Int)[1]
-function getindex!(out,A::RAKMatrix, I,J)
-    Ip = sortperm(I); Jp = sortperm(J)
-    if (length(I) == 0 || length(J) == 0) 
-        return Matrix{eltype(A)}(undef, length(I), length(J))
-    else
-        return _getindex!(out,A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
-    end
-end
+getindex!(out,A::RAKMatrix, i::Int, ::Colon) = reshape( getindex!(out,A,i::Int, 1:size(A,2) ), : )
+getindex!(out,A::RAKMatrix, ::Colon, j::Int) = reshape( getindex!(out,A,1:size(A,1), j),:)
+
+getindex(A::RAKMatrix,i::Int, j) = getindex(A, [i], j)[:]
+getindex(A::RAKMatrix, i, j::Int) = getindex(A, i, [j])[:]
+getindex(A::RAKMatrix,::Colon, ::Colon) = getindex(A,1:size(A,1),1:size(A,2))
+getindex(A::RAKMatrix, i, ::Colon) = getindex(A,i, 1:size(A,2))
+getindex(A::RAKMatrix, ::Colon, j) = getindex(A,1:size(A,1), j)
+getindex(A::RAKMatrix, i::Int, ::Colon) = reshape(getindex(A,i::Int, 1:size(A,2)),:)
+getindex(A::RAKMatrix, ::Colon, j::Int) = reshape(getindex(A,1:size(A,1), j::Int),:)
 function getindex(A::RAKMatrix, I,J)
-    out = Matrix{eltype(A)}(undef, length(I), length(J) )
+    bs = blocksize(A)
+    out = [Matrix{scalartype(A)}(undef,2bs,2bs) for i in I, j in J]
     return getindex!(out,A,I,J)
 end
 function getindex(A::RAKMatrix,i::Int, j::Int)

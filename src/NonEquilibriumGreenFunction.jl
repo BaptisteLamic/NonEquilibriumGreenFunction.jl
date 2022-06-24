@@ -16,6 +16,7 @@ using FFTW
 using DSP
 using StaticArrays
 using BlockArrays
+using LowRankApprox
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: getindex, step
@@ -43,6 +44,11 @@ export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
+export scalartype
+export getindex!
+
+include("HODLRMatrices/HODLRMatrices.jl")
+export HODLRMatrices
 
 include("greenfunction.jl")
 include("circulant_matrix.jl")

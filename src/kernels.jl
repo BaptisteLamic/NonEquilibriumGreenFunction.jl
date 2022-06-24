@@ -145,21 +145,20 @@ function getindex(A::NullKernel,i::Int,j::Int)
     return zeros(scalartype(A), blocksize(A), blocksize(A))
 end
 
-getindex(A::AbstractKernel,i::Int, j::Int) = getindex(A,[i], [j])[1]
-getindex(A::AbstractKernel,i::Int, j) = getindex(A, [i], j)[:]
-getindex(A::AbstractKernel, i, j::Int) = getindex(A, i, [j])[:]
+#getindex(A::AbstractKernel,i::Int, j::Int) = getindex(A,[i], [j])[1]
+getindex(A::AbstractKernel,i::Int, j) = reshape(getindex(A, [i], j),:)
+getindex(A::AbstractKernel, i, j::Int) = reshape(getindex(A, i, [j]),:)
 getindex(A::AbstractKernel,::Colon, ::Colon) = getindex(A,1:size(A,1),1:size(A,2))
 getindex(A::AbstractKernel, i, ::Colon) = getindex(A,i, 1:size(A,2))
 getindex(A::AbstractKernel, i::Int, ::Colon) = getindex(A,[i], 1:size(A,2))
-getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), j)[:]
-getindex(A::AbstractKernel, ::Colon, j) = getindex(A,1:size(A,1), [j])[:]
+getindex(A::AbstractKernel, ::Colon, j) = reshape(getindex(A,1:size(A,1), j),:)
 
 function getindex(A::AbstractKernel, I,J)
     Ip = sortperm(I); Jp = sortperm(J)
     if (length(I) == 0 || length(J) == 0) 
         return Matrix{eltype(A)}(undef, length(I), length(J))
     else
-        return _getindex(A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
+        return @views _getindex(A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 end
 #=

@@ -32,8 +32,8 @@ function build_linearMap(axis,f;blk = 512)
 
     #borrowed from HssMatrices
     getindex(i::Int, j::Int) = getindex([i], [j])[1]
-    getindex(i::Int, j::AbstractRange) = getindex([i], j)[:]
-    getindex(i::AbstractRange, j::Int) = getindex(i, [j])[:]
+    getindex(i::Int, j::AbstractRange) = reshape(getindex([i], j),:)
+    getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]),:)
     getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
     getindex(::Colon, ::Colon) = getindex(1:N,1:N)
     getindex(i, ::Colon) = getindex(i, 1:size(hssA,2))
