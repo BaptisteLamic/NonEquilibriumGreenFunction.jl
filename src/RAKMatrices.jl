@@ -91,16 +91,26 @@ function Base.show(io::IO, ::MIME"text/plain", k::RAKMatrix)
     println(io,"blocksize = $(blocksize(k))")
 end
 
-function (*)(A::RAKMatrix,B::RAKMatrix)
-    return A.data * B.data |> RAKMatrix
-end
-function (*)(A::RAKMatrix, B::AbstractMatrix)
-    size(B,2) == size(B,1) == 2 ||  throw(DimensionMismatch("B should be a 2 by 2 matrix, or a RAKMatrix"))
-    return A.data * B |> RAKMatrix
-end
-function (*)(A::AbstractMatrix, B::RAKMatrix)
-    size(A,2) == size(A,1) == 2 ||  throw(DimensionMismatch("A should be a 2 by 2 matrix, or a RAKMatrix"))
-    return A * B.data |> RAKMatrix
+(*)(A::RAKMatrix,B::RAKMatrix) = _mul_RAK(A, B)
+(*)(A::RAKMatrix, B::AbstractMatrix) = _mul_RAK(A, B)
+(*)(A::AbstractMatrix, B::RAKMatrix) = _mul_RAK(A, B)
+
+function _mul_RAK(A::AbstractMatrix, B::AbstractMatrix)
+    r = Matrix{AbstractKernel}(undef,2,2)
+    term = Array{AbstractKernel,3}(undef,2,2,2)
+    @Threads.threads for p in 1:2
+        for q in 1:2
+            for k in 1:2
+                term[p,q,k] = A[p,k]*B[k,q]
+            end
+        end
+    end 
+    @Threads.threads for p in 1:2
+        for q in 1:2
+            r[p,q] = term[p,q,1] + term[p,q,2]
+        end
+    end 
+    return r |> RAKMatrix
 end
 
 function compress(A::RAKMatrix)
