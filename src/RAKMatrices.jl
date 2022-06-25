@@ -20,13 +20,13 @@ function RAKMatrix(R,A,K; order)
     if order == :correlation
         return RAKMatrix(NullKernel(R), A, R, K)
     elseif order == :action
-        return RAKMatrix(K, A, R, NullKernel(R))
+        return RAKMatrix(K, R, A, NullKernel(R))
     else
         throw(ArgumentError("$order is not a valid value for the named argument order."))
     end
 end
 
-RAKMatrix(R,K; order) = RAKMatrix(R,R',K, order = order)
+RAKMatrix(R,K; order) = RAKMatrix(R,R',K; order)
 scalartype(A::RAKMatrix) = scalartype(A.data[1])
 #=
 
