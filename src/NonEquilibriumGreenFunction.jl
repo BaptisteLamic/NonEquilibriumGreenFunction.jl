@@ -44,8 +44,10 @@ export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
+export compress
 export scalartype
 export getindex!
+export tr_K
 
 include("HODLRMatrices/HODLRMatrices.jl")
 export HODLRMatrices

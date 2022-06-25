@@ -91,9 +91,9 @@ function Base.show(io::IO, ::MIME"text/plain", k::RAKMatrix)
     println(io,"blocksize = $(blocksize(k))")
 end
 
-(*)(A::RAKMatrix,B::RAKMatrix) = _mul_RAK(A, B)
-(*)(A::RAKMatrix, B::AbstractMatrix) = _mul_RAK(A, B)
-(*)(A::AbstractMatrix, B::RAKMatrix) = _mul_RAK(A, B)
+(*)(A::RAKMatrix,B::RAKMatrix) = _mul_RAK(A.data, B.data)
+(*)(A::RAKMatrix, B::AbstractMatrix) = _mul_RAK(A.data, B)
+(*)(A::AbstractMatrix, B::RAKMatrix) = _mul_RAK(A, B.data)
 
 function _mul_RAK(A::AbstractMatrix, B::AbstractMatrix)
     r = Matrix{AbstractKernel}(undef,2,2)
@@ -113,6 +113,50 @@ function _mul_RAK(A::AbstractMatrix, B::AbstractMatrix)
     return r |> RAKMatrix
 end
 
+for op in (:*,:\)
+    @eval begin
+        function $op(λ::Number,A::RAKMatrix)
+            r = Matrix{AbstractKernel}(undef,2,2)
+            @Threads.threads for p in 1:2
+                for q in 1:2
+                    r[p,q] = $op(λ, A.data[p,q])
+                end
+            end 
+            return RAKMatrix(r)
+        end
+    end
+end
+for op in (:+,:-)
+    @eval begin
+        function $op(A::RAKMatrix)
+            r = Matrix{AbstractKernel}(undef,2,2)
+            @Threads.threads for p in 1:2
+                for q in 1:2
+                    r[p,q] = $op(A.data[p,q])
+                end
+            end 
+            return RAKMatrix(r)
+        end
+    end
+end
+for op in (:+,:-)
+    @eval begin
+        function $op(A::RAKMatrix,B::RAKMatrix)
+            r = Matrix{AbstractKernel}(undef,2,2)
+            @Threads.threads for p in 1:2
+                for q in 1:2
+                    r[p,q] = $op(A.data[p,q],B.data[p,q])
+                end
+            end 
+            return RAKMatrix(r)
+        end
+    end
+end
+
 function compress(A::RAKMatrix)
     A.data .|> compress |> RAKMatrix
+end
+
+function tr_K(A::RAKMatrix)
+    return A.data[1,1] + A.data[2,2]
 end
