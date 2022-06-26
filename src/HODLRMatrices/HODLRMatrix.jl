@@ -105,7 +105,7 @@ end
 
 _collect(s) = s |> collect |> sort
 function aca(A::AbstractMatrix; n_samples = 4, rank_estimate = 4, 
-        maxiter = min(4*rank_estimate,minimum(size(A)) - rank_estimate), max_refine = 10, max_retry = 2, r_IJ = false)
+        maxiter = min(10*rank_estimate,minimum(size(A)) - rank_estimate), max_refine = 10, max_retry = 2, r_IJ = false)
     m,n = size(A)
     retry = 0
     m_iter = 0

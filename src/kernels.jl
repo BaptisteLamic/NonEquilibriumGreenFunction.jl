@@ -111,25 +111,29 @@ compression(g::AbstractKernel) = g.compression
 axis(g::AbstractKernel) = g.axis
 size(g::AbstractKernel) = ( length(axis(g)), length(axis(g)) )
 
+function getindex(A::AbstractKernel,::Colon,I,::Colon,J)
+    sbk = blocksize(A)
+    ax = axis(A)
+    bk_I = vcat(blockrange.( I, sbk )...)
+    bk_J = vcat(blockrange.( J, sbk )...)
+    values = matrix(A)[bk_I,bk_J]
+    return reshape(values,sbk,length(I), sbk, length(J))
+end
+function getindex(A::NullKernel,::Colon,I,::Colon,J)
+    sbk = blocksize(A)
+    return zeros(scalartype(A),sbk,length(I), sbk, length(J))
+end
+
 
 function _getindex(A::AbstractKernel, I, J)
     #assume that the index are sorted
     sbk = blocksize(A)
-    bk_I = vcat(blockrange.( I, sbk )...)
-    bk_J = vcat(blockrange.( J, sbk )...)
-    values = matrix(A)[bk_I,bk_J]
+    ax = axis(A)
+    values = reshape(getindex(A,:,I,:,J), length(I)*sbk, length(J)*sbk)
     r = [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
     return r
 end
 
-function _getindex(A::NullKernel, I, J)
-    #assume that the index are sorted
-    sbk = blocksize(A)
-    bk_I = vcat(blockrange.( I, sbk )...)
-    bk_J = vcat(blockrange.( J, sbk )...)
-    values = zeros(scalartype(A),length(bk_I), length(bk_J))
-    return [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
-end
 
 function getindex(A::AbstractKernel,i::Int,j::Int)
     bs = blocksize(A)

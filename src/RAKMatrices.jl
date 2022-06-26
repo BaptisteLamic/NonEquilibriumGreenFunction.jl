@@ -22,15 +22,25 @@ function RAKMatrix(R,A,K; order)
     elseif order == :action
         return RAKMatrix(K, R, A, NullKernel(R))
     else
-        throw(ArgumentError("$order is not a valid value for the named argument order."))
+        throw(ArgumentError("$order is not a valid value for the named argument order., should be :correlation or :action"))
     end
 end
 
 RAKMatrix(R,K; order) = RAKMatrix(R,R',K; order)
 scalartype(A::RAKMatrix) = scalartype(A.data[1])
-#=
+compression(A::RAKMatrix) = compression(A.data[1])
 
-=#
+function getindex(A::RAKMatrix,::Colon,I,::Colon,J,::Colon,::Colon)
+    bs = blocksize(A)
+    out = Array{scalartype(A)}(undef,bs,length(I), bs,length(J), 2, 2)
+    Threads.@threads for p = 1:2
+        for q = 1:2
+            out[:,:,:,:,p,q] .= A.data[p,q][:,I,:,J]
+        end
+    end 
+    return out
+end
+
 function getindex!(out,A::RAKMatrix, I,J) where T
     bs = blocksize(A)
     values = [A.data[p,q][I,J] for p = 1:2, q = 1:2]
