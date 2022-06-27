@@ -18,6 +18,14 @@ end
 function rank(A::LowRankMatrix) 
     rank(A.S)
 end
+
+getindex!(out, A::LowRankMatrix, i, j::Int) = getindex!(out,A,i,[j])
+getindex!(out,A::LowRankMatrix, i::Int, j) = getindex!(out,A,[i],j)
+function getindex!(out,A::LowRankMatrix,i,j)
+    U, S, V = A.U, A.S, A.V
+    return @views out[:,:] .=  U[i,:]*S*V[j,:]'
+end
+
 Base.Array(A::LowRankMatrix) = A[:,:]
 
 struct HODLRMatrix{T<:Number,ST<:Number} <: AbstractMatrix{T}
@@ -49,23 +57,30 @@ Base.getindex(A::HODLRMatrix,i,::Colon) = getindex(A, i, 1:size(A,2))
 Base.getindex(A::HODLRMatrix,::Colon, j) = getindex(A, 1:size(A,1), j)
 Base.getindex(A::HODLRMatrix,::Colon, ::Colon) = _getidx(A, 1:size(A,1), 1:size(A,2))
 function Base.getindex(A::HODLRMatrix, i,j)
-  m, n  = size(A)
   ip = sortperm(i); jp = sortperm(j)
   if (length(i) == 0 || length(j) == 0) return Matrix{T}(undef, length(i), length(j)) end
-  return @views _getidx(A, i[ip], j[jp])[invperm(ip), invperm(jp)]
+  out = Matrix{eltype(A)}(undef,length(i),length(j))
+  _getidx!(out,A, i[ip], j[jp])
+  return out[invperm(ip), invperm(jp)]
 end
-function _getidx(A::HODLRMatrix, i, j)
+function _getidx!(out,A::HODLRMatrix, i, j)
+    if i == 0 || j == 0
+        return
+    end
     m1, n1 = size(A.A11)
-    i1 = @views i[i .<= m1]; j1 = @views j[j .<= n1]
-    i2 = @views i[i .> m1] .- m1; j2 = @views j[j .> n1] .- n1
-    B12 = A.B12[i1,j2]
-    B21 = A.B21[i2,j1]
-    A11 = _getidx(A.A11, i1, j1)
-    A22 = _getidx(A.A22, i2, j2)
-    return [A11 B12; B21 A22]
+    i1 = i[i .<= m1]; j1 = j[j .<= n1]
+    i2 = i[i .> m1] .- m1; j2 = j[j .> n1] .- n1
+    o_m1 = length(i1)
+    o_n1 = length(j1)
+
+    getindex!(@view(out[1:o_m1,o_n1+1:end]), A.B12,i1,j2)
+    getindex!(@view(out[o_m1+1:end, 1:o_n1]),  A.B21,i2,j1)
+
+    _getidx!(@view(out[1:o_m1,1:o_n1]),A.A11, i1, j1)
+    _getidx!(@view(out[o_m1+1:end ,o_n1+1:end]),A.A22, i2, j2)
 end
-function _getidx(A::AbstractMatrix, i, j)
-    return A[i,j]
+function _getidx!(out,A::AbstractMatrix, i, j)
+    return @views out[:,:] = A[i,j]
 end
 
 Base.Array(A::HODLRMatrix) = A[:,:]

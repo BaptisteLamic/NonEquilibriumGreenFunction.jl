@@ -1,5 +1,3 @@
-module HODLRMatrices
-
 using LinearAlgebra
 import LinearAlgebra.rank
 using LowRankApprox
@@ -51,5 +49,3 @@ export HODLROptions
 export KernelMatrix
 export hodlr_rank
 export aca
-
-end

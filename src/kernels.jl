@@ -36,6 +36,15 @@ struct NullKernel{T,A,C} <: AbstractKernel{T,A,C}
     blocksize::Int
     compression::C
 end
+
+
+function NullKernel(axis, matrix, blocksize::Int, compression)
+    NullKernel{eltype(matrix),typeof(axis),typeof(compression)}(axis, blocksize, compression)
+end
+function NullKernel(k::AbstractKernel{T,A,C}) where {T,A,C}
+    NullKernel{T,A,C}(axis(k), blocksize(k), compression(k))
+end
+
 scalartype(K::AbstractKernel{T,A, C}) where {T, A, C} = T
 ### Definitions of the constructors
 function RetardedKernel(axis, matrix, blocksize::Int, compression)
@@ -83,7 +92,7 @@ function TimeLocalKernel(axis,f; compression = HssCompression(), stationary = fa
     bs = size(f00,1)
     δ = zeros(eltype(f00),bs,bs,length(axis))
     Threads.@threads for i = 1:length(axis)
-        δ[:,:,i] .= f(axis[i]) 
+        δ[:,:,i] = f(axis[i]) 
     end
     matrix = blockdiag(δ,compression = compression)
     TimeLocalKernel(axis,matrix,bs,compression)
@@ -97,12 +106,25 @@ function SumKernel(kernelL::AbstractKernel{T, A, C}, kernelR::AbstractKernel{T, 
     SumKernel{T,A,C,typeof(kernelL),typeof(kernelR)}(ax, kernelL, kernelR, bs, cp)
 end
 
-function NullKernel(axis, matrix, blocksize::Int, compression)
-    NullKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(axis, blocksize, compression)
+
+#implement type conversion
+for K in (:RetardedKernel,:AdvancedKernel,:NullKernel,:TimeLocalKernel,:Kernel)
+    @eval begin
+        function similar(g::$K,cpr::AbstractCompression)
+            $K(axis(g), cpr(matrix(g)), blocksize(g), cpr)
+        end
+    end
 end
-function NullKernel(k::AbstractKernel{T,A,C}) where {T,A,C}
-    NullKernel{T,A,C}(axis(k), blocksize(k), compression(k))
+function similar(g::SumKernel,cpr::AbstractCompression)
+    SumKernel(axis(g), similar(g.kernelL,cpr),similar(g.kernelR,cpr), blocksize(g), cpr)
 end
+function similar(A::AbstractKernel,matrix::AbstractArray)
+    typeof(A)(axis(A), matrix, blocksize(A), compression(A))
+end
+
+#
+
+
 
 ## Define getter 
 blocksize(g::AbstractKernel) = g.blocksize
@@ -173,10 +195,6 @@ function getindex(K::NullKernel{T,A,C},I::Vararg{Int,2}) where {T,A,C}
     return zeros(T,blocksize(K), blocksize(K))
 end
 =#
-function similar(A::AbstractKernel,matrix::AbstractArray)
-    typeof(A)(axis(A), matrix, blocksize(A), compression(A))
-end
-
 ## Define printing functions
 function Base.show(io::IO, k::K) where {T, A, C, K<:AbstractKernel{T, A, C}}
     print(io, "$K\n")
@@ -219,6 +237,14 @@ timelocal_part(k::SumKernel) = timelocal_part(k.kernelL) + timelocal_part(k.kern
 
 function step(k::AbstractKernel{T,A,C}) where {T,A,C}
     T( step( axis( k ) ) )
+end
+
+#compression
+function(cpr::AbstractCompression)(k::AbstractKernel)
+    similar(k, cpr)
+end
+function(cpr::AbstractCompression)(k::NullKernel{T,A,C}) where {T,A,C}
+    NullKernel{T,A,typeof(cpr)}(axis(k), blocksize(k), cpr)
 end
 
 ##Algebra

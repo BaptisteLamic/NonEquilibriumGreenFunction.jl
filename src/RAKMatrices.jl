@@ -35,7 +35,7 @@ function getindex(A::RAKMatrix,::Colon,I,::Colon,J,::Colon,::Colon)
     out = Array{scalartype(A)}(undef,bs,length(I), bs,length(J), 2, 2)
     Threads.@threads for p = 1:2
         for q = 1:2
-            out[:,:,:,:,p,q] .= A.data[p,q][:,I,:,J]
+            out[:,:,:,:,p,q] = A.data[p,q][:,I,:,J]
         end
     end 
     return out
@@ -48,7 +48,7 @@ function getindex!(out,A::RAKMatrix, I,J) where T
         for j = 1:length(J)
             for p = 1:2
                 for q = 1:2
-                    out[i,j][blockrange(p,bs),blockrange(q,bs)] .= values[p,q][i,j]
+                    out[i,j][blockrange(p,bs),blockrange(q,bs)] = values[p,q][i,j]
                 end
             end 
         end
@@ -56,7 +56,7 @@ function getindex!(out,A::RAKMatrix, I,J) where T
     return out
 end
 function getindex!(out,A::RAKMatrix,i::Int, j::Int)
-    return out .= [ A.data[1,1][i,j] A.data[1,2][i,j] ; A.data[2,1][i,j] A.data[2,2][i,j] ]
+    return out[:,:] = [ A.data[1,1][i,j] A.data[1,2][i,j] ; A.data[2,1][i,j] A.data[2,2][i,j] ]
 end
 getindex!(out,A::RAKMatrix,i::Int, j) = reshape(getindex!(out,A, [i], j),:)
 getindex!(out,A::RAKMatrix, i, j::Int) = reshape(getindex!(out,A, i, [j]),:)
@@ -161,6 +161,10 @@ for op in (:+,:-)
             return RAKMatrix(r)
         end
     end
+end
+
+function (cpr::AbstractCompression)(A::RAKMatrix)
+    [ cpr(d) for d in A.data ] |> RAKMatrix
 end
 
 function compress(A::RAKMatrix)

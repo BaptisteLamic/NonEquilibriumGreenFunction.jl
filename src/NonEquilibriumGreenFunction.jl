@@ -26,6 +26,20 @@ import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 
+include("HODLRMatrices/HODLRMatrices.jl")
+
+include("greenfunction.jl")
+include("circulant_matrix.jl")
+include("compression.jl")
+include("dyson.jl")
+include("utils.jl")
+include("kernels.jl")
+include("kernel_solve.jl")
+include("physics.jl")
+include("RAKMatrices.jl")
+
+export HODLRMatrices
+
 export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGreenFunction
 export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
@@ -48,17 +62,7 @@ export compress
 export scalartype
 export getindex!
 export tr_K
+export HODLRCompression
 
-include("HODLRMatrices/HODLRMatrices.jl")
-export HODLRMatrices
 
-include("greenfunction.jl")
-include("circulant_matrix.jl")
-include("compression.jl")
-include("dyson.jl")
-include("utils.jl")
-include("kernels.jl")
-include("kernel_solve.jl")
-include("physics.jl")
-include("RAKMatrices.jl")
 end
