@@ -9,9 +9,7 @@
     function ifft_dnorm(x,sigma = 1)
         exp(-x^2*sigma^2/2)/2pi
     end
-    σ  = 12
-    t_ax = (1-N:N-1)*Dt
-    A = energy2time(x-> dnorm(x,σ),N,Dt)
+
     σ  = 12
     dt = 0.005
     N = 2048
@@ -20,4 +18,15 @@
     ntf =  A.data[:] 
     atf = ifft_dnorm.(t_ax, σ)
     @test norm(ntf-atf)/norm(atf) < 1E-3
+
+    #test oversampling
+    σ  = 12
+    dt = 0.5
+    N = 128
+    t_ax = (1-N:N-1)*dt
+    A = energy2time(x-> dnorm(x,σ),N,dt,oversampling = 12)
+    ntf =  A.data[:] 
+    atf = ifft_dnorm.(t_ax, σ)
+    @test norm(ntf-atf)/norm(atf) < 1E-6
+
 end

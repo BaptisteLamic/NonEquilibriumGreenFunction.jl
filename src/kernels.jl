@@ -91,8 +91,8 @@ function TimeLocalKernel(axis,f; compression = HssCompression(), stationary = fa
     f00 = f(axis[1])
     bs = size(f00,1)
     δ = zeros(eltype(f00),bs,bs,length(axis))
-    Threads.@threads for i = 1:length(axis)
-        δ[:,:,i] = f(axis[i]) 
+    for i = 1:length(axis)
+        δ[:,:,i] .= f(axis[i]) 
     end
     matrix = blockdiag(δ,compression = compression)
     TimeLocalKernel(axis,matrix,bs,compression)
