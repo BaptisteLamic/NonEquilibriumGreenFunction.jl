@@ -167,8 +167,8 @@ function (cpr::AbstractCompression)(A::RAKMatrix)
     [ cpr(d) for d in A.data ] |> RAKMatrix
 end
 
-function compress(A::RAKMatrix)
-    A.data .|> compress |> RAKMatrix
+function compress!(A::RAKMatrix)
+    A.data .|> compress! |> RAKMatrix
 end
 
 function tr_K(A::RAKMatrix)

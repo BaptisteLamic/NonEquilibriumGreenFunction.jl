@@ -1,4 +1,3 @@
-
 export theq_lesser_time_kernel
 export thermal_kernel
 function theq_lesser_time_kernel(T,bs,τ; kb = 1., ħ = 1.)

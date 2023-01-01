@@ -599,10 +599,10 @@ adjoint(g::NullKernel) = g
 function adjoint(g::SumKernel) 
     return g.kernelL'+g.kernelR' 
 end
-function compress(A::AbstractKernel)
+function compress!(A::AbstractKernel)
     A
 end
-function compress(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
+function compress!(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
     g.compression(g.matrix)
     return g
 end

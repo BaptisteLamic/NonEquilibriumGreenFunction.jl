@@ -37,24 +37,6 @@ function extract_blockdiag(m::AbstractMatrix{T},bs,d = 0; compression = HssCompr
     return sum(_extract_blockdiag(m,bs,_d) for _d in d) |> compression
 end
 
-#=
-function blockdiag(A::AbstractArray{T,3};compression = HssCompression()) where T
-    @assert size(A,1) == size(A,2)
-    bs = size(A,1)
-    N = size(A,3)
-    I = [(blk-1)*bs+j for p = 1:bs, j = 1:bs, blk = 1:N ]
-    I = reshape(I,:)
-    J = [(blk-1)*bs+j for j = 1:bs,p = 1:bs, blk = 1:N ]
-    J = reshape(J,:)
-    V = Array{T,1}(undef,length(I))
-    Threads.@threads for k = 1:length(I)
-        _,i = blockindex(I[k],bs)
-        blk,j = blockindex(J[k],bs)
-        V[k] = A[i,j,blk]
-    end
-    return compression(sparse(I,J,V))
-end
-=#
 function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compression = HssCompression()) where T
     shift_I = d < 0 ? abs(d) : 0
     shift_J = d > 0 ? d : 0

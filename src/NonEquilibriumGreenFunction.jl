@@ -21,26 +21,19 @@ using LowRankApprox
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: getindex, step
 import Base: similar, zero
-import HssMatrices: full, compress
+import HssMatrices: full, compress!
 import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 
-include("HODLRMatrices/HODLRMatrices.jl")
-
-include("greenfunction.jl")
 include("circulant_matrix.jl")
 include("compression.jl")
-include("dyson.jl")
 include("utils.jl")
 include("kernels.jl")
 include("kernel_solve.jl")
 include("physics.jl")
 include("RAKMatrices.jl")
 
-export HODLRMatrices
-
-export AbstractGreenFunction, GreenFunction, RetardedGreenFunction, AdvancedGreenFunction
 export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
 export build_greenfunction, build_linearMap,blockrange,blockindex, col, row, build_CirculantlinearMap
@@ -58,11 +51,10 @@ export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
-export compress
+export compress!
 export scalartype
 export getindex!
 export tr_K
-export HODLRCompression
 
 
 end

@@ -5,7 +5,7 @@ function build_CirculantlinearMap(ax0,f)
     N = length(ax0)
     @assert size(f00,1) == size(f00,2)
     ax = (1-N:N-1)*step(ax0) 
-   # (ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
+   #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
     m = zeros(eltype(f00),bs,bs,length(ax))
     Threads.@threads for i = 1:length(ax)
@@ -152,37 +152,3 @@ function (Compression :: NONCompression)(tab::AbstractMatrix{T}) where T<:Number
     return tab
 end
 
-struct HODLRCompression <: AbstractCompression
-end
-
-
-function HSS2HODLR(hssA::HssMatrix)
-    _,_, hodlr = _HSS2HODLR(hssA)
-    return hodlr
-end
-function _HSS2HODLR(hssA::HssMatrix)
-    if isleaf(hssA)
-        return hssA.U, hssA.V, hssA.D
-    else
-        U1, V1, A11 = _HSS2HODLR(hssA.A11)
-        U2, V2, A22 = _HSS2HODLR(hssA.A22)
-        B12 = LowRankMatrix(U1,hssA.B12,V2)
-        B21 = LowRankMatrix(U2,hssA.B21,V1)
-        hodlr = HODLRMatrix(B12,B21,A11,A22)
-        [U1*hssA.R1; U2*hssA.R2], [V1*hssA.W1; V2*hssA.W2], hodlr
-    end
-end
-
-function (compression ::  HODLRCompression)(tab::HssMatrix)
-    return HSS2HODLR(tab)
-end
-function (compression ::  HODLRCompression)(tab::HODLRMatrix)
-    return tab
-end
-function (compression ::  HODLRCompression)(tab::AbstractMatrix{T}) where T<:Number
-    return HODLRMatrix(tab)
-end
-
-function(compression::AbstractCompression)(g::G) where G<:AbstractGreenFunction
-    G(axis(g),dirac(g),compression(regular(g)),blocksize(g))
-end
