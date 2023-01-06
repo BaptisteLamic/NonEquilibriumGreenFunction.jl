@@ -57,9 +57,7 @@ function energy2time_fft(f, N, δt; kwargs...)
     end
     #E_m .*= reshape( window( length( E_ax ), wparam ), 1,1,: )
     t_m = fftshift( fft( ifftshift( E_m, 3), 3 ), 3 )
-    @show size(t_m)
     t_m_subs = t_m[:, :, 1:oversampling:end]
-    @show size(t_m_subs)
     return BlockCirculantMatrix(t_m_subs)
 end
 
