@@ -15,8 +15,6 @@ function blockindex(tp,bs)
     end
     return (r_block,r_inblock)
 end
-
-
 function _extract_blockdiag(m::AbstractMatrix{T},bs,d::Int = 0) where T
     @assert size(m,1) == size(m,2)
     N = div(size(m,1), bs)
@@ -36,7 +34,6 @@ end
 function extract_blockdiag(m::AbstractMatrix{T},bs,d = 0; compression = HssCompression()) where T
     return sum(_extract_blockdiag(m,bs,_d) for _d in d) |> compression
 end
-
 function blockdiag(A::AbstractArray{T,3}, d::Integer = 0;compression = HssCompression()) where T
     shift_I = d < 0 ? abs(d) : 0
     shift_J = d > 0 ? d : 0
@@ -64,15 +61,12 @@ function row(A::AbstractMatrix,r,bs = 1)
     V = reshape(A[(r-1)*bs+1:r*bs,:],:)
     return _adapt(A,sparse(I, J, V,size(A)... ))
 end
-
 function col(A::AbstractMatrix,c,bs = 1)
     J = reshape([j for i in 1:size(A,1), j in (c-1)*bs+1:c*bs], :)
     I = reshape([i for i in 1:size(A,1), j in (c-1)*bs+1:c*bs], :)
     V = reshape(A[:,(c-1)*bs+1:c*bs],:)
     return _adapt(A,sparse(I, J, V,size(A) ... ))
 end
-
-
 function _adapt(::HssMatrix,a)
     return hss(a)
 end

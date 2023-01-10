@@ -18,7 +18,7 @@
     @testset "$Ker construction" for Ker = (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
         A = randn(T,bs*N,bs*N)
         GA = Ker(ax,A,bs,NONCompression())
-        @test GA.matrix == A
+        @test matrix(GA)== A
 
         @testset "getter" begin
             @test axis(GA) == ax
@@ -36,20 +36,20 @@
             end
         end
         GB = Ker(ax,foo, compression = NONCompression());
-        @test B == GB.matrix 
+        @test B == matrix(GB)
 
         GA = Ker(ax,foo_st, compression = NONCompression(),stationary = true)
         GB = Ker(ax,foo_st, compression = NONCompression(),stationary = false)
-        @test GA.matrix - GB.matrix |> norm < tol
+        @test matrix(GA)- matrix(GB)|> norm < tol
 
         GA = Ker(ax,foo, compression = HssCompression(),stationary = false)
         GB = Ker(ax,foo, compression = NONCompression(),stationary = false)
-        @test full(GA.matrix) - GB.matrix |> norm < tol
+        @test full(matrix(GA)) - matrix(GB)|> norm < tol
 
         
         GA = Ker(ax,foo_st, compression = HssCompression(),stationary = true)
         GB = Ker(ax,foo_st, compression = NONCompression(),stationary = true)
-        @test full(GA.matrix) - GB.matrix |> norm < tol
+        @test full(matrix(GA)) - matrix(GB)|> norm < tol
     end
 
     @testset "SumKernel construction" begin
@@ -94,11 +94,11 @@
             end
         α = T(2/3)
         for op in (*,\)  
-            @test all( op(α, G)[:, :] .≈   op.(α, G[:, :]) )
+            @test all( matrix(op(α, G)) .≈   op.(α, matrix(G)) )
         end
         for op in (-,+) 
-            @test all( op(G)[:, :] .≈   op.(G[:, :]) )
-            @test all( op(G,G2)[:, :] .≈   op.(G[:, :],G2[:, :]) )
+            @test all( op(G) |> matrix  .≈   op.(G |> matrix ) )
+            @test all( op(G,G2) |> matrix .≈   op.(G |> matrix ,G2 |> matrix) )
         end
     end
 

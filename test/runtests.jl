@@ -22,6 +22,6 @@ include("test_kernel_solve.jl")
     A = [(i+10*j)+100*blk |> T for i = 1:2,j = 1:2,blk = 1:3];
     B = blockdiag(sparse([111 121; 112 122 ] .|> T),sparse([211 221; 212 222 ].|> T),sparse([311 321; 312 322 ].|> T))
     C = blockdiag(A)
-    @test_skip C-B |> norm ≈ 0
+    @test C-B |> norm ≈ 0
 
 end
