@@ -17,7 +17,7 @@
         gooL(x) = gooL(x,x)
         gooR(x, y) = ( (x+x0)^2+y^2 ) .* foo(x, y)
         gooR(x) = gooR(x,x)
-
+        
         A = TimeLocalKernel(ax, gooL, compression = NONCompression())
         B = Ker(ax, gooR, compression = NONCompression())
         @test norm(A*(A\B) - B) < tol
@@ -40,6 +40,6 @@
         K = RetardedKernel(ax,k, compression = compression)
         G = solve_dyson(G0,K)
         G_ana = RetardedKernel(ax,sol_ana,compression = compression)
-        @test norm((nonlocal_part(G)-G_ana).matrix)/norm(G_ana.matrix) < 1E-4
+        @test norm((nonlocal_part(G)-G_ana) |> matrix)/norm(G_ana |> matrix) < 1E-4
     end
 end

@@ -66,7 +66,7 @@
             @test axis(GS) == ax
             @test blocksize(GS) == bs
             I = (2:5,2:25)
-            @test GS[I...] == [(GL.matrix+GR.matrix)[blockrange(i, bs ), blockrange(j, bs )] for i in I[1], j in I[2]]   
+            @test GS[I...] == [(matrix(GL)+matrix(GR))[blockrange(i, bs ), blockrange(j, bs )] for i in I[1], j in I[2]]   
         end
     end
 
