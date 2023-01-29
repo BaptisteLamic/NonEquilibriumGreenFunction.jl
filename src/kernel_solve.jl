@@ -16,7 +16,6 @@ function \(A::TimeLocalKernel,B::SumKernel)
     A\B.kernelL + A\B.kernelR
 end
 
-
 function \(A::AbstractKernel,B::NullKernel)
     #We should check that A is non zero
     return B
@@ -47,7 +46,6 @@ function \(A::SumKernel,B::TimeLocalKernel)
     Xr = -A\(Ar*Xδ)
     return Xδ + Xr
 end
-
 function \(A::RetardedKernel, B::RetardedKernel)
     @assert iscompatible(A,B)
     cp=compression(A)

@@ -1,4 +1,4 @@
-abstract type AbstractKernel{T,A, C <: AbstractCompression} <: AbstractArray{AbstractArray{T,2},2} end
+abstract type AbstractKernel{T,A, C <: AbstractCompression} end
 
 struct KernelData{A,M,C} 
     axis::A
@@ -32,7 +32,6 @@ for K in (:RetardedKernel, :AdvancedKernel, TimeLocalKernel, :Kernel)
         end
     end
 end
-
 #=
 for K in (:RetardedKernel,:\)
     @eval begin
@@ -54,6 +53,20 @@ struct NullKernel{T,A,C} <: AbstractKernel{T,A,C}
     axis::A
     blocksize::Int
     compression::C
+end
+
+(==)(a::NullKernel,b::NullKernel) = iscompatible(a,b)
+function (==)(a::SumKernel,b::SumKernel)
+    if a.kernelL == b.kernelL && a.kernelR == b.kernelR 
+        return true
+    elseif a.kernelR == b.kernelL && a.kernelL == b.kernelR 
+        return true
+    else 
+        return false
+    end
+end
+function (==)(a::AbstractKernel,b::AbstractKernel)
+    return typeof(a) == typeof(b) && iscompatible(a,b) && matrix(a) == matrix(b)
 end
 
 
@@ -180,6 +193,7 @@ compression(g::Union{NullKernel, SumKernel}) = g.compression
 axis(g::AbstractKernel) = axis(g.data)
 axis(g::Union{NullKernel, SumKernel}) = g.axis
 size(g::AbstractKernel) = ( length(axis(g)), length(axis(g)) )
+size(g::AbstractKernel, k) = size(g)[k]
 
 function getindex(A::AbstractKernel,::Colon,I,::Colon,J)
     sbk = blocksize(A)
@@ -301,6 +315,20 @@ for op in (:*,:\)
     @eval begin
         function $op(λ::T,g::K) where {T<: Number,K<:AbstractKernel}
             return K(axis(g), compression(g)($op(λ,matrix( g ))), blocksize(g),compression(g))
+        end
+    end
+end
+for op in (:*,:\)
+    @eval begin
+        function $op(λI::UniformScaling,g::K) where K<:AbstractKernel
+            return λI.λ*g
+        end
+    end
+end
+for op in (:*,:\)
+    @eval begin
+        function $op(g::K,λI::UniformScaling) where K<:AbstractKernel
+            return λI.λ*g
         end
     end
 end
@@ -451,7 +479,7 @@ function compress!(A::AbstractKernel)
     A
 end
 function compress!(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
-    g.compression(matrix( g ))
+    compression(g)(matrix( g ))
     return g
 end
 
@@ -472,3 +500,5 @@ end
 function diag(g::SumKernel)
     return diag(g.kernelL) + diag(g.kernelR)
 end
+
+norm(g::AbstractKernel) = norm(matrix(g))

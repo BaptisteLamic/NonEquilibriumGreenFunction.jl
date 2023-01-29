@@ -26,7 +26,6 @@ function _prod(gl::TimeLocalKernel,gr::TimeLocalKernel)
         matrix(gl)*matrix(gr),
         blocksize(gl),
         compression(gl)
-
     )
 end
 #### RetardedKernel

@@ -19,12 +19,14 @@ using BlockArrays
 using LowRankApprox
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: ==
 import Base: getindex, step
 import Base: similar, zero
 import HssMatrices: full, compress!
 import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
+import LinearAlgebra.norm
 
 include("circulant_matrix.jl")
 include("compression.jl")

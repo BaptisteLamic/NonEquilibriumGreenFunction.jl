@@ -160,7 +160,7 @@
         GR = KerR(ax,gooR, compression = NONCompression())
         PR = GL*GR
         @test typeof(PR) == typeof(GR)
-        @test norm( GL[:,:]*GR[:,:] - PR[:,:] ) < tol 
+        @test norm( matrix(GL)*matrix(GR) - matrix(PR) ) < tol 
     end
     @testset "convolution $KerL TimeLocalKernel" for KerL in (RetardedKernel, AdvancedKernel, Kernel)
         x0 = Dt/4.5
@@ -174,7 +174,7 @@
         GR = TimeLocalKernel(ax,gooR, compression = NONCompression())
         PR = GL*GR
         @test typeof(PR) == typeof(GL)
-        @test norm( GL[:,:]*GR[:,:] - PR[:,:] ) < tol 
+        @test norm( matrix(GL)*matrix(GR) - matrix(PR) ) < tol 
     end
 
     @testset "convolution SumKernel{$KerL,$KerR} * $Ker" for KerL in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel),
