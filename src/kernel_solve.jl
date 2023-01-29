@@ -15,12 +15,10 @@ function \(A::TimeLocalKernel,B::SumKernel)
     @assert iscompatible(A,B)
     A\B.kernelL + A\B.kernelR
 end
-
 function \(A::AbstractKernel,B::NullKernel)
     #We should check that A is non zero
     return B
 end
-
 function \(A::SumKernel,B::RetardedKernel)
     @assert iscompatible(A,B)
     @assert isretarded(A)

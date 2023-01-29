@@ -153,11 +153,11 @@ function _prod(gl::NullKernel,gr::NullKernel)
     return gl
 end
 ####Specialized for UniformScaling
-function _prod(gl::UniformScaling,gr::AbstractKernel{T,A,C}) where {T,A,C}
+function _prod(gl::UniformScaling,gr::AbstractKernel) where {T,A,C}
     _I = T(gl.λ)*I
     TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr))*gr
 end
-function _prod(gl::AbstractKernel{T,A,C},gr::UniformScaling) where {T,A,C}
+function _prod(gl::AbstractKernel,gr::UniformScaling) where {T,A,C}
     _I = T(gr.λ)*I
     TimeLocalKernel(axis(gl),_I,blocksize(gl),compression(gl))*gr
 end

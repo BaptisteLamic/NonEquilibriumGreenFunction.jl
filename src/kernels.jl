@@ -1,6 +1,6 @@
-abstract type AbstractKernel{T,A, C <: AbstractCompression} end
-
-struct KernelData{A,M,C} 
+abstract type AbstractKernel end
+abstract type DataFullKernel <: AbstractKernel end
+struct KernelData{A,M,C}
     axis::A
     matrix::M
     blocksize::Int
@@ -10,146 +10,144 @@ axis(k::KernelData) = k.axis
 matrix(k::KernelData) = k.matrix
 blocksize(k::KernelData) = k.blocksize
 compression(k::KernelData) = k.compression
+scalartype(k::KernelData) = eltype(matrix(k))
 
-struct RetardedKernel{T,A,M,C} <: AbstractKernel{T,A,C}
+struct RetardedKernel{A,M,C} <: DataFullKernel
     data::KernelData{A,M,C}
 end
-struct AdvancedKernel{T,A,M,C} <: AbstractKernel{T,A,C}
+struct AdvancedKernel{A,M,C} <: DataFullKernel
     data::KernelData{A,M,C}
 end
-struct Kernel{T,A,M,C} <: AbstractKernel{T,A,C}
+struct Kernel{A,M,C} <: DataFullKernel
     data::KernelData{A,M,C}
 end
-struct TimeLocalKernel{T,A,M,C} <: AbstractKernel{T,A,C}  
+struct TimeLocalKernel{A,M,C} <: DataFullKernel
     data::KernelData{A,M,C}
 end
+function (::Type{K})(axis, matrix, blocksize, compression) where {K<:DataFullKernel}
+    return K(KernelData(axis, matrix, blocksize, compression))
+end
+#=
 for K in (:RetardedKernel, :AdvancedKernel, TimeLocalKernel, :Kernel)
     @eval begin
-        function $K{T,A,M,C}(axis::A,matrix::M,blocksize,compression::C) where {T,A,M,C}
-            return $K{T,A,M,C}(
-                KernelData(axis,matrix,blocksize,compression)
+        function $K{A,M,C}(axis::A, matrix::M, blocksize, compression::C) where {A,M,C}
+            return $K{A,M,C}(
+                KernelData(axis, matrix, blocksize, compression)
             )
         end
     end
 end
-#=
-for K in (:RetardedKernel,:\)
-    @eval begin
-        function $op(λ::T,g::K) where {T<: Number,K<:AbstractKernel}
-            return K(axis(g), compression(g)($op(λ,matrix( g ))), blocksize(g),compression(g))
-        end
-    end
-end
 =#
+scalartype(k::DataFullKernel) = scalartype(k.data)
 
-struct SumKernel{T,A,C,L<:AbstractKernel{T,A,C},R<:AbstractKernel{T,A,C}} <: AbstractKernel{T,A,C}
-    axis::A
+struct SumKernel{L<:AbstractKernel,R<:AbstractKernel} <: AbstractKernel
     kernelL::L
     kernelR::R
-    blocksize::Int
-    compression::C
 end
-struct NullKernel{T,A,C} <: AbstractKernel{T,A,C}
+scalartype(g::SumKernel) = scalartype(g.kernelL)
+blocksize(g::SumKernel) = blocksize(g.kernelL)
+compression(g::SumKernel) = compression(g.kernelR)
+axis(g::SumKernel) = axis(g.kernelL)
+struct NullKernel{T,A,C} <: AbstractKernel
     axis::A
     blocksize::Int
     compression::C
 end
+scalartype(k::NullKernel{T,A,C}) where {T,A,C} = T
 
-(==)(a::NullKernel,b::NullKernel) = iscompatible(a,b)
-function (==)(a::SumKernel,b::SumKernel)
-    if a.kernelL == b.kernelL && a.kernelR == b.kernelR 
+(==)(a::NullKernel, b::NullKernel) = iscompatible(a, b)
+function (==)(a::SumKernel, b::SumKernel)
+    if a.kernelL == b.kernelL && a.kernelR == b.kernelR
         return true
-    elseif a.kernelR == b.kernelL && a.kernelL == b.kernelR 
+    elseif a.kernelR == b.kernelL && a.kernelL == b.kernelR
         return true
-    else 
+    else
         return false
     end
 end
-function (==)(a::AbstractKernel,b::AbstractKernel)
-    return typeof(a) == typeof(b) && iscompatible(a,b) && matrix(a) == matrix(b)
+function (==)(a::AbstractKernel, b::AbstractKernel)
+    return typeof(a) == typeof(b) && iscompatible(a, b) && matrix(a) == matrix(b)
 end
-
-
 function NullKernel(axis, matrix, blocksize::Int, compression)
     NullKernel{eltype(matrix),typeof(axis),typeof(compression)}(axis, blocksize, compression)
 end
-function NullKernel(k::AbstractKernel{T,A,C}) where {T,A,C}
-    NullKernel{T,A,C}(axis(k), blocksize(k), compression(k))
+function NullKernel(k::AbstractKernel)
+    NullKernel{scalartype(k),typeof(axis(k)),typeof(compression(k))}(axis(k), blocksize(k), compression(k))
 end
-
-scalartype(K::AbstractKernel{T,A, C}) where {T, A, C} = T
 ### Definitions of the constructors
-function RetardedKernel(axis, matrix, blocksize::Int, compression)
-    RetardedKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis,matrix,blocksize,compression)
+#=function RetardedKernel(axis, matrix, blocksize::Int, compression)
+    RetardedKernel{typeof(axis),typeof(matrix),typeof(compression)}(
+        KernelData(axis, matrix, blocksize, compression)
     )
+end=#
+function RetardedKernel(axis, f; compression=HssCompression(), stationary=false)
+    f00 = f(axis[1], axis[1])
+    bs = size(f00, 1)
+    f_masked = (x, y) -> x >= y ? f(x, y) : zero(f00)
+    matrix = compression(axis, f_masked, stationary=stationary)
+    RetardedKernel(axis, matrix, bs, compression)
 end
-function RetardedKernel(axis,f; compression = HssCompression(), stationary = false)
-    f00 = f(axis[1],axis[1])
-    bs = size(f00,1)
-    f_masked = (x,y) -> x>=y ? f(x,y) : zero(f00)
-    matrix = compression(axis,f_masked,stationary = stationary)
-    RetardedKernel(axis,matrix,bs,compression)
-end
-function AdvancedKernel(axis, matrix, blocksize::Int, compression)
-    AdvancedKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis,matrix,blocksize,compression)
+#=function AdvancedKernel(axis, matrix, blocksize::Int, compression)
+    AdvancedKernel{typeof(axis),typeof(matrix),typeof(compression)}(
+        KernelData(axis, matrix, blocksize, compression)
     )
+end=#
+function AdvancedKernel(axis, f; compression=HssCompression(), stationary=false)
+    f00 = f(axis[1], axis[1])
+    bs = size(f00, 1)
+    f_masked = (x, y) -> x <= y ? f(x, y) : zero(f00)
+    matrix = compression(axis, f_masked, stationary=stationary)
+    AdvancedKernel(axis, matrix, bs, compression)
 end
-function AdvancedKernel(axis,f; compression = HssCompression(), stationary = false)
-    f00 = f(axis[1],axis[1])
-    bs = size(f00,1)
-    f_masked = (x,y) -> x<=y ? f(x,y) : zero(f00)
-    matrix = compression(axis,f_masked, stationary = stationary)
-    AdvancedKernel(axis,matrix,bs,compression)
-end
-
+#=
 function Kernel(axis, matrix, blocksize::Int, compression)
-    Kernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis,matrix,blocksize,compression)
+    Kernel{typeof(axis),typeof(matrix),typeof(compression)}(
+        KernelData(axis, matrix, blocksize, compression)
     )
 end
-function Kernel(axis,f; compression = HssCompression(), stationary = false)
-    f00 = f(axis[1],axis[1])
-    bs = size(f00,1)
-    matrix = compression(axis,f, stationary = stationary)
-    Kernel(axis,matrix,bs,compression)
+=#
+function Kernel(axis, f; compression=HssCompression(), stationary=false)
+    f00 = f(axis[1], axis[1])
+    bs = size(f00, 1)
+    matrix = compression(axis, f, stationary=stationary)
+    Kernel(axis, matrix, bs, compression)
 end
-
+#=
 function TimeLocalKernel(axis, matrix, blocksize::Int, compression)
-    TimeLocalKernel{eltype(matrix),typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis,matrix,blocksize,compression)
+    TimeLocalKernel{typeof(axis),typeof(matrix),typeof(compression)}(
+        KernelData(axis, matrix, blocksize, compression)
     )
 end
-function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression )
-    N = length(axis)*blocksize
-    matrix = sparse(u,N,N) .|> eltype(u) |> compression
-    TimeLocalKernel(axis,matrix,blocksize,compression)
+=#
+function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression)
+    N = length(axis) * blocksize
+    matrix = sparse(u, N, N) .|> eltype(u) |> compression
+    TimeLocalKernel(axis, matrix, blocksize, compression)
 end
-function TimeLocalKernel(axis,f; compression = HssCompression(), stationary = false)
+function TimeLocalKernel(axis, f; compression=HssCompression(), stationary=false)
     f00 = f(axis[1])
-    bs = size(f00,1)
-    δ = zeros(eltype(f00),bs,bs,length(axis))
+    bs = size(f00, 1)
+    δ = zeros(eltype(f00), bs, bs, length(axis))
     for i = 1:length(axis)
-        δ[:,:,i] .= f(axis[i]) 
+        δ[:, :, i] .= f(axis[i])
     end
-    matrix = blockdiag(δ,compression = compression)
-    TimeLocalKernel(axis,matrix,bs,compression)
+    matrix = blockdiag(δ, compression=compression)
+    TimeLocalKernel(axis, matrix, bs, compression)
 end
 
-function SumKernel(kernelL::AbstractKernel{T, A, C}, kernelR::AbstractKernel{T, A ,C}) where {T, A, C}
+function SumKernel(kernelL::AbstractKernel, kernelR::AbstractKernel)
     @assert iscompatible(kernelL, kernelR)
     cp = compression(kernelL)
     bs = blocksize(kernelL)
     ax = axis(kernelL)
-    SumKernel{T,A,C,typeof(kernelL),typeof(kernelR)}(ax, kernelL, kernelR, bs, cp)
+    SumKernel{typeof(kernelL),typeof(kernelR)}(ax, kernelL, kernelR, bs, cp)
 end
 
 function matrix(A::NullKernel)
-    N = length(axis(A))*blocksize(A)
-    return spzeros(scalartype(A),N,N) |> compression(A)
+    N = length(axis(A)) * blocksize(A)
+    return spzeros(scalartype(A), N, N) |> compression(A)
 end
-function matrix(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel,TimeLocalKernel}
+function matrix(g::K) where {K<:Union{Kernel,RetardedKernel,AdvancedKernel,TimeLocalKernel}}
     matrix(g.data)
 end
 function matrix(g::SumKernel)
@@ -158,20 +156,20 @@ end
 
 
 #implement type conversion
-for K in (:RetardedKernel,:AdvancedKernel,:NullKernel,:TimeLocalKernel,:Kernel)
+for K in (:RetardedKernel, :AdvancedKernel, :NullKernel, :TimeLocalKernel, :Kernel)
     @eval begin
-        function similar(g::$K,cpr::AbstractCompression)
+        function similar(g::$K, cpr::AbstractCompression)
             $K(axis(g), cpr(matrix(g)), blocksize(g), cpr)
         end
     end
 end
-function similar(g::SumKernel,cpr::AbstractCompression)
-    SumKernel(axis(g), similar(g.kernelL,cpr),similar(g.kernelR,cpr), blocksize(g), cpr)
+function similar(g::SumKernel, cpr::AbstractCompression)
+    SumKernel(axis(g), similar(g.kernelL, cpr), similar(g.kernelR, cpr), blocksize(g), cpr)
 end
 
 for K in (:RetardedKernel, :AdvancedKernel, TimeLocalKernel, :Kernel)
     @eval begin
-        function similar(A::$K,matrix::AbstractArray)
+        function similar(A::$K, matrix::AbstractArray)
             cpr = compression(A)
             return $K(axis(A), cpr(matrix), blocksize(A), cpr)
         end
@@ -185,26 +183,26 @@ end
 
 ## Define getter 
 blocksize(g::AbstractKernel) = blocksize(g.data)
-blocksize(g::Union{NullKernel, SumKernel}) = g.blocksize
+blocksize(g::Union{NullKernel,SumKernel}) = g.blocksize
 
 compression(g::AbstractKernel) = compression(g.data)
-compression(g::Union{NullKernel, SumKernel}) = g.compression
+compression(g::Union{NullKernel,SumKernel}) = g.compression
 ### AbstractArray Interface
 axis(g::AbstractKernel) = axis(g.data)
-axis(g::Union{NullKernel, SumKernel}) = g.axis
-size(g::AbstractKernel) = ( length(axis(g)), length(axis(g)) )
+axis(g::Union{NullKernel,SumKernel}) = g.axis
+size(g::AbstractKernel) = (length(axis(g)), length(axis(g)))
 size(g::AbstractKernel, k) = size(g)[k]
 
-function getindex(A::AbstractKernel,::Colon,I,::Colon,J)
+function getindex(A::AbstractKernel, ::Colon, I, ::Colon, J)
     sbk = blocksize(A)
-    bk_I = vcat(blockrange.( I, sbk )...)
-    bk_J = vcat(blockrange.( J, sbk )...)
-    values = matrix(A)[bk_I,bk_J]
-    return reshape(values,sbk,length(I), sbk, length(J))
+    bk_I = vcat(blockrange.(I, sbk)...)
+    bk_J = vcat(blockrange.(J, sbk)...)
+    values = matrix(A)[bk_I, bk_J]
+    return reshape(values, sbk, length(I), sbk, length(J))
 end
-function getindex(A::NullKernel,::Colon,I,::Colon,J)
+function getindex(A::NullKernel, ::Colon, I, ::Colon, J)
     sbk = blocksize(A)
-    return zeros(scalartype(A),sbk,length(I), sbk, length(J))
+    return zeros(scalartype(A), sbk, length(I), sbk, length(J))
 end
 
 
@@ -212,40 +210,41 @@ function _getindex(A::AbstractKernel, I, J)
     #assume that the index are sorted
     sbk = blocksize(A)
     ax = axis(A)
-    values = reshape(getindex(A,:,I,:,J), length(I)*sbk, length(J)*sbk)
-    r = [ view( values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j )  for i = 1:length(I), j = 1:length(J) ]
+    values = reshape(getindex(A, :, I, :, J), length(I) * sbk, length(J) * sbk)
+    r = [view(values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j) for i = 1:length(I), j = 1:length(J)]
     return r
 end
 
 
-function getindex(A::AbstractKernel,i::Int,j::Int)
+function getindex(A::AbstractKernel, i::Int, j::Int)
     bs = blocksize(A)
-    return matrix(A)[blockrange(i,bs),blockrange(j,bs)]
+    return matrix(A)[blockrange(i, bs), blockrange(j, bs)]
 end
-function getindex(A::SumKernel,i::Int,j::Int)
-    r = A.kernelL[i,j]
-    r .+= A.kernelR[i,j]
+function getindex(A::SumKernel, i::Int, j::Int)
+    r = A.kernelL[i, j]
+    r .+= A.kernelR[i, j]
     return r
-    
+
 end
-function getindex(A::NullKernel,i::Int,j::Int)
+function getindex(A::NullKernel, i::Int, j::Int)
     return zeros(scalartype(A), blocksize(A), blocksize(A))
 end
 
 #getindex(A::AbstractKernel,i::Int, j::Int) = getindex(A,[i], [j])[1]
-getindex(A::AbstractKernel,i::Int, j) = reshape(getindex(A, [i], j),:)
-getindex(A::AbstractKernel, i, j::Int) = reshape(getindex(A, i, [j]),:)
-getindex(A::AbstractKernel,::Colon, ::Colon) = getindex(A,1:size(A,1),1:size(A,2))
-getindex(A::AbstractKernel, i, ::Colon) = getindex(A,i, 1:size(A,2))
-getindex(A::AbstractKernel, i::Int, ::Colon) = getindex(A,[i], 1:size(A,2))
-getindex(A::AbstractKernel, ::Colon, j) = reshape(getindex(A,1:size(A,1), j),:)
+getindex(A::AbstractKernel, i::Int, j) = reshape(getindex(A, [i], j), :)
+getindex(A::AbstractKernel, i, j::Int) = reshape(getindex(A, i, [j]), :)
+getindex(A::AbstractKernel, ::Colon, ::Colon) = getindex(A, 1:size(A, 1), 1:size(A, 2))
+getindex(A::AbstractKernel, i, ::Colon) = getindex(A, i, 1:size(A, 2))
+getindex(A::AbstractKernel, i::Int, ::Colon) = getindex(A, [i], 1:size(A, 2))
+getindex(A::AbstractKernel, ::Colon, j) = reshape(getindex(A, 1:size(A, 1), j), :)
 
-function getindex(A::AbstractKernel, I,J)
-    Ip = sortperm(I); Jp = sortperm(J)
-    if (length(I) == 0 || length(J) == 0) 
+function getindex(A::AbstractKernel, I, J)
+    Ip = sortperm(I)
+    Jp = sortperm(J)
+    if (length(I) == 0 || length(J) == 0)
         return Matrix{eltype(A)}(undef, length(I), length(J))
     else
-        return @views _getindex(A,I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
+        return @views _getindex(A, I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 end
 #=
@@ -257,31 +256,31 @@ function getindex(K::NullKernel{T,A,C},I::Vararg{Int,2}) where {T,A,C}
 end
 =#
 ## Define printing functions
-function Base.show(io::IO, k::K) where {T, A, C, K<:AbstractKernel{T, A, C}}
+function Base.show(io::IO, k::K) where {K<:AbstractKernel}
     print(io, "$K\n")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", k::K) where {T, A, M, C, K<:AbstractKernel{T, A, C}}
+function Base.show(io::IO, ::MIME"text/plain", k::K) where {K<:AbstractKernel}
     show(io, k)
-    println(io,"axis = $(axis(k))")
-    println(io,"blocksize = $(blocksize(k))")
-    println(io,"compression = $(compression(k))")
+    println(io, "axis = $(axis(k))")
+    println(io, "blocksize = $(blocksize(k))")
+    println(io, "compression = $(compression(k))")
 end
 
 ## Define utility functions
 
-function iscompatible(g::AbstractKernel,k::AbstractKernel)
-     axis(g) == axis(k) && blocksize(g) == blocksize(k) && compression(g) == compression(k)
+function iscompatible(g::AbstractKernel, k::AbstractKernel)
+    axis(g) == axis(k) && blocksize(g) == blocksize(k) && compression(g) == compression(k)
 end
 
-isretarded(::K) where K<: AbstractKernel = false
-isretarded(::K) where {K <: Union{RetardedKernel,TimeLocalKernel,NullKernel}} = true
+isretarded(::K) where {K<:AbstractKernel} = false
+isretarded(::K) where {K<:Union{RetardedKernel,TimeLocalKernel,NullKernel}} = true
 function isretarded(k::SumKernel)
     isretarded(k.kernelL) && isretarded(k.kernelR)
 end
 
-isadvanced(::K) where K<: AbstractKernel = false
-isadvanced(::K) where {K <: Union{AdvancedKernel,TimeLocalKernel,NullKernel}} = true
+isadvanced(::K) where {K<:AbstractKernel} = false
+isadvanced(::K) where {K<:Union{AdvancedKernel,TimeLocalKernel,NullKernel}} = true
 function isadvanced(k::SumKernel)
     isadvanced(k.kernelL) && isadvanced(k.kernelR)
 end
@@ -296,79 +295,79 @@ timelocal_part(k::TimeLocalKernel) = k
 timelocal_part(k::AbstractKernel) = NullKernel(k)
 timelocal_part(k::SumKernel) = timelocal_part(k.kernelL) + timelocal_part(k.kernelR)
 
-function step(k::AbstractKernel{T,A,C}) where {T,A,C}
-    T( step( axis( k ) ) )
+function step(k::AbstractKernel)
+    scalartype(k)(step(axis(k)))
 end
 
 #compression
-function(cpr::AbstractCompression)(k::AbstractKernel)
+function (cpr::AbstractCompression)(k::AbstractKernel)
     similar(k, cpr)
 end
-function(cpr::AbstractCompression)(k::NullKernel{T,A,C}) where {T,A,C}
+function (cpr::AbstractCompression)(k::NullKernel{T,A,C}) where {T,A,C}
     NullKernel{T,A,typeof(cpr)}(axis(k), blocksize(k), cpr)
 end
 
 ##Algebra
 ### Scalar operations defined by metaprogramming
 ####General form
-for op in (:*,:\)
+for op in (:*, :\)
     @eval begin
-        function $op(λ::T,g::K) where {T<: Number,K<:AbstractKernel}
-            return K(axis(g), compression(g)($op(λ,matrix( g ))), blocksize(g),compression(g))
+        function $op(λ::T, g::K) where {T<:Number,K<:AbstractKernel}
+            return K(axis(g), compression(g)($op(λ, matrix(g))), blocksize(g), compression(g))
         end
     end
 end
-for op in (:*,:\)
+for op in (:*, :\)
     @eval begin
-        function $op(λI::UniformScaling,g::K) where K<:AbstractKernel
-            return λI.λ*g
+        function $op(λI::UniformScaling, g::K) where {K<:AbstractKernel}
+            return λI.λ * g
         end
     end
 end
-for op in (:*,:\)
+for op in (:*, :\)
     @eval begin
-        function $op(g::K,λI::UniformScaling) where K<:AbstractKernel
-            return λI.λ*g
-        end
-    end
-end
-#### Specialized version for SumKernel
-for op in (:*,:\)
-    @eval begin
-        function $op(λ::Number,g::SumKernel)
-            kl =  $op(λ,g.kernelL)
-            kr =  $op(λ,g.kernelR)
-            return SumKernel(axis(g),kl,kr, blocksize(g),compression(g))
-        end
-    end
-end
-#### Specialized version for NullKernel
-for op in (:*,:\)
-    @eval begin
-        $op(λ::Number,g::NullKernel) = g
-    end
-end
-### Sign changes 
-####General form
-for op in (:+,:-)
-    @eval begin
-        function $op(g::K) where K <: AbstractKernel
-            K(axis(g), $op(matrix( g )), blocksize(g), compression(g))
+        function $op(g::K, λI::UniformScaling) where {K<:AbstractKernel}
+            return λI.λ * g
         end
     end
 end
 #### Specialized version for SumKernel
-for op in (:+,:-)
+for op in (:*, :\)
     @eval begin
-        function $op(g::SumKernel)           
-            kl =  $op(g.kernelL)
-            kr =  $op(g.kernelR)
+        function $op(λ::Number, g::SumKernel)
+            kl = $op(λ, g.kernelL)
+            kr = $op(λ, g.kernelR)
             return SumKernel(kl, kr)
         end
     end
 end
 #### Specialized version for NullKernel
-for op in (:+,:-)
+for op in (:*, :\)
+    @eval begin
+        $op(λ::Number, g::NullKernel) = g
+    end
+end
+### Sign changes 
+####General form
+for op in (:+, :-)
+    @eval begin
+        function $op(g::K) where {K<:AbstractKernel}
+            K(axis(g), $op(matrix(g)), blocksize(g), compression(g))
+        end
+    end
+end
+#### Specialized version for SumKernel
+for op in (:+, :-)
+    @eval begin
+        function $op(g::SumKernel)
+            kl = $op(g.kernelL)
+            kr = $op(g.kernelR)
+            return SumKernel(kl, kr)
+        end
+    end
+end
+#### Specialized version for NullKernel
+for op in (:+, :-)
     @eval begin
         $op(g::NullKernel) = g
     end
@@ -376,63 +375,63 @@ end
 
 ### +Group operation on Kernel-Kernel operations
 ####General variant
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::AbstractKernel,gr::AbstractKernel)
+        function $op(gl::AbstractKernel, gr::AbstractKernel)
             iscompatible(gl, gr)
-            SumKernel(  
+            SumKernel(
                 gl,
                 $op(gr)
-                )
+            )
         end
     end
 end
 #### operations on sames objects
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::K,gr::K) where K <: AbstractKernel
+        function $op(gl::K, gr::K) where {K<:AbstractKernel}
             iscompatible(gl, gr)
             K(
                 axis(gl),
                 $op(matrix(gl), matrix(gr)),
                 blocksize(gl),
                 compression(gl)
-                )
+            )
         end
     end
 end
 ####Specialized for SumKernel
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::SumKernel,gr::SumKernel)
+        function $op(gl::SumKernel, gr::SumKernel)
             iscompatible(gl, gr)
-            SumKernel(  
+            SumKernel(
                 gl,
                 $op(gr)
-                )
+            )
         end
     end
 end
 ####Specialized for NullKernel
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::NullKernel,gr::AbstractKernel)
+        function $op(gl::NullKernel, gr::AbstractKernel)
             iscompatible(gl, gr)
             $op(gr)
         end
     end
 end
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::AbstractKernel,gr::NullKernel)
+        function $op(gl::AbstractKernel, gr::NullKernel)
             iscompatible(gl, gr)
             gl
         end
     end
 end
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::NullKernel,gr::NullKernel)
+        function $op(gl::NullKernel, gr::NullKernel)
             iscompatible(gl, gr)
             gl
         end
@@ -440,62 +439,62 @@ for op in (:+,:-)
 end
 
 ####Specialized for UniformScaling
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::UniformScaling,gr::AbstractKernel{T,A,C}) where {T,A,C}
-            _I = T(gl.λ)*I
-            TimeLocalKernel(axis(gr),_I,blocksize(gr),compression(gr)) + $op(gr)
+        function $op(gl::UniformScaling, gr::AbstractKernel)
+            _I = scalartype(gr)(gl.λ) * I
+            TimeLocalKernel(axis(gr), _I, blocksize(gr), compression(gr)) + $op(gr)
         end
     end
 end
-for op in (:+,:-)
+for op in (:+, :-)
     @eval begin
-        function $op(gl::AbstractKernel{T,A,C},gr::UniformScaling) where {T,A,C}
-            _I = $op(T(gr.λ))*I
-            gl + TimeLocalKernel(axis(gl),_I,blocksize(gl),compression(gl))
+        function $op(gl::AbstractKernel, gr::UniformScaling)
+            _I = $op(T(gr.λ)) * I
+            gl + TimeLocalKernel(axis(gl), _I, blocksize(gl), compression(gl))
         end
     end
 end
 
 
 
-function adjoint(g::Kernel) 
-    return similar(g, _adapt( matrix( g )' ) )
+function adjoint(g::Kernel)
+    return similar(g, _adapt(matrix(g)'))
 end
-function adjoint(g::RetardedKernel) 
-    return AdvancedKernel(axis(g),_adapt( matrix( g )' ),blocksize(g),compression(g))
+function adjoint(g::RetardedKernel)
+    return AdvancedKernel(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
 end
-function adjoint(g::AdvancedKernel) 
-    return RetardedKernel(axis(g),_adapt( matrix( g )' ),blocksize(g),compression(g))
+function adjoint(g::AdvancedKernel)
+    return RetardedKernel(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
 end
-function adjoint(g::K) where K <: Union{TimeLocalKernel,Kernel}
-    K(axis(g),_adapt( matrix( g )' ),blocksize(g),compression(g))
+function adjoint(g::K) where {K<:Union{TimeLocalKernel,Kernel}}
+    K(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
 end
 adjoint(g::NullKernel) = g
-function adjoint(g::SumKernel) 
-    return g.kernelL'+g.kernelR' 
+function adjoint(g::SumKernel)
+    return g.kernelL' + g.kernelR'
 end
 function compress!(A::AbstractKernel)
     A
 end
-function compress!(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
-    compression(g)(matrix( g ))
+function compress!(g::K) where {K<:Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}}
+    compression(g)(matrix(g))
     return g
 end
 
 function tr(A::NullKernel)
-    A[1,1]
+    A[1, 1]
 end
-function tr(g::K) where K <: Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}
-    step(axis(K))*tr(matrix( g ))
+function tr(g::K) where {K<:Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}}
+    step(axis(K)) * tr(matrix(g))
 end
 
 function diag(A::NullKernel)
-    N = length(axis)*blocksize(A)
-    return diag(spzeros(A[1,1],N,N) |> compression(A))
+    N = length(axis) * blocksize(A)
+    return diag(spzeros(A[1, 1], N, N) |> compression(A))
 end
-function diag(g::K) where K <: Union{Kernel,RetardedKernel,AdvancedKernel}
-    diag(matrix( g ))
+function diag(g::K) where {K<:Union{Kernel,RetardedKernel,AdvancedKernel}}
+    diag(matrix(g))
 end
 function diag(g::SumKernel)
     return diag(g.kernelL) + diag(g.kernelR)
