@@ -1,32 +1,16 @@
-
 ### Products
 #### TimeLocalKernels
 function _prod(gl::TimeLocalKernel,gr::AbstractKernel) 
     @assert iscompatible(gl,gr)
-    typeof(gr)(axis(gr),
-        matrix(gl)*matrix(gr),
-        blocksize(gr),
-        compression(gr)
-    )
+    similar(gr,matrix(gl)*matrix(gr))
 end
 function _prod(gl::AbstractKernel,gr::TimeLocalKernel) 
     @assert iscompatible(gl,gr)
-    typeof(gl)(axis(gl),
-        matrix(gl)*matrix(gr),
-        blocksize(gl),
-        compression(gl)
-    )
+    similar(gl,matrix(gl)*matrix(gr))
 end
-#=
-We must define the following function to fix ambiguity
-=#
 function _prod(gl::TimeLocalKernel,gr::TimeLocalKernel) 
     @assert iscompatible(gl,gr)
-    typeof(gr)(axis(gl),
-        matrix(gl)*matrix(gr),
-        blocksize(gl),
-        compression(gl)
-    )
+    similar(gr,matrix(gl)*matrix(gr))
 end
 #### RetardedKernel
 function _prod(gl::Ker, gr::Ker) where Ker<:Union{RetardedKernel,AdvancedKernel}
@@ -64,11 +48,7 @@ function _prod(gl::L,gr::R) where { L <: Union{RetardedKernel,AdvancedKernel}, R
     correction = T(1/4)*dl*dr
     result = biased_result + correction
     result *= T(step(axis(gl)))
-    return Kernel(axis(gl),
-                result,
-                blocksize(gl),
-                compression(gl)
-            )
+    return similar(gl,result)
 end
 #### Kernel * Advanced and Kernel * Retarded
 #= 
@@ -84,13 +64,8 @@ function _prod(gl::Kernel,gr::R) where R<: Union{RetardedKernel,AdvancedKernel}
     weighted_R = matrix(gr) - T(0.5)*dr
     result = weighted_L * weighted_R
     result *= T(step(axis(gl)))
-    return Kernel(axis(gl),
-                result,
-                blocksize(gl),
-                compression(gl)
-            )
+    return similar(gl,result)
 end
-
 #### Retarded * Kernel and Advanced * Kernel
 #= 
 For the trapz rule and neglecting the side effect that should be absorbed
@@ -105,11 +80,7 @@ function _prod(gl::L,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
     weighted_R = matrix(gr) 
     result = weighted_L * weighted_R
     result *= T(step(axis(gl)))
-    return Kernel(axis(gl),
-                result,
-                blocksize(gl),
-                compression(gl)
-            )
+    return similar(gl,result)
 end
 
 #### Retarded * Kernel and Advanced * Kernel
@@ -125,11 +96,7 @@ function _prod(gl::Kernel,gr::Kernel)
     weighted_R = matrix(gr) 
     result = weighted_L * weighted_R
     result *= T(step(axis(gl)))
-    return Kernel(axis(gl),
-                result,
-                blocksize(gl),
-                compression(gl)
-            )
+    return similar(gl,result)
 end
 #### NullKernel rules
 function _prod(gl::NullKernel,gr::K) where {K<:AbstractKernel}

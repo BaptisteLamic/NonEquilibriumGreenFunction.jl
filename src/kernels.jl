@@ -107,7 +107,7 @@ function matrix(A::NullKernel)
     N = length(axis(A)) * blocksize(A)
     return spzeros(scalartype(A), N, N) |> compression(A)
 end
-function matrix(g::K) where {K<:Union{Kernel,RetardedKernel,AdvancedKernel,TimeLocalKernel}}
+function matrix(g::DataFullKernel)
     matrix(g.data)
 end
 function matrix(g::SumKernel)
@@ -116,30 +116,17 @@ end
 
 
 #implement type conversion
-for K in (:RetardedKernel, :AdvancedKernel, :NullKernel, :TimeLocalKernel, :Kernel)
-    @eval begin
-        function similar(g::$K, cpr::AbstractCompression)
-            $K(axis(g), cpr(matrix(g)), blocksize(g), cpr)
-        end
-    end
+
+function similar(g::LeafKernel, cpr::AbstractCompression)
+    typeof(g)(axis(g), cpr(matrix(g)), blocksize(g), cpr)
 end
 function similar(g::SumKernel, cpr::AbstractCompression)
-    SumKernel(axis(g), similar(g.kernelL, cpr), similar(g.kernelR, cpr), blocksize(g), cpr)
+    SumKernel(similar(g.kernelL, cpr), similar(g.kernelR, cpr))
 end
-
-for K in (:RetardedKernel, :AdvancedKernel, TimeLocalKernel, :Kernel)
-    @eval begin
-        function similar(A::$K, matrix::AbstractArray)
-            cpr = compression(A)
-            return $K(axis(A), cpr(matrix), blocksize(A), cpr)
-        end
-    end
+function similar(A::K, matrix::AbstractArray) where K <: DataFullKernel
+    cpr = compression(A)
+    return K(axis(A), cpr(matrix), blocksize(A), cpr)
 end
-
-
-#
-
-
 
 ## Define getter 
 blocksize(g::AbstractKernel) = blocksize(g.data)
@@ -408,7 +395,6 @@ for op in (:+, :-)
         end
     end
 end
-
 
 
 function adjoint(g::Kernel)

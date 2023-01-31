@@ -149,6 +149,6 @@ function (Compression :: NONCompression)(axis, tab::BlockCirculantMatrix)
     return tab[:,:]
 end
 function (Compression :: NONCompression)(tab::AbstractMatrix{T}) where T<:Number
-    return tab
+    return Matrix(tab)
 end
 
