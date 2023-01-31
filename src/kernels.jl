@@ -1,5 +1,8 @@
+#TODO factorise the type systems into ExpressionTree * Kernel
 abstract type AbstractKernel end
-abstract type DataFullKernel <: AbstractKernel end
+abstract type LeafKernel <: AbstractKernel end
+abstract type DataFullKernel <: LeafKernel end
+abstract type RegularKernel <: DataFullKernel end
 struct KernelData{A,M,C}
     axis::A
     matrix::M
@@ -12,32 +15,26 @@ blocksize(k::KernelData) = k.blocksize
 compression(k::KernelData) = k.compression
 scalartype(k::KernelData) = eltype(matrix(k))
 
-struct RetardedKernel{A,M,C} <: DataFullKernel
+struct RetardedKernel{A,M,C} <: RegularKernel
     data::KernelData{A,M,C}
 end
-struct AdvancedKernel{A,M,C} <: DataFullKernel
+struct AdvancedKernel{A,M,C} <: RegularKernel
     data::KernelData{A,M,C}
 end
-struct Kernel{A,M,C} <: DataFullKernel
+struct Kernel{A,M,C} <: RegularKernel
     data::KernelData{A,M,C}
 end
 struct TimeLocalKernel{A,M,C} <: DataFullKernel
     data::KernelData{A,M,C}
 end
+function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression)
+    N = length(axis) * blocksize
+    matrix = sparse(u, N, N) .|> eltype(u) |> compression
+    TimeLocalKernel(axis, matrix, blocksize, compression)
+end
 function (::Type{K})(axis, matrix, blocksize, compression) where {K<:DataFullKernel}
     return K(KernelData(axis, matrix, blocksize, compression))
 end
-#=
-for K in (:RetardedKernel, :AdvancedKernel, TimeLocalKernel, :Kernel)
-    @eval begin
-        function $K{A,M,C}(axis::A, matrix::M, blocksize, compression::C) where {A,M,C}
-            return $K{A,M,C}(
-                KernelData(axis, matrix, blocksize, compression)
-            )
-        end
-    end
-end
-=#
 scalartype(k::DataFullKernel) = scalartype(k.data)
 
 struct SumKernel{L<:AbstractKernel,R<:AbstractKernel} <: AbstractKernel
@@ -48,7 +45,8 @@ scalartype(g::SumKernel) = scalartype(g.kernelL)
 blocksize(g::SumKernel) = blocksize(g.kernelL)
 compression(g::SumKernel) = compression(g.kernelR)
 axis(g::SumKernel) = axis(g.kernelL)
-struct NullKernel{T,A,C} <: AbstractKernel
+
+struct NullKernel{T,A,C} <: LeafKernel
     axis::A
     blocksize::Int
     compression::C
@@ -74,56 +72,18 @@ end
 function NullKernel(k::AbstractKernel)
     NullKernel{scalartype(k),typeof(axis(k)),typeof(compression(k))}(axis(k), blocksize(k), compression(k))
 end
-### Definitions of the constructors
-#=function RetardedKernel(axis, matrix, blocksize::Int, compression)
-    RetardedKernel{typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis, matrix, blocksize, compression)
-    )
-end=#
-function RetardedKernel(axis, f; compression=HssCompression(), stationary=false)
+
+function (::Type{K})(axis, f; compression=HssCompression(), stationary=false) where {K<:RegularKernel}
     f00 = f(axis[1], axis[1])
     bs = size(f00, 1)
-    f_masked = (x, y) -> x >= y ? f(x, y) : zero(f00)
+    _mask(::Type{RetardedKernel}) = (x, y) -> x >= y ? f(x, y) : zero(f00)
+    _mask(::Type{AdvancedKernel}) = (x, y) -> x <= y ? f(x, y) : zero(f00)
+    _mask(::Type{Kernel}) = (x, y) -> f(x, y)
+    f_masked = _mask(K)
     matrix = compression(axis, f_masked, stationary=stationary)
-    RetardedKernel(axis, matrix, bs, compression)
+    K(axis, matrix, bs, compression)
 end
-#=function AdvancedKernel(axis, matrix, blocksize::Int, compression)
-    AdvancedKernel{typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis, matrix, blocksize, compression)
-    )
-end=#
-function AdvancedKernel(axis, f; compression=HssCompression(), stationary=false)
-    f00 = f(axis[1], axis[1])
-    bs = size(f00, 1)
-    f_masked = (x, y) -> x <= y ? f(x, y) : zero(f00)
-    matrix = compression(axis, f_masked, stationary=stationary)
-    AdvancedKernel(axis, matrix, bs, compression)
-end
-#=
-function Kernel(axis, matrix, blocksize::Int, compression)
-    Kernel{typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis, matrix, blocksize, compression)
-    )
-end
-=#
-function Kernel(axis, f; compression=HssCompression(), stationary=false)
-    f00 = f(axis[1], axis[1])
-    bs = size(f00, 1)
-    matrix = compression(axis, f, stationary=stationary)
-    Kernel(axis, matrix, bs, compression)
-end
-#=
-function TimeLocalKernel(axis, matrix, blocksize::Int, compression)
-    TimeLocalKernel{typeof(axis),typeof(matrix),typeof(compression)}(
-        KernelData(axis, matrix, blocksize, compression)
-    )
-end
-=#
-function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression)
-    N = length(axis) * blocksize
-    matrix = sparse(u, N, N) .|> eltype(u) |> compression
-    TimeLocalKernel(axis, matrix, blocksize, compression)
-end
+
 function TimeLocalKernel(axis, f; compression=HssCompression(), stationary=false)
     f00 = f(axis[1])
     bs = size(f00, 1)
@@ -247,14 +207,7 @@ function getindex(A::AbstractKernel, I, J)
         return @views _getindex(A, I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 end
-#=
-function getindex(A::SumKernel,I::Vararg{Int,2})
-    A.kernelL[I...] + A.kernelR[I...]
-end
-function getindex(K::NullKernel{T,A,C},I::Vararg{Int,2}) where {T,A,C}
-    return zeros(T,blocksize(K), blocksize(K))
-end
-=#
+
 ## Define printing functions
 function Base.show(io::IO, k::K) where {K<:AbstractKernel}
     print(io, "$K\n")
@@ -499,5 +452,4 @@ end
 function diag(g::SumKernel)
     return diag(g.kernelL) + diag(g.kernelR)
 end
-
 norm(g::AbstractKernel) = norm(matrix(g))

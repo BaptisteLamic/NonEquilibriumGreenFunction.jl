@@ -2,7 +2,6 @@ module NonEquilibriumGreenFunction
 
 using SpecialFunctions: Threads
 using HssMatrices: Threads
-using Base: offset_if_vec
 using StatsBase: Threads
 using NNlib: similar
 using LinearAlgebra: similar, Threads, length, Core
@@ -13,10 +12,8 @@ using StatsBase
 using NNlib
 using SpecialFunctions
 using FFTW
-using DSP
 using StaticArrays
-using BlockArrays
-using LowRankApprox
+using DSP
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: ==
@@ -27,6 +24,7 @@ import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
+import HssMatrices: compress!
 
 include("circulant_matrix.jl")
 include("compression.jl")
