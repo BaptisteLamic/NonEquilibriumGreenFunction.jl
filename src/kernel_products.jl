@@ -25,11 +25,7 @@ function _prod(gl::Ker, gr::Ker) where Ker<:Union{RetardedKernel,AdvancedKernel}
     biased_product = weighted_L * weighted_R
     result = biased_product - extract_blockdiag(biased_product,bs, compression = compression(gl)) # Diagonal is zero
     result *= T(step(axis(gl)))
-    return Ker(axis(gl),
-                result,
-                blocksize(gl),
-                compression(gl)
-            )
+    return similar(gl, result)
 end
 #### Retarded * Advanced and Advanced * Retarded
 #= 

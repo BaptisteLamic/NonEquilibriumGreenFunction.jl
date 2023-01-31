@@ -377,7 +377,6 @@ for op in (:+, :-)
         end
     end
 end
-
 ####Specialized for UniformScaling
 for op in (:+, :-)
     @eval begin
@@ -427,7 +426,6 @@ end
 function tr(g::K) where {K<:Union{TimeLocalKernel,Kernel,RetardedKernel,AdvancedKernel}}
     step(axis(K)) * tr(matrix(g))
 end
-
 function diag(A::NullKernel)
     N = length(axis) * blocksize(A)
     return diag(spzeros(A[1, 1], N, N) |> compression(A))
