@@ -10,7 +10,6 @@ function blockindex(tp,bs)
     r_block = zeros(eltype(tp),length(tp))
     r_inblock = zeros(eltype(tp),length(tp))
     for i = 1:length(tp)
-        b, ib = blockindex(tp[i],bs)
         (r_block[i],r_inblock[i]) = blockindex(tp[i],bs)
     end
     return (r_block,r_inblock)
@@ -55,6 +54,7 @@ function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer = 0;compr
     end
     blockdiag(_A,d,compression = compression)
 end
+#=
 function row(A::AbstractMatrix,r,bs = 1)
     J = reshape([j for i in (r-1)*bs+1:r*bs, j in 1:size(A,2)], :)
     I = reshape([i for i in (r-1)*bs+1:r*bs, j in 1:size(A,2)], :)
@@ -67,6 +67,7 @@ function col(A::AbstractMatrix,c,bs = 1)
     V = reshape(A[:,(c-1)*bs+1:c*bs],:)
     return _adapt(A,sparse(I, J, V,size(A) ... ))
 end
+=#
 function _adapt(::HssMatrix,a)
     return hss(a)
 end

@@ -114,9 +114,6 @@ function matrix(g::SumKernel)
     return matrix(g.kernelL) + matrix(g.kernelR)
 end
 
-
-#implement type conversion
-
 function similar(g::LeafKernel, cpr::AbstractCompression)
     typeof(g)(axis(g), cpr(matrix(g)), blocksize(g), cpr)
 end
@@ -151,18 +148,13 @@ function getindex(A::NullKernel, ::Colon, I, ::Colon, J)
     sbk = blocksize(A)
     return zeros(scalartype(A), sbk, length(I), sbk, length(J))
 end
-
-
 function _getindex(A::AbstractKernel, I, J)
     #assume that the index are sorted
     sbk = blocksize(A)
-    ax = axis(A)
     values = reshape(getindex(A, :, I, :, J), length(I) * sbk, length(J) * sbk)
     r = [view(values, sbk*(i-1)+1:sbk*i, sbk*(j-1)+1:sbk*j) for i = 1:length(I), j = 1:length(J)]
     return r
 end
-
-
 function getindex(A::AbstractKernel, i::Int, j::Int)
     bs = blocksize(A)
     return matrix(A)[blockrange(i, bs), blockrange(j, bs)]

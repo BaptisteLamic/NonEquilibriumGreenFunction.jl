@@ -36,8 +36,6 @@ end
 function \(A::SumKernel,B::TimeLocalKernel)
     @assert iscompatible(A,B)
     @assert isretarded(A)
-    cp=compression(A)
-    bs=blocksize(A)
     Aδ = timelocal_part(A)
     Ar = nonlocal_part(A)
     Xδ = Aδ \ B
