@@ -18,16 +18,26 @@ struct KernelRDiv <: KernelExpressionTree
     right::KernelExpression
 end
 struct NullLeaf <: KernelExpressionLeaf end
-struct KernelLeaf <: KernelExpressionLeaf
-    kernel::AbstractKernel
+struct KernelLeaf{T<:AbstractKernel} <: KernelExpressionLeaf
+    kernel::T
 end 
-convert(::Type{T}, kernel::K) where {T <: KernelExpression,K <: AbstractKernel} = KernelLeaf(kernel)
+struct ScalarLeaf{T<:Number} <: KernelExpressionLeaf
+    scalar::T
+end
+convert(::Type{T}, kernel::K) where {T <: KernelExpression, K <: AbstractKernel} = KernelLeaf(kernel)
+convert(::Type{T}, scalar::K) where {T <: KernelExpression, K <: Number} = ScalarLeaf(scalar)
 istree(::KernelExpression) = false
 istree(::KernelExpressionTree) = true
 
 arguments(expr::KernelExpressionTree) = SA[expr.left, expr.right]
 
-*(left::KernelExpression,right::KernelExpression) = KernelProd(left,right)
+function *(left::KernelExpression,right::KernelExpression)
+    simplify_NullLeaf(::NullLeaf,::NullLeaf) = NullLeaf()
+    simplify_NullLeaf(::KernelExpression,::NullLeaf) = NullLeaf()
+    simplify_NullLeaf(::NullLeaf,::KernelExpression) = NullLeaf()
+    simplify_NullLeaf(left::KernelExpression,right::KernelExpression) = KernelProd(left,right)
+    return simplify_NullLeaf(left,right)
+end
 function +(left::KernelExpression,right::KernelExpression)
     simplify_NullLeaf(::NullLeaf,::NullLeaf) = NullLeaf()
     simplify_NullLeaf(left::KernelExpression,::NullLeaf) = left
@@ -35,7 +45,6 @@ function +(left::KernelExpression,right::KernelExpression)
     simplify_NullLeaf(left::KernelExpression,right::KernelExpression) = KernelSum(left,right)
     return simplify_NullLeaf(left,right)
 end
-
 function operation(::KernelSum)
     return function(tab)
         @assert length(tab) = 2
@@ -52,6 +61,8 @@ function evaluate_expression(expr::KernelExpression)
     kernels = evaluate_expression.( arguments(expr) )
     operation(expr)(kernels)
 end
+evaluate_expression(expr::KernelLeaf) = expr.kernel
+evaluate_expression(expr::ScalarLeaf) = expr.scalar
 
 @testitem "Test tree accessors" begin
     using StaticArrays
@@ -69,5 +80,9 @@ end
     LA = KernelLeaf(GA)
     LB = KernelLeaf(GB)
     @test arguments(KernelSum(GA,GB)) == SA[LA, LB]
+    KernelSum(1,GB)
     @test LA + NullLeaf() == LA
+    @test LA + LB == KernelSum(LA,LB)
+    @test LA * NullLeaf() == NullLeaf()
+    @test LA * LB == KernelProd(LA,LB)
 end
