@@ -14,6 +14,7 @@ using SpecialFunctions
 using FFTW
 using StaticArrays
 using DSP
+using TestItems
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: ==
@@ -25,11 +26,13 @@ import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
 import HssMatrices: compress!
+import Base: convert
 
 include("circulant_matrix.jl")
 include("compression.jl")
 include("utils.jl")
 include("kernels.jl")
+include("expressionTrees.jl")
 include("kernel_products.jl")
 include("kernel_solve.jl")
 include("physics.jl")
@@ -56,6 +59,10 @@ export compress!
 export scalartype
 export getindex!
 export tr_K
+
+export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf, NullLeaf
+export KernelProd, KernelSum,  KernelLDiv, KernelRDiv
+export arguments, istree
 
 
 end

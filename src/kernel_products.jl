@@ -1,5 +1,8 @@
 ### Products
-#### TimeLocalKernels
+function prod(gl::AbstractKernel,gr::AbstractKernel)
+    @assert iscompatible(gl,gr)
+    return _prod(gl,gr) 
+end
 _prod(gl::TimeLocalKernel,gr::AbstractKernel) = similar(gr,matrix(gl)*matrix(gr))
 _prod(gl::AbstractKernel,gr::TimeLocalKernel) = similar(gl,matrix(gl)*matrix(gr))
 _prod(gl::TimeLocalKernel,gr::TimeLocalKernel) = similar(gr,matrix(gl)*matrix(gr))
@@ -76,6 +79,5 @@ function *(gl::SumKernel,gr::SumKernel)
     return gl*gr.kernelL  + gl*gr.kernelR 
 end
 function *(gl::AbstractKernel,gr::AbstractKernel)
-    @assert iscompatible(gl,gr)
-    return _prod(gl,gr) 
+    return prod(gl,gr) 
 end
