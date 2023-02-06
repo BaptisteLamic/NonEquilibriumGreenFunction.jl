@@ -57,7 +57,6 @@ function _prod(gl::L,gr::Kernel) where L<: Union{RetardedKernel,AdvancedKernel}
     return similar(gl,result)
 end
 function _prod(gl::Kernel,gr::Kernel)
-    T = eltype(matrix(gl))
     weighted_L = matrix(gl)
     weighted_R = matrix(gr) 
     result = weighted_L * weighted_R

@@ -5,11 +5,16 @@ using SparseArrays
 using HssMatrices
 using StaticArrays
 using LsqFit
+using TestItemRunner
+
+#run in files test
+@run_package_tests
 
 include("test_physics.jl")
 include("test_BlockCirculantMatrix.jl")
 include("test_kernels.jl")
 include("test_kernel_solve.jl")
+
 
 
 @testset "utils.jl" for T = [Float32,Float64,ComplexF32,ComplexF64]

@@ -26,6 +26,8 @@ struct ScalarLeaf{T<:Number} <: KernelExpressionLeaf
 end
 convert(::Type{T}, kernel::K) where {T <: KernelExpression, K <: AbstractKernel} = KernelLeaf(kernel)
 convert(::Type{T}, scalar::K) where {T <: KernelExpression, K <: Number} = ScalarLeaf(scalar)
+convert(::Type{T}, λI::UniformScaling) where {T <: KernelExpression} = ScalarLeaf(λI.λ)
+
 istree(::KernelExpression) = false
 istree(::KernelExpressionTree) = true
 
@@ -64,7 +66,7 @@ end
 evaluate_expression(expr::KernelLeaf) = expr.kernel
 evaluate_expression(expr::ScalarLeaf) = expr.scalar
 
-@testitem "Test tree accessors" begin
+@testitem "Test Kernel Expression" begin
     using StaticArrays
     T = ComplexF32
     Ker = RetardedKernel

@@ -17,6 +17,7 @@ using DSP
 using TestItems
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: sum
 import Base: ==
 import Base: getindex, step
 import Base: similar, zero
