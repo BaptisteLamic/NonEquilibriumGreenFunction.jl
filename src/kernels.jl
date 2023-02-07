@@ -241,11 +241,11 @@ end
 
 ##Algebra
 ### new version
-prod(λ::T, kernel::K) where {T<:Number,K<:AbstractKernel} = 
+mul(λ::T, kernel::K) where {T<:Number,K<:AbstractKernel} = 
     K(axis(kernel), compression(g)(λ * matrix(kernel)), blocksize(kernel), compression(kernel))
 ldiv(λ::T, kernel::K) where {T<:Number,K<:AbstractKernel} = 
     K(axis(kernel), compression(kernel)(λ \ matrix(kernel)), blocksize(kernel), compression(kernel))
-function sum(left::K,right::K) where K <: DataFullKernel
+function add(left::K,right::K) where K <: DataFullKernel
     @assert iscompatible(left,right)
     similar(left, matrix(left)+matrix(right))
 end

@@ -41,7 +41,7 @@ function getindex(A::RAKMatrix,::Colon,I,::Colon,J,::Colon,::Colon)
     return out
 end
 
-function getindex!(out,A::RAKMatrix, I,J) where T
+function getindex!(out,A::RAKMatrix, I,J)
     bs = blocksize(A)
     values = [A.data[p,q][I,J] for p = 1:2, q = 1:2]
     Threads.@threads for i = 1:length(I)

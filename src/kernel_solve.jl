@@ -1,3 +1,7 @@
+function ldiv(A::AbstractKernel,B::AbstractKernel)
+    return A\B
+end
+
 #Interception of standart AbstractArray method 
 function \(A::AbstractKernel,B::AbstractKernel)
     error("$(typeof(A)) \\ $(typeof(B)): not implemented")

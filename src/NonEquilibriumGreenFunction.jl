@@ -61,9 +61,9 @@ export scalartype
 export getindex!
 export tr_K
 
-export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf, NullLeaf
-export KernelProd, KernelSum,  KernelLDiv, KernelRDiv
+export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf, NullLeaf, ScalarLeaf
+export KernelMul, KernelAdd,  KernelLDiv, KernelRDiv
 export arguments, istree
-
+export evaluate_expression
 
 end
