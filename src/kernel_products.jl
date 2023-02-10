@@ -7,11 +7,6 @@ _mul(gl::TimeLocalKernel,gr::AbstractKernel) = similar(gr,matrix(gl)*matrix(gr))
 _mul(gl::AbstractKernel,gr::TimeLocalKernel) = similar(gl,matrix(gl)*matrix(gr))
 _mul(gl::TimeLocalKernel,gr::TimeLocalKernel) = similar(gr,matrix(gl)*matrix(gr))
 
-_mul(gl::NullKernel,::K) where {K<:AbstractKernel} = gl
-_mul(::K,gr::NullKernel) where {K<:AbstractKernel} = gr
-_mul(::TimeLocalKernel,gr::NullKernel) = gr
-_mul(gl::NullKernel,::TimeLocalKernel) = gl
-_mul(gl::NullKernel,::NullKernel) = gl
 
 _trapz_dressing(g,d) = return matrix(g) - eltype(d)(0.5)*d
 function _biased_mul(gl::L,gr::R) where { L <: Union{RetardedKernel,AdvancedKernel}, R<: Union{RetardedKernel,AdvancedKernel} }
@@ -63,19 +58,6 @@ function _mul(gl::Kernel,gr::Kernel)
     return similar(gl,result)
 end
 
-function *(gl::SumKernel,gr::AbstractKernel)
-    @assert iscompatible(gl,gr)
-    return gl.kernelL * gr + gl.kernelR * gr 
-end
-function *(gl::AbstractKernel,gr::SumKernel)
-    @assert iscompatible(gl,gr)
-    return gl*gr.kernelL  + gl * gr.kernelR
-end
-#Required to avoid type ambiguity 
-function *(gl::SumKernel,gr::SumKernel)
-    @assert iscompatible(gl,gr)
-    return gl*gr.kernelL  + gl*gr.kernelR 
-end
 function *(gl::AbstractKernel,gr::AbstractKernel)
     return mul(gl,gr) 
 end

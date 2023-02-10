@@ -43,8 +43,7 @@ export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
 export build_greenfunction, build_linearMap,blockrange,blockindex, col, row, build_CirculantlinearMap
 
-export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, SumKernel, TimeLocalKernel
-export NullKernel
+export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel
 export isretarded, isadvanced, timelocal_part, nonlocal_part
 export BlockCirculantMatrix
 export NONCompression, HssCompression

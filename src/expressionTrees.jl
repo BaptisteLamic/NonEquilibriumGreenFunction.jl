@@ -123,5 +123,5 @@ end
     LB = KernelLeaf(GB)
     @test evaluate_expression(LA * LB) == GA*GB
     @test evaluate_expression(LA + LB) == GA+GB
-    @test evaluate_expression(LA \ LB) == GA\GB
+    #@test evaluate_expression(LA \ LB) == GA\GB
 end

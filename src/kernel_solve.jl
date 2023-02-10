@@ -11,18 +11,19 @@ function \(A::TimeLocalKernel,B::AbstractKernel)
     @assert iscompatible(A,B)
     similar(B, matrix(A) \ matrix(B))
 end
-function \(A::TimeLocalKernel,B::NullKernel)
-    @assert iscompatible(A,B)
-    NullKernel(A)
-end
+#=
 function \(A::TimeLocalKernel,B::SumKernel)
     @assert iscompatible(A,B)
     A\B.kernelL + A\B.kernelR
 end
+=#
+#=
 function \(A::AbstractKernel,B::NullKernel)
     #We should check that A is non zero
     return B
 end
+=#
+#=
 function \(A::SumKernel,B::RetardedKernel)
     @assert iscompatible(A,B)
     @assert isretarded(A)
@@ -37,6 +38,8 @@ function \(A::SumKernel,B::RetardedKernel)
     correction = similar(B, matrix(Aδ) \ diag_B - extract_blockdiag(matrix(sol_biased),bs, compression = cp))
     return sol_biased + correction
 end
+=#
+#=
 function \(A::SumKernel,B::TimeLocalKernel)
     @assert iscompatible(A,B)
     @assert isretarded(A)
@@ -46,6 +49,7 @@ function \(A::SumKernel,B::TimeLocalKernel)
     Xr = -A\(Ar*Xδ)
     return Xδ + Xr
 end
+=#
 function \(A::RetardedKernel, B::RetardedKernel)
     @assert iscompatible(A,B)
     cp=compression(A)
@@ -57,11 +61,11 @@ function \(A::RetardedKernel, B::RetardedKernel)
     correction = - similar(B,extract_blockdiag(matrix(sol_biased),bs, compression = cp))
     return sol_biased + correction
 end
-
+#=
 function \(A::AbstractKernel,B::SumKernel)
     return A\B.kernelL + A\B.kernelR
 end
-
+=#
 function solve_dyson(g::AbstractKernel,k::AbstractKernel) 
     (I-k)\g
 end

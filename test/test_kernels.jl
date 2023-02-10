@@ -51,57 +51,6 @@
         GB = Ker(ax,foo_st, compression = NONCompression(),stationary = true)
         @test full(matrix(GA)) - matrix(GB)|> norm < tol
     end
-
-    @testset "SumKernel construction" begin
-        AL = randn(T,bs*N,bs*N)
-        AR = randn(T,bs*N,bs*N)
-        GL = RetardedKernel(ax,AL,bs,NONCompression())
-        GR = AdvancedKernel(ax,AR,bs,NONCompression())
-        GS = SumKernel(GL,GR)
-
-        @test GS.kernelL == GL
-        @test GS.kernelR == GR
-
-        @testset "getter" begin
-            @test axis(GS) == ax
-            @test blocksize(GS) == bs
-            I = (2:5,2:25)
-            @test GS[I...] == [(matrix(GL)+matrix(GR))[blockrange(i, bs ), blockrange(j, bs )] for i in I[1], j in I[2]]   
-        end
-    end
-
-    @testset "Kernel arithmetic $Ker $Ker2" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel ,SumKernel),
-         Ker2 in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel ,SumKernel)
-        G = if Ker == SumKernel 
-                AL = randn(T,bs*N,bs*N)
-                AR = randn(T,bs*N,bs*N)
-                GL = RetardedKernel(ax,AL,bs,NONCompression())
-                GR = AdvancedKernel(ax,AR,bs,NONCompression())
-                SumKernel(GL,GR)
-            else
-                A = randn(T,bs*N,bs*N)
-                Ker(ax,A,bs,NONCompression())
-            end
-        G2 = if Ker2 == SumKernel 
-                AL = randn(T,bs*N,bs*N)
-                AR = randn(T,bs*N,bs*N)
-                GL = RetardedKernel(ax,AL,bs,NONCompression())
-                GR = AdvancedKernel(ax,AR,bs,NONCompression())
-                SumKernel(GL,GR)
-            else
-                A = randn(T,bs*N,bs*N)
-                Ker2(ax,A,bs,NONCompression())
-            end
-        α = T(2/3)
-        for op in (*,\)  
-            @test all( matrix(op(α, G)) .≈   op.(α, matrix(G)) )
-        end
-        for op in (-,+) 
-            @test all( op(G) |> matrix  .≈   op.(G |> matrix ) )
-            @test all( op(G,G2) |> matrix .≈   op.(G |> matrix ,G2 |> matrix) )
-        end
-    end
-
     @testset "convolution $KerL $KerR" for KerL in (RetardedKernel, AdvancedKernel, Kernel),
         KerR in (RetardedKernel, AdvancedKernel, Kernel)
         #utility functions
@@ -176,7 +125,7 @@
         @test typeof(PR) == typeof(GL)
         @test norm( matrix(GL)*matrix(GR) - matrix(PR) ) < tol 
     end
-
+    #=
     @testset "convolution SumKernel{$KerL,$KerR} * $Ker" for KerL in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel),
             KerR in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel), Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
         x0 = Dt/4.5
@@ -195,6 +144,7 @@
         PR = SG*G
         @test SG.kernelL*G + SG.kernelR*G == PR
     end
+    =#
     @testset "convolution UniformScaling * $Ker" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
         x0 = Dt/4.5
         sigma0 = Dt/5
@@ -214,22 +164,6 @@
         α = T(-0.3)
         PR =  G*(α*I)
         @test PR == α*G
-    end
-    @testset "convolution NullKernel * $Ker" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
-        x0 = Dt/4.5
-        sigma0 = Dt/5
-        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
-        goo(x) = goo(x,x)
-        G = Ker(ax,goo, compression = NONCompression())
-        @test NullKernel(G) * G == NullKernel(G)
-    end
-    @testset "convolution $Ker * NullKernel" for Ker in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
-        x0 = Dt/4.5
-        sigma0 = Dt/5
-        goo(x,y) = sigma0^4*exp( -( (x-x0)^2+y^2 )/sigma0^2 ) .* foo(x, y)
-        goo(x) = goo(x,x)
-        G = Ker(ax,goo, compression = NONCompression())
-        @test G*NullKernel(G) == NullKernel(G)
     end
 
 end

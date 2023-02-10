@@ -1,6 +1,4 @@
 
-full(A::AbstractArray) = Array(A)
-
 @inline blockrange(i,bs) = (i-1)*bs+1:i*bs
 @inline function blockindex(p::Number,bs)
     a,i = divrem(p-1,bs)
