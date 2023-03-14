@@ -20,7 +20,7 @@
         
         A = TimeLocalKernel(ax, gooL, compression = NONCompression())
         B = Ker(ax, gooR, compression = NONCompression())
-        @test norm(A*(A\B) - B) < tol
+        @test norm(matrix( mul(A,ldiv(A,B)) )  - matrix(B)) < tol
     end
 
     @testset "$T solve_dyson" begin

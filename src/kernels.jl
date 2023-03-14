@@ -97,6 +97,10 @@ isretarded(::K) where {K<:Union{RetardedKernel,TimeLocalKernel}} = true
 
 isadvanced(::K) where {K<:AbstractKernel} = false
 isadvanced(::K) where {K<:Union{AdvancedKernel,TimeLocalKernel}} = true
+
+islocal(::AbstractKernel) = false
+islocal(::TimeLocalKernel) = true 
+
 step(k::AbstractKernel) = scalartype(k)(step(axis(k)))
 
 ##Algebra

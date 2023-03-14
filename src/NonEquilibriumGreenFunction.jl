@@ -21,7 +21,7 @@ import Base: sum
 import Base: ==
 import Base: getindex, step
 import Base: similar, zero
-import HssMatrices: full, compress!
+import HssMatrices: compress!
 import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
@@ -44,7 +44,7 @@ export getindex
 export build_greenfunction, build_linearMap,blockrange,blockindex, col, row, build_CirculantlinearMap
 
 export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel
-export isretarded, isadvanced, timelocal_part, nonlocal_part
+export isretarded, isadvanced, timelocal_part, nonlocal_part, mul, add, ldiv
 export BlockCirculantMatrix
 export NONCompression, HssCompression
 export solve_dyson
@@ -64,5 +64,6 @@ export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf,
 export KernelMul, KernelAdd,  KernelLDiv, KernelRDiv
 export arguments, istree
 export evaluate_expression
+export local_part, nonlocal_part
 
 end

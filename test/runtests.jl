@@ -9,11 +9,11 @@ using TestItemRunner
 
 #run in files test
 @run_package_tests
+include("test_kernel_solve.jl")
 
 include("test_physics.jl")
 include("test_BlockCirculantMatrix.jl")
 include("test_kernels.jl")
-include("test_kernel_solve.jl")
 
 
 
@@ -28,5 +28,4 @@ include("test_kernel_solve.jl")
     B = blockdiag(sparse([111 121; 112 122 ] .|> T),sparse([211 221; 212 222 ].|> T),sparse([311 321; 312 322 ].|> T))
     C = blockdiag(A)
     @test C-B |> norm ≈ 0
-
 end
