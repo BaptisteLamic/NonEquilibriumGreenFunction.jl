@@ -109,7 +109,7 @@ struct HssCompression{T,G} <: AbstractCompression
     kest::G
     leafsize::G
 end
-HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 40, leafsize=128) = HssCompression(atol,rtol,kest,leafsize)
+HssCompression(; atol = 1E-6, rtol = 1E-6, kest = 20, leafsize=32) = HssCompression(atol,rtol,kest,leafsize)
 struct NONCompression <: AbstractCompression end
 
 

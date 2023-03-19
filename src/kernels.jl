@@ -105,7 +105,9 @@ step(k::AbstractKernel) = scalartype(k)(step(axis(k)))
 
 ##Algebra
 mul(λ::Number, kernel::AbstractKernel) = similar(kernel,λ*matrix(kernel))
+mul(scaling::UniformScaling, kernel::AbstractKernel) = mul(scaling.λ, kernel)
 ldiv(λ::Number, kernel::AbstractKernel) = similar(kernel, λ\matrix(kernel))
+ldiv(scaling::UniformScaling, kernel::AbstractKernel) = ldiv(scaling.λ, kernel)
 function add(left::K,right::K) where K <: AbstractKernel
     @assert iscompatible(left,right)
     similar(left, matrix(left)+matrix(right))

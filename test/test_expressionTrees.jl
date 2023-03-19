@@ -1,6 +1,7 @@
 
 @testitem "Test KernelExpression construction" begin
     using StaticArrays
+    using LinearAlgebra
     for T in (ComplexF32,Float64)
         bs = 2
         N = 128
@@ -9,7 +10,7 @@
         foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
         A = randn(T,bs*N,bs*N)
         GA = RetardedKernel(ax,A,bs,NONCompression())
-        GB = RetardedKernel(ax,foo, compression = NONCompression());
+        GB = AdvancedKernel(ax,foo, compression = NONCompression());
         LA = KernelLeaf(GA)
         LB = KernelLeaf(GB)
         @test arguments(KernelAdd(GA,GB)) == SA[LA, LB]
@@ -22,6 +23,7 @@
         @test LA \ GB == KernelLDiv(LA,LB)
         @test -GA == KernelMul(ScalarLeaf(-1),LA)
         @test LB-LA == KernelAdd(LB,KernelMul(ScalarLeaf(-1),LA))
+        @test ScalarLeaf(1).scaling == 1*I
     end
 end
 
@@ -39,8 +41,13 @@ end
         LA = KernelLeaf(GA)
         LB = KernelLeaf(GB)
         @test evaluate_expression(LA * LB) == mul(GA,GB)
+        @test evaluate_expression(LA * LB) isa RetardedKernel
         @test evaluate_expression(LA + LB) == add(GA,GB)
+        @test evaluate_expression(LA + LB) isa RetardedKernel
         @test evaluate_expression(LA \ LB) == ldiv(GA,GB)
+        @test evaluate_expression(LA \ LB) isa RetardedKernel
+        @test evaluate_expression(-LB) isa RetardedKernel
+
     end
 end
 
@@ -62,4 +69,27 @@ end
             @test local_part(G + Gδ) == Lδ
             @test nonlocal_part(Lδ + L) == L
         end
+end
+
+@testitem"solve_dyson" begin
+    using LinearAlgebra
+    for T in [Float32,Float64,ComplexF32,ComplexF64]
+        g(x) = T(sin(9*x))
+        g(x,y) = g(x-y)
+        k(x) = T(-cos(9*x))
+        k(x,y) = k(x-y)
+        sol_ana(x) = T((18*exp(-x/2)*sin(sqrt(323)*x/2))/sqrt(323)*(x>=0 ? 1. : 0.))
+        sol_ana(x,y) = sol_ana(x-y)
+        t0,t1 = 0,10
+        ax = LinRange(t0,t1,2^10)
+        atol = 1E-5
+        rtol = 1E-5
+        kest = 20
+        compression = HssCompression(atol = atol, rtol = rtol, kest = kest)
+        G0 = RetardedKernel(ax,g, compression = compression)
+        K = RetardedKernel(ax,k, compression = compression)
+        G = solve_dyson(G0,K) |> evaluate_expression
+        G_ana = RetardedKernel(ax,sol_ana,compression = compression)
+        @test norm(matrix(G-G_ana))/norm(G_ana |> matrix) < 1E-4
     end
+end
