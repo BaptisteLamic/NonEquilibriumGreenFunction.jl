@@ -1,5 +1,6 @@
 abstract type AbstractKernel end
 abstract type RegularKernel <: AbstractKernel end
+
 struct KernelData{A,M,C}
     axis::A
     matrix::M
@@ -29,6 +30,8 @@ function TimeLocalKernel(axis, u::UniformScaling, blocksize::Int, compression)
     matrix = sparse(u, N, N) .|> eltype(u) |> compression
     TimeLocalKernel(axis, matrix, blocksize, compression)
 end
+TimeLocalKernel(axis, u::Number, blocksize::Int, compression) = TimeLocalKernel(axis, u*I, blocksize::Int, compression)
+
 function (::Type{K})(axis, matrix, blocksize, compression) where {K<:AbstractKernel}
     return K(KernelData(axis, matrix, blocksize, compression))
 end
@@ -68,7 +71,6 @@ function similar(A::K, matrix::AbstractArray) where K <: AbstractKernel
     cpr = compression(A)
     return K(axis(A), cpr(matrix), blocksize(A), cpr)
 end
-
 ## Define getter 
 blocksize(g::AbstractKernel) = blocksize(g.data)
 axis(g::AbstractKernel) = axis(g.data)
@@ -104,10 +106,14 @@ islocal(::TimeLocalKernel) = true
 step(k::AbstractKernel) = scalartype(k)(step(axis(k)))
 
 ##Algebra
+-(k::AbstractKernel) = -1*k
 mul(λ::Number, kernel::AbstractKernel) = similar(kernel,λ*matrix(kernel))
 mul(scaling::UniformScaling, kernel::AbstractKernel) = mul(scaling.λ, kernel)
 ldiv(λ::Number, kernel::AbstractKernel) = similar(kernel, λ\matrix(kernel))
 ldiv(scaling::UniformScaling, kernel::AbstractKernel) = ldiv(scaling.λ, kernel)
+function +(left::K,right::K) where K <: AbstractKernel
+    add(left,right)
+end
 function add(left::K,right::K) where K <: AbstractKernel
     @assert iscompatible(left,right)
     similar(left, matrix(left)+matrix(right))
@@ -116,7 +122,7 @@ end
 adjoint(g::Kernel) = similar(g, _adapt(matrix(g)'))
 adjoint(g::RetardedKernel) = AdvancedKernel(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
 adjoint(g::AdvancedKernel) = RetardedKernel(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
-adjoint(g::TimeLocalKernel) = K(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
+adjoint(g::TimeLocalKernel) = TimeLocalKernel(axis(g), _adapt(matrix(g)'), blocksize(g), compression(g))
 
 function compress!(kernel::AbstractKernel)
     compression(kernel)(matrix(kernel))

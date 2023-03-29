@@ -72,9 +72,11 @@ function pauli(k::Int)
         return @SMatrix[1 0; 0 1]
     end
 end
+#=
 function RAK_rotation()
     (1 .- 1im*pauli(2))/sqrt(2)
 end
 function pauliRAK(k)
     RAK_rotation()*pauli(k)*RAK_rotation()'
 end
+=#

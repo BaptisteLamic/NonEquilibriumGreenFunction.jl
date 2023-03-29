@@ -37,7 +37,7 @@ include("expressionTrees.jl")
 include("kernel_products.jl")
 include("kernel_solve.jl")
 include("physics.jl")
-include("RAKMatrices.jl")
+#include("RAKMatrices.jl")
 
 export axis, retarded, advanced, regular, dirac, blocksize
 export getindex
@@ -49,21 +49,22 @@ export BlockCirculantMatrix
 export NONCompression, HssCompression
 export solve_dyson
 export energy2time
-export cc_prod, extract_blockdiag, blockdiag
-export pauli, pauliRAK
-export RAKMatrix
+export extract_blockdiag, blockdiag
+export pauli
+#export pauli, pauliRAK
+#export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
 export compress!
 export scalartype
 export getindex!
-export tr_K
+#export tr_K
 
 export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf, NullLeaf, ScalarLeaf
 export KernelMul, KernelAdd,  KernelLDiv, KernelRDiv
 export arguments, istree
 export evaluate_expression
-export local_part, nonlocal_part
+export local_part, nonlocal_part, operation 
 
 end

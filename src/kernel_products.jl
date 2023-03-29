@@ -1,8 +1,14 @@
 ### Products
+function (*)(left::Union{AbstractKernel,Number}, right::Union{AbstractKernel,Number}) 
+    return  mul(convert(KernelExpression, left), convert(KernelExpression, right))
+end
 function mul(gl::AbstractKernel,gr::AbstractKernel)
     @assert iscompatible(gl,gr)
     return _mul(gl,gr) 
 end
+mul(a::Number,g::Kernel) = similar(g,a*matrix(g))
+mul(g::Kernel,a::Number) = similar(g,matrix(g)*a)
+
 _mul(gl::TimeLocalKernel,gr::AbstractKernel) = similar(gr,matrix(gl)*matrix(gr))
 _mul(gl::AbstractKernel,gr::TimeLocalKernel) = similar(gl,matrix(gl)*matrix(gr))
 _mul(gl::TimeLocalKernel,gr::TimeLocalKernel) = similar(gr,matrix(gl)*matrix(gr))

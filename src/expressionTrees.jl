@@ -16,6 +16,9 @@ struct KernelLDiv <: BinaryOperation
     left::KernelExpression
     right::KernelExpression
 end
+struct KernelAdjoint <: UnaryOperation 
+    expr::KernelExpression
+end
 struct LocalPart <: UnaryOperation
     expr::KernelExpression
 end
@@ -27,15 +30,23 @@ struct NullLeaf <: KernelExpressionLeaf end
 struct KernelLeaf{T<:AbstractKernel} <: KernelExpressionLeaf
     kernel::T
 end
+kernel(k::KernelLeaf) = k.kernel
+axis(k::KernelLeaf) = k |> kernel |> axis
+blocksize(k::KernelLeaf) = k |> kernel |> blocksize
+compression(k::KernelLeaf) = k |> kernel |> compression
+scalartype(k::KernelLeaf) = k |> kernel |> scalartype 
+
 struct ScalarLeaf{T<:UniformScaling} <: KernelExpressionLeaf
     scaling::T
 end
 ScalarLeaf(a::Number) = ScalarLeaf(a * I)
+scaling(a::ScalarLeaf) = a.scaling
+scalar(a::ScalarLeaf) = scaling(a).λ
 
 const ExpressionLike = Union{AbstractKernel,KernelExpression,UniformScaling}
 
 convert(::Type{T}, kernel::K) where {T<:KernelExpression,K<:AbstractKernel} = KernelLeaf(kernel)
-convert(::Type{T}, scalar::K) where {T<:KernelExpression,K<:Number} = ScalarLeaf(scalar * I)
+convert(::Type{T}, scalar::K) where {T<:KernelExpression,K<:Number} = ScalarLeaf(scalar)
 convert(::Type{T}, λI::UniformScaling) where {T<:KernelExpression} = ScalarLeaf(λI)
 
 istree(::KernelExpression) = false
@@ -47,42 +58,61 @@ right(expr::BinaryOperation) = expr.right
 arguments(expr::BinaryOperation) = SA[expr|>left, expr|>right]
 arguments(expr::UnaryOperation) = SA[expr.expr]
 
-
 islocal(expr::KernelLeaf) = expr.kernel |> islocal
 islocal(::ScalarLeaf) = true
 islocal(::NullLeaf) = true
 
-*(lambda::Number, kernel::AbstractKernel) = KernelMul(lambda, kernel)
-*(lambda::Number, kernel::KernelExpression) = KernelMul(lambda, kernel)
+*(lambda::Number, expr::KernelExpression) = ScalarLeaf(lambda)*expr
 -(kernel::KernelExpression) = -1 * kernel
--(kernel::AbstractKernel) = -KernelLeaf(kernel)
 
 *(left::ExpressionLike, right::ExpressionLike) = mul(convert(KernelExpression, left), convert(KernelExpression, right))
 function mul(left::KernelExpression, right::KernelExpression)
-    simplify_NullLeaf(::NullLeaf, ::NullLeaf) = NullLeaf()
-    simplify_NullLeaf(::KernelExpression, ::NullLeaf) = NullLeaf()
-    simplify_NullLeaf(::NullLeaf, ::KernelExpression) = NullLeaf()
-    simplify_NullLeaf(left::KernelExpression, right::KernelExpression) = KernelMul(left, right)
-    return simplify_NullLeaf(left, right)
+    _simplify(::NullLeaf, ::NullLeaf) = NullLeaf()
+    _simplify(::KernelExpression, ::NullLeaf) = NullLeaf()
+    _simplify(::NullLeaf, ::KernelExpression) = NullLeaf()
+    _simplify(left::KernelExpression, right::KernelExpression) = KernelMul(left, right)
+    function _simplify(left::ScalarLeaf, right::KernelLeaf) 
+        KernelLeaf(TimeLocalKernel(
+            axis(right),left |> scalar |> scalartype(right),blocksize(right),compression(right)
+            )*kernel(right))
+    end
+    function _simplify(left::KernelLeaf, right::ScalarLeaf) 
+        KernelLeaf(kernel(left) 
+        * TimeLocalKernel(axis(left),right |> scalar |> scalartype(left),blocksize(left),compression(left))
+        )
+    end
+    return _simplify(left, right)
 end
 \(left::ExpressionLike, right::ExpressionLike) = ldiv(convert(KernelExpression, left), convert(KernelExpression, right))
 function ldiv(left::KernelExpression, right::KernelExpression)
-    simplify_NullLeaf(::NullLeaf, ::KernelExpression) = error("Singular expression")
-    simplify_NullLeaf(::NullLeaf, ::KernelExpression) = error("Singular expression")
-    simplify_NullLeaf(::KernelExpression, ::NullLeaf) = NullLeaf()
-    simplify_NullLeaf(left::KernelExpression, right::KernelExpression) = KernelLDiv(left, right)
-    return simplify_NullLeaf(left, right)
+    _simplify(::NullLeaf, ::KernelExpression) = error("Singular expression")
+    _simplify(::NullLeaf, ::KernelExpression) = error("Singular expression")
+    _simplify(::KernelExpression, ::NullLeaf) = NullLeaf()
+    _simplify(left::KernelExpression, right::KernelExpression) = KernelLDiv(left, right)
+    return _simplify(left, right)
 end
 
 +(left::ExpressionLike, right::ExpressionLike) = add(convert(KernelExpression, left), convert(KernelExpression, right))
 function add(left::KernelExpression, right::KernelExpression)
-    simplify_NullLeaf(::NullLeaf, ::NullLeaf) = NullLeaf()
-    simplify_NullLeaf(left::KernelExpression, ::NullLeaf) = left
-    simplify_NullLeaf(::NullLeaf, right::KernelExpression) = right
-    simplify_NullLeaf(left::KernelExpression, right::KernelExpression) = KernelAdd(left, right)
-    return simplify_NullLeaf(left, right)
+    _simplify(::NullLeaf, ::NullLeaf) = NullLeaf()
+    _simplify(left::KernelExpression, ::NullLeaf) = left
+    _simplify(::NullLeaf, right::KernelExpression) = right
+    function _simplify(left::KernelLeaf{T}, right::KernelLeaf{T}) where T 
+         KernelLeaf( kernel(left) + kernel(right))
+    end
+    _simplify(left::KernelExpression, right::KernelExpression) = KernelAdd(left, right)
+    return _simplify(left, right)
 end
 -(left::ExpressionLike, right::ExpressionLike) = left + (-1 * right)
+
+adjoint(expr::ExpressionLike) = adjoint(convert(KernelExpression, expr))
+function adjoint(expr::KernelExpression)
+    _simplify(::NullLeaf) = NullLeaf()
+    _simplify(expr::KernelLeaf) = KernelLeaf(adjoint(expr.kernel))
+    _simplify(expr::ScalarLeaf) = ScalarLeaf(adjoint(expr.scaling))
+    _simplify(expr::KernelExpression) = KernelAdjoint(expr)
+    return _simplify(expr)
+end 
 
 local_part(expr::ExpressionLike) = expression_local_part(convert(KernelExpression, expr))
 function expression_local_part(expr::KernelExpression)
@@ -121,6 +151,7 @@ function expression_nonlocal_part(expr::KernelExpression)
     return _simplify(expr)
 end
 
+#=
 #The default implementation return an non-evaluated expression. 
 function add(left::ExpressionLike, right::ExpressionLike)
     add(convert(KernelExpression, left), convert(KernelExpression, right))
@@ -130,7 +161,7 @@ function mul(left::ExpressionLike, right::ExpressionLike)
 end
 function ldiv(left::ExpressionLike, right::ExpressionLike)
     ldiv(convert(KernelExpression, left), convert(KernelExpression, right))
-end
+end=#
 function ldiv(A::KernelAdd, B::KernelLeaf{G}) where {G<:RetardedKernel}
     Aδ = evaluate_expression(local_part(A))
     Ar = evaluate_expression(nonlocal_part(A))
@@ -163,8 +194,15 @@ function operation(::KernelLDiv)
         return ldiv(tab[1], tab[2])
     end
 end
+function operation(::KernelAdjoint)
+    return function (tab)
+        @assert length(tab) == 1
+        return adjoint(tab[1])
+    end
+end
 
 #evaluate_expression(expr::KernelExpression) = expr
+evaluate_expression(expr::AbstractKernel) = expr
 evaluate_expression(expr::KernelLeaf) = expr.kernel
 evaluate_expression(expr::ScalarLeaf) = expr.scaling
 function evaluate_expression(expr::KernelExpressionTree)
@@ -180,3 +218,8 @@ function matrix(expr)
         return error("The expression cannot be converted to matrix")
     end
 end
+
+compress!(expr::K) where K<:KernelExpression = K(compress!.(arguments(expr))...)
+compress!(expr::KernelLeaf) = KernelLeaf(compress!(expr.kernel))
+compress!(expr::KernelExpressionLeaf) = expr
+compress!(expr::KernelExpression) = expr

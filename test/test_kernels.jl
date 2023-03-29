@@ -1,3 +1,20 @@
+
+@testitem "kernel manipulation" begin
+    using LinearAlgebra
+    for T = [Float64,ComplexF64]
+        bs = 2
+        N = 128
+        Dt = 2.
+        ax = LinRange(-Dt/2,Dt,N)
+        for K in (RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel)
+            A = randn(T,bs*N,bs*N)
+            GA = K(ax,A,bs,NONCompression())
+            @assert adjoint(matrix(GA)) == matrix(adjoint(GA))
+            matrix(2*GA) == 2*matrix(GA)
+        end
+    end
+end
+
 @testset "$T kernels.jl" for T = [Float64,ComplexF64]
     # "safety" factor
     c = 100
