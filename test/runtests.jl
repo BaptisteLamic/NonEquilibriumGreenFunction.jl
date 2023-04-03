@@ -7,16 +7,12 @@ using StaticArrays
 using LsqFit
 using TestItemRunner
 
-#run in files test
+#run all tests defined using @testitem
 @run_package_tests
-include("test_kernel_solve.jl")
 
+#run the other tests.
 include("test_physics.jl")
 include("test_BlockCirculantMatrix.jl")
-include("test_kernels.jl")
-
-
-
 @testset "utils.jl" for T = [Float32,Float64,ComplexF32,ComplexF64]
     T = Float32
     m = randn(T,12,12)

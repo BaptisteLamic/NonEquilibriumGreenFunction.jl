@@ -26,45 +26,42 @@ import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
-import HssMatrices: compress!
+#import HssMatrices: compress!
 import Base: convert
 
 include("circulant_matrix.jl")
 include("compression.jl")
 include("utils.jl")
-include("kernels.jl")
-include("expressionTrees.jl")
-include("kernel_products.jl")
-include("kernel_solve.jl")
+include("Kernels/kernels.jl")
 include("physics.jl")
-#include("RAKMatrices.jl")
 
-export axis, retarded, advanced, regular, dirac, blocksize
+export axis, blocksize
 export getindex
-export build_greenfunction, build_linearMap,blockrange,blockindex, col, row, build_CirculantlinearMap
+export build_linearMap,blockrange,blockindex, build_CirculantlinearMap
 
-export AbstractKernel, RetardedKernel, AdvancedKernel, Kernel, TimeLocalKernel
-export isretarded, isadvanced, timelocal_part, nonlocal_part, mul, add, ldiv
+#new export 
+export TrapzDiscretisation, AbstractDiscretisation
+export Retarded, Advanced, Acausal
+export isretarded, isadvanced, isacausal
+export discretization
+export Kernel
+export RetardedKernel, AdvancedKernel, AcausalKernel
+export discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel
+export causality
+export dirac
+export solve_dyson
+
 export BlockCirculantMatrix
 export NONCompression, HssCompression
-export solve_dyson
 export energy2time
 export extract_blockdiag, blockdiag
 export pauli
-#export pauli, pauliRAK
-#export RAKMatrix
 export matrix
 export energy2RetardedKernel
 export compression
 export compress!
 export scalartype
 export getindex!
-#export tr_K
 
-export KernelExpression, KernelExpressionLeaf, KernelExpressionTree, KernelLeaf, NullLeaf, ScalarLeaf
-export KernelMul, KernelAdd,  KernelLDiv, KernelRDiv
-export arguments, istree
-export evaluate_expression
-export local_part, nonlocal_part, operation 
 
 end
