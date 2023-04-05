@@ -21,12 +21,10 @@ import Base: sum
 import Base: ==
 import Base: getindex, step
 import Base: similar, zero
-import HssMatrices: compress!
 import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
-#import HssMatrices: compress!
 import Base: convert
 
 include("circulant_matrix.jl")
@@ -48,7 +46,7 @@ export Kernel
 export RetardedKernel, AdvancedKernel, AcausalKernel
 export discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel
 export causality
-export dirac
+export dirac, dirac_kernel
 export solve_dyson
 
 export BlockCirculantMatrix

@@ -41,6 +41,7 @@ getindex(A::AbstractDiscretisation, ::Colon, ::Colon) = getindex(A, 1:size(A, 1)
 getindex(A::AbstractDiscretisation, i, ::Colon) = getindex(A, i, 1:size(A, 2))
 getindex(A::AbstractDiscretisation, i::Int, ::Colon) = getindex(A, [i], 1:size(A, 2))
 getindex(A::AbstractDiscretisation, ::Colon, j) = reshape(getindex(A, 1:size(A, 1), j), :)
+getindex(A::AbstractDiscretisation, ::Colon, j::Int) = reshape(getindex(A, 1:size(A, 1), j), :)
 function getindex(A::AbstractDiscretisation, I, J)
     Ip = sortperm(I)
     Jp = sortperm(J)
@@ -65,14 +66,6 @@ struct Retarded <: AbstractCausality end
 struct Acausal <: AbstractCausality end
 struct Advanced <: AbstractCausality end
 
-
-function dirac(::Acausal, dscrt::TrapzDiscretisation)
-    N = (dscrt |> axis |> length)*blocksize(dscrt)
-    cpr = compression(dscrt)
-    T = scalartype(dscrt)
-    similar(dscrt, cpr( sparse(T(1/step(dscrt))*I, N, N)  )  )
-end
-
 struct Kernel{D<:AbstractDiscretisation, C<:AbstractCausality}
     discretization::D
     causality::C
@@ -91,10 +84,38 @@ isretarded(g::Kernel) = causality(g) == Retarded()
 isadvanced(g::Kernel) = causality(g) == Advanced()
 isacausal(g::Kernel) = causality(g) == Acausal()
 
-dirac(kernel::Kernel) = Kernel( 
-    dirac( kernel |> causality, kernel |> discretization ),
-    kernel |> causality 
+
+function dirac_kernel(::Type{D},::C,axis, f;
+     compression::AbstractCompression=HssCompression()) where {D<:TrapzDiscretisation, C<:AbstractCausality}
+    f00 = f(axis[1])
+    T = eltype(f00)
+    bs = size(f00,1)
+    δ = zeros(T, bs, bs, length(axis))
+    for i = 1:length(axis)
+        δ[:, :, i] .= f(axis[i])
+    end
+    if C <: Union{Retarded,Advanced}
+        δ .*= 2/step(axis)
+    else
+        @assert C == Acausal
+        δ .*= 1/step(axis)
+    end 
+    matrix = blockdiag(δ,compression = compression)
+    return Kernel(
+        TrapzDiscretisation(
+            axis,
+            matrix,
+            bs,
+            compression
+        ), C()
     )
+end
+
+function dirac(kernel::Kernel{D,C}) where {D,C}
+    bs = blocksize(kernel)
+    T = scalartype(kernel)
+    return dirac_kernel(D,C(),axis(kernel), (t) -> Matrix(T(1)*I,bs,bs), compression = compression(kernel))
+end
 
 function similar(g::Kernel, new_matrix )
     return Kernel(similar( g |> discretization, new_matrix), g |> causality)

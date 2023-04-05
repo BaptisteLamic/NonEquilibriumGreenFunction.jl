@@ -58,7 +58,10 @@ causality_of_prod(::Advanced, ::Advanced) = Advanced()
 causality_of_prod(::Retarded, ::Acausal) = Acausal()
 causality_of_prod(::Acausal, ::Advanced) = Acausal()
 causality_of_prod(::Acausal, ::Acausal) = Acausal()
-_dressing(g::TrapzDiscretisation, d) = return matrix(g) - eltype(d)(0.5) * d
+
+function _dressing(g::TrapzDiscretisation, d)
+     return matrix(g) - eltype(d)(0.5) * d
+end
 function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
     dl = extract_blockdiag(matrix(gl), bs, compression=compression(gl))
@@ -69,26 +72,23 @@ function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation)
 end
 function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::AbstractDiscretisation) where {C<:Union{Retarded,Advanced}}
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
-    result = biased_result - dl*dr/4
-    result *= step(left)
+    result = biased_result - (1/4)*dl*dr
+    result = step(left)*result
     return similar(left, result)
 end
 function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dr = extract_blockdiag(matrix(right), blocksize(right), compression=compression(right))
     weighted_R = _dressing(right, dr)
-    result = matrix(left) * weighted_R
-    result *= step(left)
+    result = step(left)*matrix(left) * weighted_R
     return similar(left, result)
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dl = extract_blockdiag(matrix(left), blocksize(left), compression=compression(left))
     weighted_L = _dressing(left, dl)
-    result = weighted_L * matrix(right)
-    result *= step(left)
+    result = step(left)*weighted_L * matrix(right)
     return similar(left, result)
 end
 function prod(::Acausal, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    result = matrix(left) * matrix(right)
-    result *= step(left)
+    result = step(left)*matrix(left) * matrix(right)
     return similar(left, result)
 end

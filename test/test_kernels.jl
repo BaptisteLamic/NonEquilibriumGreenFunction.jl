@@ -59,6 +59,26 @@ end
         end
     end
 end
+@testitem "Kernel discretization scalar kernel" begin
+    using LinearAlgebra
+    for T = [Float64, ComplexF64]
+        bs, N, Dt = 2, 256, 2.0
+        tol = 100 * max(1E-6, eps(real(T)))
+        ax = LinRange(-Dt / 2, Dt, N)
+        foo(x, y) = T <: Complex ? T.(1im .* x + y) : T.(x + y)
+        foo_st(x) = T <: Complex ? T.(1im * x) : T.(x)
+        foo_st(x, y) = foo_st(x - y)
+        for cpr in (NONCompression(), HssCompression())
+            for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
+                GA = Kernel(ax, foo_st, compression=cpr, stationary=true)
+                compress!(GA)
+                GB = Kernel(ax, foo_st, compression=cpr, stationary=false)
+                compress!(GB)
+                @test matrix(GA) - matrix(GB) |> norm < tol
+            end
+        end
+    end
+end
 
 @testitem "Kernel discretization causality" begin
     using LinearAlgebra
@@ -120,7 +140,6 @@ end
                 @test GA * 2I isa Kernel
                 @test matrix(GA * 2I) == 2I * matrix(GA)
                 @test causality(GA * 2I) == causality(GA)
-
                 @test matrix(-GA) == -matrix(GA)
                 @test -GA isa Kernel
             end
@@ -154,59 +173,60 @@ end
             return step * sum([_trapz(k_sup, k, k_inf) * f[p, k] * g[k, q] for k = k_inf:k_sup])
         end
     end
-
-    for T = [Float64, ComplexF64]
-        c = 100
-        tol = c * max(1E-6, eps(real(T)))
-        foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
-        foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
-        gooL(x, y) = exp(-((x - x0)^2 + y^2) / sigma0^2) .* foo(x, y)
-        gooR(x, y) = exp(-((x + x0)^2 + y^2) / sigma0^2) .* foo(x, y)
-        for (Left, Right) in zip(
-            (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_retardedkernel, discretize_acausalkernel),
-            (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_acausalkernel, discretize_advancedkernel)
-        )
-            GL = Left(ax, gooL, compression=NONCompression())
-            GR = Right(ax, gooR, compression=NONCompression())
-            discretization_GL = discretization(GL)
-            discretization_GR = discretization(GR)
-            causality_left = causality(GL)
-            causality_right = causality(GR)
-            prod = GL * GR
-            prod_discretization = discretization(prod)
-            bs = blocksize(GL)
-            integral = zeros(T, N * bs, N * bs)
-            for p in 1:length(ax)
-                for q in 1:length(ax)
-                    k_inf = 1
-                    k_sup = length(ax)
-                    #compute the integral boundary
-                    isretarded(GR) && (k_inf = max(k_inf, q))
-                    isadvanced(GR) && (k_sup = min(k_sup, q))
-                    isretarded(GL) && (k_sup = min(k_sup, p))
-                    isadvanced(GL) && (k_inf = max(k_inf, p))
-                    integral[blockrange(p, bs), blockrange(q, bs)] = _integrate(
-                        discretization_GL,
-                        discretization_GR,
-                        p, q, k_sup, k_inf, step(axis(GR))
-                    )
+    for cpr in (HssCompression(), NONCompression())
+        for T = [Float64, ComplexF64]
+            c = 100
+            tol = c * max(1E-6, eps(real(T)))
+            foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
+            foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
+            gooL(x, y) = exp(-((x - x0)^2 + y^2) / sigma0^2) .* foo(x, y)
+            gooR(x, y) = exp(-((x + x0)^2 + y^2) / sigma0^2) .* foo(x, y)
+            for (Left, Right) in zip(
+                (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_retardedkernel, discretize_acausalkernel),
+                (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_acausalkernel, discretize_advancedkernel)
+            )
+                GL = Left(ax, gooL, compression=NONCompression())
+                GR = Right(ax, gooR, compression=NONCompression())
+                discretization_GL = discretization(GL)
+                discretization_GR = discretization(GR)
+                causality_left = causality(GL)
+                causality_right = causality(GR)
+                prod = GL * GR
+                prod_discretization = discretization(prod)
+                bs = blocksize(GL)
+                integral = zeros(T, N * bs, N * bs)
+                for p in 1:length(ax)
+                    for q in 1:length(ax)
+                        k_inf = 1
+                        k_sup = length(ax)
+                        #compute the integral boundary
+                        isretarded(GR) && (k_inf = max(k_inf, q))
+                        isadvanced(GR) && (k_sup = min(k_sup, q))
+                        isretarded(GL) && (k_sup = min(k_sup, p))
+                        isadvanced(GL) && (k_inf = max(k_inf, p))
+                        integral[blockrange(p, bs), blockrange(q, bs)] = _integrate(
+                            discretization_GL,
+                            discretization_GR,
+                            p, q, k_sup, k_inf, step(axis(GR))
+                        )
+                    end
                 end
+                if causality(GL) == causality(GR) == Retarded()
+                    @test causality(prod) == Retarded()
+                elseif causality(GL) == causality(GR) == Advanced()
+                    @test causality(prod) == Advanced()
+                else
+                    @test causality(prod) == Acausal()
+                end
+                @test norm(integral - matrix(prod)) / norm(integral) < tol
             end
-            if causality(GL) == causality(GR) == Retarded()
-                @test causality(prod) == Retarded()
-            elseif causality(GL) == causality(GR) == Advanced()
-                @test causality(prod) == Advanced()
-            else
-                @test causality(prod) == Acausal()
-            end
-            @test norm(integral - matrix(prod)) / norm(integral) < tol
         end
     end
 end
 
-@testitem "dirac product" begin
+@testitem "acausal dirac product" begin
     using LinearAlgebra
-    N, Dt = 2, 2.0
+    N, Dt = 128, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     for T in (Float64, ComplexF64)
         c = 100
@@ -214,14 +234,31 @@ end
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
         kernel = discretize_acausalkernel(ax, foo, compression=NONCompression())
         bs = blocksize(kernel)
-        δ = zeros(T, bs, bs, length(ax))
-        for i = 1:length(ax)
-            δ[:, :, i] .= foo(ax[i], ax[i])
-        end
         δ = dirac(kernel)
         @test norm(matrix(δ * kernel - kernel)) / norm(matrix(δ)) < tol
     end
 end
+
+@testitem "causal dirac product" begin
+    using LinearAlgebra
+    N, Dt = 512, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
+    foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
+    gooL(x, y) = exp(-((x - x0)^2 + y^2) / sigma0^2) .* foo(x, y)
+    for T in (Float64, ComplexF64)
+        for constructor in (discretize_acausalkernel, discretize_retardedkernel)
+            c = 10
+            tol = c * max(1E-3, eps(real(T)))
+            foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
+            kernel = constructor(ax, foo, compression=NONCompression())
+            bs = blocksize(kernel)
+            δ = dirac(kernel)
+            @test norm(matrix(δ * kernel - kernel)) / norm(matrix(δ)) < tol
+        end
+    end
+end
+
 
 @testitem "solving dyson equation" begin
     using LinearAlgebra
