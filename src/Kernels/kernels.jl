@@ -85,8 +85,8 @@ isadvanced(g::Kernel) = causality(g) == Advanced()
 isacausal(g::Kernel) = causality(g) == Acausal()
 
 
-function dirac_kernel(::Type{D},::C,axis, f;
-     compression::AbstractCompression=HssCompression()) where {D<:TrapzDiscretisation, C<:AbstractCausality}
+function dirac_kernel(::C,axis, f;
+     compression::AbstractCompression=HssCompression()) where {C<:AbstractCausality}
     f00 = f(axis[1])
     T = eltype(f00)
     bs = size(f00,1)
@@ -114,9 +114,8 @@ end
 function dirac(kernel::Kernel{D,C}) where {D,C}
     bs = blocksize(kernel)
     T = scalartype(kernel)
-    return dirac_kernel(D,C(),axis(kernel), (t) -> Matrix(T(1)*I,bs,bs), compression = compression(kernel))
+    return dirac_kernel(C(),axis(kernel), (t) -> Matrix(T(1)*I,bs,bs), compression = compression(kernel))
 end
-
 function similar(g::Kernel, new_matrix )
     return Kernel(similar( g |> discretization, new_matrix), g |> causality)
 end
@@ -134,6 +133,7 @@ function discretize_kernel(::Type{D},::Type{C},axis, f; compression=HssCompressi
     discretization = D(axis, matrix, bs, compression)
     return Kernel(discretization, causality)
 end
+
 function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDiscretisation, C<:AbstractCausality}
     causality = C()
     discretization = D(axis, matrix, blocksize, compression)
@@ -163,6 +163,16 @@ function discretize_acausalkernel(axis, f; compression=HssCompression(), station
         axis, f;
         compression=compression, stationary=stationary
         )
+end
+function discretize_lowrank_kernel(axis, f,g; compression=HssCompression())
+    f00 = f(axis[1])
+    g00 = g(axis[1])
+    @assert size(f00,1) == size(f00,2)
+    @assert size(f00) == size(g00)
+    bs = size(f00,1)
+    matrix = compression(axis, f, g)
+    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
+    return Kernel(discretization, Acausal())
 end
 function AcausalKernel(axis, matrix, blocksize, compression)
     Kernel{TrapzDiscretisation,Acausal}(axis, matrix, blocksize, compression)

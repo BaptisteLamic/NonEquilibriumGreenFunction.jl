@@ -92,3 +92,13 @@ function prod(::Acausal, ::Acausal, left::AbstractDiscretisation, right::Abstrac
     result = step(left)*matrix(left) * matrix(right)
     return similar(left, result)
 end
+
+function adjoint(dis :: TrapzDiscretisation)
+    similar(dis, dis |> matrix |> adjoint |> _adapt)
+end
+function adjoint(kernel::Kernel)
+    _new_causality(::Retarded) = Advanced()
+    _new_causality(::Advanced) = Retarded()
+    _new_causality(::Acausal) = Acausal()
+    return Kernel(discretization(kernel)', kernel |> causality |> _new_causality )
+end

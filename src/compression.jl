@@ -121,6 +121,21 @@ function (Compression :: HssCompression)(axis,f;stationary = false)
     recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
     return r
 end 
+function (Compression :: HssCompression)(axis, f, g) 
+    f00 = f(axis[1])
+    T, bs = eltype(f00), size(f00,1)
+    u = Array{T}(undef,(bs,bs,length(axis)))
+    v = Array{T}(undef,(bs,bs,length(axis)))
+    for k in 1:length(axis)
+        u[:,:,k] .= f(axis[k])
+        v[:,:,k] .= g(axis[k])
+    end
+    n = length(axis)*bs
+    u = reshape(u,(n, bs) )
+    v = reshape(u,(n, bs) )
+    cc = bisection_cluster(length(axis)*bs,leafsize = Compression.leafsize)
+    return lowrank2hss(u,v,cc,cc)
+end
 function (Compression :: HssCompression)(tab::HssMatrix)
     return recompress!(tab,atol = Compression.atol, rtol = Compression.rtol,  leafsize = Compression.leafsize)
 end
@@ -150,5 +165,8 @@ function (Compression :: NONCompression)(axis, tab::BlockCirculantMatrix)
 end
 function (Compression :: NONCompression)(tab::AbstractMatrix{T}) where T<:Number
     return Matrix(tab)
+end
+function (Compression :: NONCompression)(axis, f, g) 
+    Compression(axis, (t,tp) -> f(t)*g(tp))
 end
 

@@ -45,9 +45,11 @@ export discretization
 export Kernel
 export RetardedKernel, AdvancedKernel, AcausalKernel
 export discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel
+export discretize_lowrank_kernel
 export causality
 export dirac, dirac_kernel
 export solve_dyson
+export adjoint
 
 export BlockCirculantMatrix
 export NONCompression, HssCompression

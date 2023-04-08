@@ -59,6 +59,22 @@ end
         end
     end
 end
+@testitem "Low rank kernel discretization" begin
+    using LinearAlgebra
+    bs, N, Dt = 2, 256, 2.0
+    tol = 1E-12
+    ax = LinRange(-Dt / 2, Dt, N)
+    f(x) = exp(-1im * x)
+    g(x) = exp(1im * x)
+    for cpr in (NONCompression(), HssCompression())
+        GA = discretize_lowrank_kernel(ax, f, g, compression=cpr)
+        compress!(GA)
+        GB = discretize_acausalkernel(ax, (t, tp) -> f(t) * g(tp), compression=cpr)
+        compress!(GB)
+        @test matrix(GA) - matrix(GB) |> norm < tol
+    end
+end
+
 @testitem "Kernel discretization scalar kernel" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
@@ -110,12 +126,9 @@ end
     for T = [Float64, ComplexF64]
         bs, N, Dt = 2, 128, 2.0
         ax = LinRange(-Dt / 2, Dt, N)
-        for (Kernel, Causality) in zip(
-            (RetardedKernel, AdvancedKernel, AcausalKernel),
-            (Retarded, Advanced, Acausal)
-        )
-            GA = Kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
-            GB = Kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
+        for kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+            GA = kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
+            GB = kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
             gsum = GA + GB
             gdiff = GA - GB
             @test matrix(gsum) == matrix(GA) + matrix(GB)
@@ -123,6 +136,22 @@ end
             @test causality(gsum) == NonEquilibriumGreenFunction.causality_of_sum(causality(GA), causality(GB))
             @test causality(gsum) == causality(GA)
             @test causality(gdiff) == causality(GA)
+        end
+    end
+end
+
+@testitem "kernel adjoint" begin
+    using LinearAlgebra
+    for T = [Float64, ComplexF64]
+        for cpr in (HssCompression(), NONCompression())
+            for kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+                bs, N, Dt = 2, 128, 2.0
+                ax = LinRange(-Dt / 2, Dt, N)
+                A = randn(T, bs * N, bs * N)
+                GA = kernel(ax, A, bs, cpr)
+                @test norm(matrix(GA')- A' ) < 1E-10
+                @test norm(matrix(GA')- A')/norm(A) < 1E-10
+            end
         end
     end
 end
