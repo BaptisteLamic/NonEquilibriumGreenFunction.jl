@@ -11,5 +11,5 @@ It solves the non-equilibrium Dyson equation in the time domain with quasi-linea
 ## Example current accros a Metal - Quantum Dot - Metal junction.
 The notebook ![QD](examples/MQDM_junction.ipynb) shows how to compute the Green function of a non-interacting quantum-dot connected to two leads and 
 evaluate its current. 
-![Benchmark_QD_equilibrium](examples/equilibrium_benchmark.svg)
+![Benchmark_QD_equilibrium](examples/QD_benchmark.svg)
 ![QD_Iavr](examples/average_current_QD.svg)
