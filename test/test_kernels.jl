@@ -126,19 +126,25 @@ end
     for T = [Float64, ComplexF64]
         bs, N, Dt = 2, 128, 2.0
         ax = LinRange(-Dt / 2, Dt, N)
-        for kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
-            GA = kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
-            GB = kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
+        for left_kernel in (RetardedKernel, AdvancedKernel, AcausalKernel),
+            right_kernel in  (RetardedKernel, AdvancedKernel, AcausalKernel)
+            GA = left_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
+            GB = right_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
             gsum = GA + GB
             gdiff = GA - GB
             @test matrix(gsum) == matrix(GA) + matrix(GB)
             @test matrix(gdiff) == matrix(GA) - matrix(GB)
-            @test causality(gsum) == NonEquilibriumGreenFunction.causality_of_sum(causality(GA), causality(GB))
-            @test causality(gsum) == causality(GA)
-            @test causality(gdiff) == causality(GA)
+            if left_kernel == right_kernel
+                @test causality(gsum) == causality(GA)
+                @test causality(gdiff) == causality(GA)
+            else
+                @test causality(gsum) == Acausal()
+                @test causality(gdiff) == Acausal()
+            end
         end
     end
 end
+
 
 @testitem "kernel adjoint" begin
     using LinearAlgebra
@@ -149,8 +155,8 @@ end
                 ax = LinRange(-Dt / 2, Dt, N)
                 A = randn(T, bs * N, bs * N)
                 GA = kernel(ax, A, bs, cpr)
-                @test norm(matrix(GA')- A' ) < 1E-10
-                @test norm(matrix(GA')- A')/norm(A) < 1E-10
+                @test norm(matrix(GA') - A') < 1E-10
+                @test norm(matrix(GA') - A') / norm(A) < 1E-10
             end
         end
     end

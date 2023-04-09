@@ -1,10 +1,12 @@
 using SymbolicUtils: Symbolic, BasicSymbolic
 import SymbolicUtils: similarterm
+import Base: zero
 
 
 function similarterm(x::Symbolic{Kernel}, head, args; metadata = nothing)
     similarterm(x, head, args, Kernel ; metadata = metadata)
 end
+zero(::Type{SymbolicUtils.BasicSymbolic{Kernel}}) = 0
 
 function *(left::Symbolic{Kernel}, right::Symbolic{Kernel})
     similarterm(left, *, [left, right], Kernel)

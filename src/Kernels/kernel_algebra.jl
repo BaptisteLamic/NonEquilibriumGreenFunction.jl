@@ -2,8 +2,10 @@ function +(left::Kernel, right::Kernel)
     Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality))
 end
 function causality_of_sum(left::C, right::C) where {C<:AbstractCausality}
-    @assert left == right
     return left
+end
+function causality_of_sum(left::AbstractCausality, right::AbstractCausality)
+    return Acausal()
 end
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
     similar(left, matrix(left) + matrix(right))
