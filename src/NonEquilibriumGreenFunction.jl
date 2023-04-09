@@ -15,6 +15,8 @@ using FFTW
 using StaticArrays
 using DSP
 using TestItems
+using Symbolics
+using SymbolicUtils
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
@@ -50,6 +52,7 @@ export causality
 export dirac, dirac_kernel
 export solve_dyson
 export adjoint
+export simplify_kernel
 
 export BlockCirculantMatrix
 export NONCompression, HssCompression

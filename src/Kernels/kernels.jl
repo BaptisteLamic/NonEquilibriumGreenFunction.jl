@@ -65,7 +65,6 @@ abstract type AbstractCausality end
 struct Retarded <: AbstractCausality end
 struct Acausal <: AbstractCausality end
 struct Advanced <: AbstractCausality end
-
 struct Kernel{D<:AbstractDiscretisation, C<:AbstractCausality}
     discretization::D
     causality::C
@@ -191,4 +190,5 @@ end
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")
+include("symbolics_extension.jl")
 
