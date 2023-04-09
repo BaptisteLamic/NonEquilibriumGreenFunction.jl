@@ -3,7 +3,6 @@ import SymbolicUtils: similarterm
 
 
 function similarterm(x::Symbolic{Kernel}, head, args; metadata = nothing)
-    "yolo" |> println
     similarterm(x, head, args, Kernel ; metadata = metadata)
 end
 
