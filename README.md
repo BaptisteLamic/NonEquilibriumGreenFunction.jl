@@ -1,6 +1,9 @@
 
 # NonEquilibriumGreenFunction
 [![Build status (Github Actions)](https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl/workflows/CI/badge.svg)](https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl/actions)
+[![DOI](https://zenodo.org/badge/623330633.svg)](https://zenodo.org/badge/latestdoi/623330633)
+
+
 
 > :warning: **Package under heavy development/refactoring**
 
