@@ -9,34 +9,34 @@ end
 zero(::Type{SymbolicUtils.BasicSymbolic{Kernel}}) = 0
 
 function *(left::Symbolic{Kernel}, right::Symbolic{Kernel})
-    similarterm(left, *, [left, right], Kernel)
+    similarterm(left, *, [left, right],)
 end
 function *(left::Number, right::Symbolic{Kernel})
-    similarterm(right, *, [left, right], Kernel)
+    similarterm(right, *, [left, right], )
 end
 function *(left::Symbolic{Kernel}, right::Number)
-    similarterm(left, *, [left, right], Kernel)
+    similarterm(left, *, [left, right], )
 end
 function +(left::Symbolic{Kernel}, right::Symbolic{Kernel})
-    similarterm(left, +, [left, right], Kernel)
+    similarterm(left, +, [left, right], )
 end
 function +(left::Symbolic{Kernel}, right::Number)
-    similarterm(left, +, [left, right], Kernel)
+    similarterm(left, +, [left, right], )
 end
 function +(left::Number, right::Symbolic{Kernel})
-    similarterm(right, +, [left, right], Kernel)
+    similarterm(right, +, [left, right], )
 end
 function -(term::Symbolic{Kernel})
-    similarterm(term, -, [term], Kernel)
+    similarterm(term, -, [term], )
 end
 function -(left::Symbolic{Kernel}, right::Symbolic{Kernel})
-    similarterm(left, -, [left, right], Kernel)
+    similarterm(left, -, [left, right], )
 end
 function -(left::Symbolic{Kernel}, right::Number)
-    similarterm(left, -, [left, right], Kernel)
+    similarterm(left, -, [left, right], )
 end
 function -(left::Number, right::Symbolic{Kernel})
-    similarterm(right, -, [left, right], Kernel)
+    similarterm(right, -, [left, right], )
 end
 adjoint(kernel::Symbolic{Kernel}) = similarterm(kernel, adjoint, [kernel], Kernel)
 
