@@ -32,6 +32,8 @@ import Base: convert
 include("circulant_matrix.jl")
 include("compression.jl")
 include("utils.jl")
+include("discretizations.jl")
+include("operators.jl")
 include("Kernels/kernels.jl")
 include("physics.jl")
 
@@ -41,15 +43,17 @@ export build_linearMap,blockrange,blockindex, build_CirculantlinearMap
 
 #new export 
 export TrapzDiscretisation, AbstractDiscretisation
-export Retarded, Advanced, Acausal
+export Retarded, Advanced, Acausal, Instantaneous
 export isretarded, isadvanced, isacausal
 export discretization
+export SimpleOperator, CompositeOperator
+export DiracOperator, discretize_dirac
+export SumOperator
 export Kernel
 export RetardedKernel, AdvancedKernel, AcausalKernel
 export discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel
 export discretize_lowrank_kernel
 export causality
-export dirac, dirac_kernel
 export solve_dyson
 export adjoint
 export simplify_kernel

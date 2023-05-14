@@ -42,7 +42,7 @@ end
 @testitem "Kernel discretization" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
-        bs, N, Dt = 2, 256, 2.0
+        bs, N, Dt = 2, 128, 2.0
         tol = 100 * max(1E-6, eps(real(T)))
         ax = LinRange(-Dt / 2, Dt, N)
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
@@ -61,7 +61,7 @@ end
 end
 @testitem "Low rank kernel discretization" begin
     using LinearAlgebra
-    bs, N, Dt = 2, 256, 2.0
+    bs, N, Dt = 2, 128, 2.0
     tol = 1E-12
     ax = LinRange(-Dt / 2, Dt, N)
     f(x) = exp(-1im * x)
@@ -255,41 +255,6 @@ end
                 end
                 @test norm(integral - matrix(prod)) / norm(integral) < tol
             end
-        end
-    end
-end
-
-@testitem "acausal dirac product" begin
-    using LinearAlgebra
-    N, Dt = 128, 2.0
-    ax = LinRange(-Dt / 2, Dt, N)
-    for T in (Float64, ComplexF64)
-        c = 100
-        tol = c * max(1E-6, eps(real(T)))
-        foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
-        kernel = discretize_acausalkernel(ax, foo, compression=NONCompression())
-        bs = blocksize(kernel)
-        δ = dirac(kernel)
-        @test norm(matrix(δ * kernel - kernel)) / norm(matrix(δ)) < tol
-    end
-end
-
-@testitem "causal dirac product" begin
-    using LinearAlgebra
-    N, Dt = 512, 2.0
-    ax = LinRange(-Dt / 2, Dt, N)
-    foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
-    foo(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
-    gooL(x, y) = exp(-((x - x0)^2 + y^2) / sigma0^2) .* foo(x, y)
-    for T in (Float64, ComplexF64)
-        for constructor in (discretize_acausalkernel, discretize_retardedkernel)
-            c = 10
-            tol = c * max(1E-3, eps(real(T)))
-            foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
-            kernel = constructor(ax, foo, compression=NONCompression())
-            bs = blocksize(kernel)
-            δ = dirac(kernel)
-            @test norm(matrix(δ * kernel - kernel)) / norm(matrix(δ)) < tol
         end
     end
 end

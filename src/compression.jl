@@ -117,8 +117,8 @@ function (Compression :: HssCompression)(axis,f;stationary = false)
     lm = stationary ? build_CirculantlinearMap(axis,f) : build_linearMap(axis, f)
     bs  = size(f(axis[1],axis[1]),1)
     cc = bisection_cluster(length(axis)*bs,leafsize = Compression.leafsize)
-    r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
-    recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
+    r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest,leafsize = Compression.leafsize)
+    recompress!(r,atol = Compression.atol, rtol = Compression.rtol,leafsize = Compression.leafsize)
     return r
 end 
 function (Compression :: HssCompression)(axis, f, g) 
@@ -146,7 +146,7 @@ function (Compression :: HssCompression)(axis, tab::BlockCirculantMatrix)
     lm =  build_CirculantlinearMap(tab)
     cc = bisection_cluster(size(tab,1),leafsize = Compression.leafsize)
     r = randcompress_adaptive(lm,cc,cc,atol = Compression.atol, rtol = Compression.rtol, kest = Compression.kest)
-    recompress!(r,atol = Compression.atol, rtol = Compression.rtol)
+    recompress!(r,atol = Compression.atol, rtol = Compression.rtol, leafsize = Compression.leafsize)
 end
 
 function (Compression :: NONCompression)(axis,f; stationary = false)
