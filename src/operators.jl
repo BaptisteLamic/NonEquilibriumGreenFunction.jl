@@ -89,6 +89,10 @@ struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
 end
+function compress!(op::SumOperator)
+    compress!(op.left)
+    compress!(op.right) 
+end
 causality(op::SumOperator) = causality_of_sum(causality(op.left), causality(op.right))
 function compression(op::SumOperator)
     cl = compression(op.left)
