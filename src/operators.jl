@@ -40,7 +40,7 @@ function compress!(op::SimpleOperator)
     op |> discretization |> compress!
     return op  
 end
-function similar(op::AbstractOperator, new_matrix_discretization::AbstractMatrix)
+function similar(op::AbstractOperator, new_matrix_discretization::Union{AbstractMatrix,UniformScaling})
     similar(op,similar(discretization(op),new_matrix_discretization))
 end
 
@@ -72,6 +72,7 @@ function discretize_dirac(axis, f; compression::AbstractCompression=HssCompressi
         )
     )
 end
+
 discretization(op::DiracOperator) = op.discretization
 matrix(op::DiracOperator) = matrix(discretization(op))
 causality(::DiracOperator) = Instantaneous()
@@ -89,6 +90,32 @@ struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
 end
+
+function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
+    bs = blocksize(discretization)
+    ax = axis(discretization)
+    T =  scalartype(discretization)
+    δ = zeros(T, bs, bs, length(ax))
+    block_mat = diagm([T(I.λ) for k in 1:bs])
+    for i = 1:length(ax)
+        δ[:, :, i] = block_mat
+    end
+    matrix = blockdiag(δ, compression=compression(discretization))
+    TrapzDiscretisation(
+        ax,
+        matrix,
+        bs,
+        compression(discretization)
+    )
+end
+function SumOperator(left::AbstractOperator,right::UniformScaling)   
+    uniformScaling_discretization = _discretize_uniformScaling(discretization(left), right)
+    SumOperator( left, DiracOperator(uniformScaling_discretization))
+end
+function SumOperator(left::UniformScaling,right::AbstractOperator)   
+    uniformScaling_discretization = _discretize_uniformScaling(discretization(right), left)
+    SumOperator(DiracOperator(uniformScaling_discretization), right)
+end
 function compress!(op::SumOperator)
     compress!(op.left)
     compress!(op.right) 
@@ -102,7 +129,11 @@ function compression(op::SumOperator)
 end
 
 +(left::AbstractOperator, right::AbstractOperator) = SumOperator(left, right)
++(left::AbstractOperator, right::UniformScaling) = SumOperator(left, right)
++(left::UniformScaling, right::AbstractOperator) = SumOperator(left, right)
 -(left::AbstractOperator, right::AbstractOperator) = SumOperator(left, -right)
+-(left::AbstractOperator, right::UniformScaling) = SumOperator(left, -right)
+-(left::UniformScaling, right::AbstractOperator) = SumOperator(left, -right)
 
 function *(left::SumOperator, right::SumOperator)
     left.left * right.left + left.left * right.right + 
@@ -112,6 +143,23 @@ end
 *(left::Union{Number,UniformScaling,AbstractOperator}, right::SumOperator) = left * right.left + left * right.right
 
 adjoint(op::SumOperator) = SumOperator(op.left', op.right')
+
+@testitem "Action of UniformScaling on kernel" begin
+    using LinearAlgebra
+    N, Dt = 256, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    for T in (Float64,)
+        c = 100
+        kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        kernelB = discretize_retardedkernel(ax, (x, y) -> sin(x - y), compression=NONCompression())
+        @test typeof(I*kernelA) == typeof(kernelA) 
+        @test matrix(2*I*kernelA) == 2*matrix(kernelA)
+        @test typeof(kernelA*I) == typeof(kernelA) 
+        @test matrix(kernelA*2I) == 2*matrix(kernelA)
+        @test matrix((I + kernelA)*kernelB) == matrix(kernelB + kernelA*kernelB)
+        @test matrix((kernelA + I)*kernelB) == matrix(kernelB + kernelA*kernelB)
+    end
+end
 
 @testitem "Dirac operator action" begin 
     using LinearAlgebra

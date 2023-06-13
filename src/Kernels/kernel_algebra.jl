@@ -1,20 +1,16 @@
 function +(left::Kernel, right::Kernel)
-    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality))
+    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
     similar(left, matrix(left) + matrix(right))
 end
 function -(left::Kernel, right::Kernel)
-    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality))
+    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 function -(left::D, right::D) where {D<:AbstractDiscretisation}
     similar(left, matrix(left) - matrix(right))
 end
-
-
-
-
 
 function *(left::Kernel, right::Kernel)
     prod_causality = causality_of_prod(left |> causality, right |> causality)
@@ -52,14 +48,14 @@ function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::Abstra
     cpr = compression(right)
     dr = extract_blockdiag(matrix(right), blocksize(right), compression=cpr)
     weighted_R = _dressing(right, dr) |> cpr
-    result = step(left)*matrix(left) * weighted_R
+    result = cpr(step(left)*matrix(left) * weighted_R)
     return similar(left, result)
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
     cpr = compression(left)
     dl = extract_blockdiag(matrix(left), blocksize(left), compression=cpr)
     weighted_L = _dressing(left, dl) |> cpr
-    result = step(left)*weighted_L * matrix(right)
+    result = cpr(step(left)*weighted_L * matrix(right))
     return similar(left, result)
 end
 function prod(::Acausal, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)

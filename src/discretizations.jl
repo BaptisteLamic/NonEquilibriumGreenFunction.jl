@@ -52,7 +52,7 @@ function getindex(A::AbstractDiscretisation, I, J)
     end
 end
 
-function similar(discretization::D,new_matrix)  where D <: AbstractDiscretisation 
+function similar(discretization::D,new_matrix::AbstractMatrix)  where D <: AbstractDiscretisation 
     D(
         axis(discretization),
         new_matrix,
@@ -60,6 +60,9 @@ function similar(discretization::D,new_matrix)  where D <: AbstractDiscretisatio
         compression(discretization)
     )
 end
+
+
+
 function adjoint(dis :: TrapzDiscretisation)
     similar(dis, dis |> matrix |> adjoint |> _adapt)
 end
