@@ -11,7 +11,6 @@ using TestItemRunner
 @run_package_tests
 
 #run the other tests.
-include("test_physics.jl")
 include("test_BlockCirculantMatrix.jl")
 @testset "utils.jl" for T = [Float32,Float64,ComplexF32,ComplexF64]
     T = Float32
