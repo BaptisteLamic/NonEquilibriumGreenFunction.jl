@@ -3,7 +3,7 @@ function +(left::Kernel, right::Kernel)
 end
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
-    similar(left, matrix(left) + matrix(right))
+    similar(left, matrix(left) + matrix(right)) |> compress!
 end
 function -(left::Kernel, right::Kernel)
     Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
