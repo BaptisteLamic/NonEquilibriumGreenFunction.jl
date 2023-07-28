@@ -48,7 +48,6 @@ function build_linearMap(axis,f;blk = 512)
         offset_I = cumsum(bI_count)
         offset_J = cumsum(bJ_count)
         Threads.@threads for idx_bj in 1:length(bJ)
-            #blck = f(axis[ bI[1] ], axis[ bJ[1] ])
             for idx_bi in 1:length(bI)
                 blck = f(axis[ bI[idx_bi] ], axis[ bJ[ idx_bj ] ])
                 for j  = offset_J[idx_bj]+1-bJ_count[idx_bj]:offset_J[idx_bj]
