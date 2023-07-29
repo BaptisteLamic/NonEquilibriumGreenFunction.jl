@@ -70,5 +70,4 @@ export compress!
 export scalartype
 export getindex!
 
-
 end
