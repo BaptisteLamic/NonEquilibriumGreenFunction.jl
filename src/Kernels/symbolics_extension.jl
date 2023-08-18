@@ -2,7 +2,8 @@ using SymbolicUtils: Symbolic, BasicSymbolic
 import SymbolicUtils: similarterm
 import Symbolics: expand_derivatives, unwrap
 using Symbolics: wrap
-import Base: zero, one, isequal
+import Base: zero, one, isequal, log, inv
+import LinearAlgebra: tr
 
 function expand_derivatives(O::BasicSymbolic{K}, simplify=false; occurrences=nothing) where K <: AbstractOperator 
     return _expand_derivatives(O,simplify; occurrences = occurrences) |> simplify_kernel
@@ -53,73 +54,29 @@ function _expand_derivatives(O::BasicSymbolic{K}, simplify=false; occurrences=no
                     return expand_derivatives(op(inner), simplify)
                 end
             end
-        elseif isa(op, Integral)
-            if isa(op.domain.domain, AbstractInterval)
-                domain = op.domain.domain
-                a, b = DomainSets.endpoints(domain)
-                c = 0
-                inner_function = expand_derivatives(arguments(arg)[1])
-                if istree(value(a))
-                    t1 = SymbolicUtils.substitute(inner_function, Dict(op.domain.variables => value(a)))
-                    t2 = D(a)
-                    c -= t1*t2
-                end
-                if istree(value(b))
-                    t1 = SymbolicUtils.substitute(inner_function, Dict(op.domain.variables => value(b)))
-                    t2 = D(b)
-                    c += t1*t2
-                end
-                inner = expand_derivatives(D(arguments(arg)[1]))
-                c += op(inner)
-                return value(c)
-            end
        elseif isa(op, typeof(*))
             #custom section
             inner_args = arguments(arg)
             l = length(inner_args)
             @assert l == 2
-           return simplify_kernel(expand_derivatives(D(inner_args[1]) * inner_args[2] +   inner_args[1] * D(inner_args[2])))
+           return expand_derivatives(D(inner_args[1]) * inner_args[2] +   inner_args[1] * D(inner_args[2]))
+        elseif isa(op, typeof(+))
+            #custom section
+            inner_args = arguments(arg)
+            l = length(inner_args)
+            @assert l == 2
+           return expand_derivatives(D(inner_args[1])) + expand_derivatives(D(inner_args[2]))
+        elseif isa(op, typeof(-)) && length(arguments(arg)) == 2
+            #custom section
+            inner_args = arguments(arg)
+           return expand_derivatives(D(inner_args[1])) - expand_derivatives(D(inner_args[2]))
+        elseif isa(op, typeof(-)) && length(arguments(arg)) == 1
+            #custom section
+            inner_args = arguments(arg)
+           return - expand_derivatives(D(inner_args[1]))
+        else 
+            return O
         end
-
-        inner_args = arguments(arg)
-        l = length(inner_args)
-        exprs = []
-        c = 0
-
-        for i in 1:l
-            t2 = expand_derivatives(D(inner_args[i]),false, occurrences=arguments(occurrences)[i])
-
-            x = if Symbolics._iszero(t2)
-                t2
-            elseif Symbolics._isone(t2)
-                d = Symbolics.derivative_idx(arg, i)
-                d isa NoDeriv ? D(arg) : d
-            else
-                t1 = Symbolics.derivative_idx(arg, i)
-                t1 = t1 isa Symbolics.NoDeriv ? D(arg) : t1
-                t1 * t2
-            end
-
-            if Symbolics._iszero(x)
-                continue
-            elseif x isa Symbolic
-                push!(exprs, x)
-            else
-                c += x
-            end
-        end
-
-        if isempty(exprs)
-            return c
-        elseif length(exprs) == 1
-            term = (simplify ? SymbolicUtils.simplify(exprs[1]) : exprs[1])
-            return Symbolics._iszero(c) ? term : c + term
-        else
-            x = +((!Symbolics._iszero(c) ? vcat(c, exprs) : exprs)...)
-            return simplify ? SymbolicUtils.simplify(x) : x
-        end
-    elseif istree(O) && isa(operation(O), Integral)
-        return operation(O)(expand_derivatives(arguments(O)[1]))
     elseif !Symbolics.hasderiv(O)
         return O
     else
@@ -148,6 +105,15 @@ end
 function *(left::Symbolic{K}, right::Number) where K <: AbstractOperator
     similarterm(left, *, [left, right], )
 end
+
+function *(left::Symbolic{K}, right::Symbolic{N}) where {K <: AbstractOperator, N <: Number}
+    similarterm(left, *, [left, right], )
+end
+
+function *(left::Symbolic{N}, right::Symbolic{K}) where {K <: AbstractOperator, N <: Number}
+    similarterm(right, *, [left, right], )
+end
+
 function +(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
     similarterm(left, +, [left, right], )
 end
@@ -170,6 +136,13 @@ function -(left::Number, right::Symbolic{K}) where K <: AbstractOperator
     similarterm(right, -, [left, right], )
 end
 adjoint(kernel::Symbolic{K}) where K <: AbstractOperator = similarterm(kernel, adjoint, [kernel], K) 
+
+ (inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [ G], )
+
+function (/)(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
+    return   similarterm(left, /, [left, right], )
+end
+tr(x::Symbolic{K}) where K <: AbstractOperator = similarterm(x, tr, [x], )
 
 function simplify_kernel(expr)
     is_number(x) = x isa Number
@@ -230,6 +203,14 @@ end
 function -(left::Number, right::SymbolicOperator)
     wrap(unwrap(left) - unwrap(right))
 end
+(inv)(G::SymbolicOperator)  = G |> unwrap |> inv |> wrap
+function (/)(x::SymbolicOperator,G::SymbolicOperator) 
+    return  wrap(unwrap(x)/unwrap(G))
+end
+@register_symbolic log(G::SymbolicOperator)::SymbolicOperator false 
+@register_symbolic tr(G::SymbolicOperator)::SymbolicOperator false
+
+
 
 zero(::Type{SymbolicOperator}) = SymbolicOperator(0)
 one(::Type{SymbolicOperator}) = SymbolicOperator(1)
@@ -249,7 +230,7 @@ function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number
      return SymbolicOperator
 end
 
-#Base.display(A::SymbolicOperator) = display(unwrap(A))
+Base.display(A::SymbolicOperator) = display(unwrap(A))
 #=function Base.show(io::IO, A::SymbolicOperator) 
     display(A)
 end=#
@@ -264,6 +245,7 @@ end
 
 @testitem "Symbolic differentiation" begin
     using Symbolics
+    using LinearAlgebra
     @variables x,y
     Dx = Differential(x)
     Dy = Differential(y)
@@ -275,4 +257,6 @@ end
     @test !isequal(Dy(Gy*Gx) |> expand_derivatives, Gx*Dy(Gy))
     @test isequal(Dy(Gy + Gx) |> expand_derivatives, Dy(Gy))
     @test isequal(Dy(-Gy)|> expand_derivatives, - Dy(Gy)|> expand_derivatives)
+    # We do not want the default derivation rules to spill our calculation
+    @test isequal( Dx(tr(log(inv(Gx)))) |> expand_derivatives,  Dx(tr(log(inv(Gx)))) |> simplify_kernel)
 end
