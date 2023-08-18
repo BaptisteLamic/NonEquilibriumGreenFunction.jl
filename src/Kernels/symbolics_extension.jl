@@ -173,7 +173,7 @@ adjoint(kernel::Symbolic{K}) where K <: AbstractOperator = similarterm(kernel, a
 
 function simplify_kernel(expr)
     is_number(x) = x isa Number
-    rules = RuleSet([
+    rules = [
         @rule 0 * ~x => 0
         @rule 0 + ~x => ~x
         @rule ~x + 0 => ~x
@@ -183,8 +183,8 @@ function simplify_kernel(expr)
         @rule -1 * ~x => - ~x
         @rule ~x * ~n::is_number => ~n * ~x
         @rule ~a::is_number * ~b::is_number * ~z => (~a * ~b) * ~z
-    ])
-    simplify(expr, rules)
+    ] |> SymbolicUtils.Chain |> SymbolicUtils.Postwalk
+    simplify(expr, rewriter = rules)
 end
 
 @symbolic_wrap struct SymbolicOperator <: AbstractOperator
