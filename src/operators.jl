@@ -208,6 +208,20 @@ end
         @test norm(matrix(kernel * dirac - target_right)) / norm(matrix(target_right)) < tol
     end
 end
+
+@testitem "adjoint of SimpleOperator" begin
+    using LinearAlgebra
+    N, Dt = 256, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    c = 100
+    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    kernelB = discretize_advancedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    @test matrix(adjoint(kernelA)) == adjoint(matrix(kernelA)) 
+    @test matrix(adjoint(kernelB)) == adjoint(matrix(kernelB)) 
+    @test causality(adjoint(kernelA)) == Advanced()
+    @test causality(adjoint(kernelB)) == Retarded()
+end
+
 @testitem "Dirac operator scalar operation" begin
     using LinearAlgebra
     N, Dt = 64, 2.0
