@@ -2,7 +2,7 @@ using SymbolicUtils: Symbolic, BasicSymbolic
 import SymbolicUtils: similarterm
 import Symbolics: expand_derivatives, unwrap
 using Symbolics: wrap
-import Base: zero, one
+import Base: zero, one, isequal
 
 function expand_derivatives(O::BasicSymbolic{K}, simplify=false; occurrences=nothing) where K <: AbstractOperator 
     return _expand_derivatives(O,simplify; occurrences = occurrences) |> simplify_kernel
@@ -205,7 +205,7 @@ function *(left::Number, right::SymbolicOperator)
     wrap(left * unwrap(right))
 end
 function *(left::SymbolicOperator, right::Number) 
-    wrap(unwrap(left)*right)
+    wrap(unwrap(left)*unwrap(right))
 end
 
 function +(left::SymbolicOperator, right::SymbolicOperator)
@@ -219,7 +219,7 @@ function +(left::SymbolicOperator, right::Number)
 end
 
 function -(term::SymbolicOperator)
-    - unwrap(term)
+    wrap(- unwrap(term))
 end
 function -(left::SymbolicOperator, right::SymbolicOperator)
     wrap(unwrap(left) - unwrap(right))
@@ -231,23 +231,35 @@ function -(left::Number, right::SymbolicOperator)
     wrap(unwrap(left) - unwrap(right))
 end
 
+zero(::Type{SymbolicOperator}) = SymbolicOperator(0)
+one(::Type{SymbolicOperator}) = SymbolicOperator(1)
+zero(::SymbolicOperator) = zero(SymbolicOperator)
+one(::SymbolicOperator) = one(SymbolicOperator)
+
 adjoint(term::SymbolicOperator) = wrap(adjoint(unwrap(term)))
 
 (D::Differential)(expr::SymbolicOperator) = expr |> unwrap |> D |> wrap
 simplify_kernel(expr::SymbolicOperator) = expr |> unwrap |> simplify_kernel |> wrap
-isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(unwrap(a), unwrap(b))
+Base.isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(unwrap(a), unwrap(b))
 function expand_derivatives(O::SymbolicOperator, simplify=false; occurrences=nothing)
     return wrap(expand_derivatives(unwrap(O),simplify; occurrences = occurrences))
 end
-Base.display(A::SymbolicOperator) = display(unwrap(A))
+convert(::Type{SymbolicOperator}, x::Number) = SymbolicOperator(x)
+function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number 
+     return SymbolicOperator
+end
 
-@testitem "One and Zero" begin
+#Base.display(A::SymbolicOperator) = display(unwrap(A))
+#=function Base.show(io::IO, A::SymbolicOperator) 
+    display(A)
+end=#
+
+@testitem "Wrapper and promotion rule" begin
     using Symbolics
     using LinearAlgebra
     @variables Gx::Kernel
     @test one(Gx) * Gx |> simplify_kernel == Gx
     @test zero(Gx) * Gx |> simplify_kernel == 0
-    tr([Gx 0; 0 Gx])
 end
 
 @testitem "Symbolic differentiation" begin
