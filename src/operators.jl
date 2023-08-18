@@ -31,6 +31,10 @@ matrix(g::SimpleOperator) = g |> discretization |> matrix
 scalartype(g::SimpleOperator) = g |> discretization |> scalartype
 size(g::SimpleOperator) = g |> discretization |> size
 
+import Base: ==
+==(A::SimpleOperator,B::SimpleOperator) = axis(A) == axis(B) && compression(A) == compression(B) && matrix(A) == matrix(B)
+
+
 function compress!(discretization::AbstractDiscretisation)
     cpr = discretization |> compression
     cpr( discretization |> matrix)
@@ -84,12 +88,12 @@ end
 *(left::SimpleOperator, right::DiracOperator) = similar(left, matrix(left) * matrix(right))
 adjoint(op::DiracOperator) = DiracOperator( discretization(op)' )
 
-
-
 struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
 end
+
+==(A::SumOperator,B::SumOperator) = A.left == B.left && A.right == B.right
 
 function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
     bs = blocksize(discretization)
@@ -144,6 +148,21 @@ end
 
 adjoint(op::SumOperator) = SumOperator(op.left', op.right')
 
+
+@testitem "Equality test" begin
+    using LinearAlgebra
+    N, Dt = 256, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    c = 100
+    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    kernelB = discretize_advancedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    kernelC = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    @assert kernelA != kernelB
+    @assert kernelA == deepcopy(kernelA)
+    @assert kernelC == kernelA
+    @assert causality(kernelA + kernelB) == Acausal()
+    @assert kernelA + kernelB == kernelB + kernelC
+end
 @testitem "Action of UniformScaling on kernel" begin
     using LinearAlgebra
     N, Dt = 256, 2.0
