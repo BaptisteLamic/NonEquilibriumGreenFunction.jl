@@ -137,12 +137,13 @@ function -(left::Number, right::Symbolic{K}) where K <: AbstractOperator
 end
 adjoint(kernel::Symbolic{K}) where K <: AbstractOperator = similarterm(kernel, adjoint, [kernel], K) 
 
- (inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [ G], )
+(inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [ G], )
+log(G::Symbolic{K}) where K <: AbstractOperator= similarterm(G, log, [G], )
+tr(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, tr, [G], )
 
 function (/)(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
     return   similarterm(left, /, [left, right], )
 end
-tr(x::Symbolic{K}) where K <: AbstractOperator = similarterm(x, tr, [x], )
 
 function simplify_kernel(expr)
     is_number(x) = x isa Number
@@ -207,8 +208,8 @@ end
 function (/)(x::SymbolicOperator,G::SymbolicOperator) 
     return  wrap(unwrap(x)/unwrap(G))
 end
-@register_symbolic log(G::SymbolicOperator)::SymbolicOperator false 
-@register_symbolic tr(G::SymbolicOperator)::SymbolicOperator false
+log(G::SymbolicOperator) = G |> unwrap |> log |> wrap
+tr(G::SymbolicOperator) = G |> unwrap |> tr |> wrap
 
 
 
