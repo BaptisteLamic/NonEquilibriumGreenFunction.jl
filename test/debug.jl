@@ -15,3 +15,6 @@ Dy = Differential(y)
 @test isequal(Dy(-Gy)|> expand_derivatives, - Dy(Gy)|> expand_derivatives)
 # We do not want the default derivation rules to spill our calculation
 @test isequal( Dx(tr(log(inv(Gx)))) |> expand_derivatives, Dx(tr(log(inv(Gx)))) ) 
+
+A = [Gx Gx; Gx Gx] 
+*(A,A)

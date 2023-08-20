@@ -93,48 +93,17 @@ end
 #one(::SymbolicUtils.Symbolic{K}) where K <: AbstractOperator = 1
 
 
-function *(term::Symbolic{K}) where K <: AbstractOperator
-    similarterm(term, *, [term],)
-end
-function *(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(left, *, [left, right],)
-end
-function *(left::Number, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(right, *, [left, right], )
-end
-function *(left::Symbolic{K}, right::Number) where K <: AbstractOperator
-    similarterm(left, *, [left, right], )
+for op = (:*, :+, :-)
+    eval(quote
+        Base.$op(x::Symbolic{K}) where K <: AbstractOperator = similarterm(x, $op, [x],)
+        Base.$op(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator =  similarterm(left, $op, [left, right],)
+        Base.$op(left::Number, right::Symbolic{K}) where K <: AbstractOperator = similarterm(right, $op, [left, right],)
+        Base.$op(left::Symbolic{K}, right::Number) where K <: AbstractOperator = similarterm(left, $op, [left, right],)
+        Base.$op(left::Symbolic{N}, right::Symbolic{K}) where {K <: AbstractOperator, N <: Number} = similarterm(right, $op, [left, right],)
+        Base.$op(left::Symbolic{K}, right::Symbolic{N}) where {K <: AbstractOperator, N <: Number} = similarterm(left, $op, [left, right],)
+    end)
 end
 
-function *(left::Symbolic{K}, right::Symbolic{N}) where {K <: AbstractOperator, N <: Number}
-    similarterm(left, *, [left, right], )
-end
-
-function *(left::Symbolic{N}, right::Symbolic{K}) where {K <: AbstractOperator, N <: Number}
-    similarterm(right, *, [left, right], )
-end
-
-function +(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(left, +, [left, right], )
-end
-function +(left::Symbolic{K}, right::Number) where K <: AbstractOperator
-    similarterm(left, +, [left, right], )
-end
-function +(left::Number, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(right, +, [left, right], )
-end
-function -(term::Symbolic{K}) where K <: AbstractOperator
-    similarterm(term, -, [term], )
-end
-function -(left::Symbolic{K}, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(left, -, [left, right], )
-end
-function -(left::Symbolic{K}, right::Number) where K <: AbstractOperator
-    similarterm(left, -, [left, right], )
-end
-function -(left::Number, right::Symbolic{K}) where K <: AbstractOperator
-    similarterm(right, -, [left, right], )
-end
 adjoint(kernel::Symbolic{K}) where K <: AbstractOperator = similarterm(kernel, adjoint, [kernel], K) 
 
 (inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [ G], )
@@ -168,42 +137,15 @@ export SymbolicOperator
 unwrap(x::SymbolicOperator) = x.val
 
 
-function *(term::SymbolicOperator) 
-   wrap(*(unwrap(term)))
+for op = (:*, :+, :-)
+    eval(quote
+        Base.$op(x::SymbolicOperator) = SymbolicOperator($op(unwrap(x)))
+        Base.$op(left::SymbolicOperator, right::SymbolicOperator) = SymbolicOperator($op(unwrap(left), unwrap(right)))
+        Base.$op(left::Number, right::SymbolicOperator) = SymbolicOperator($op(left, unwrap(right)))
+        Base.$op(left::SymbolicOperator, right::Number) = SymbolicOperator($op(unwrap(left), right))
+    end)
 end
 
-function *(left::SymbolicOperator, right::SymbolicOperator) 
-   wrap(unwrap(left) * unwrap(right))
-end
-function *(left::Number, right::SymbolicOperator) 
-    wrap(left * unwrap(right))
-end
-function *(left::SymbolicOperator, right::Number) 
-    wrap(unwrap(left)*unwrap(right))
-end
-
-function +(left::SymbolicOperator, right::SymbolicOperator)
-    wrap(unwrap(left) + unwrap(right))
-end
-function +(left::Number, right::SymbolicOperator)
-    wrap(unwrap(left) + unwrap(right))
-end
-function +(left::SymbolicOperator, right::Number)
-    wrap(unwrap(left) + unwrap(right))
-end
-
-function -(term::SymbolicOperator)
-    wrap(- unwrap(term))
-end
-function -(left::SymbolicOperator, right::SymbolicOperator)
-    wrap(unwrap(left) - unwrap(right))
-end
-function -(left::SymbolicOperator, right::Number)
-    wrap(unwrap(left) - unwrap(right))
-end
-function -(left::Number, right::SymbolicOperator)
-    wrap(unwrap(left) - unwrap(right))
-end
 (inv)(G::SymbolicOperator)  = G |> unwrap |> inv |> wrap
 function (/)(x::SymbolicOperator,G::SymbolicOperator) 
     return  wrap(unwrap(x)/unwrap(G))
@@ -242,6 +184,8 @@ end=#
     @variables Gx::Kernel
     @test one(Gx) * Gx |> simplify_kernel == Gx
     @test zero(Gx) * Gx |> simplify_kernel == 0
+    A = [Gx Gx; Gx Gx]
+    @test (A * A) isa Matrix{SymbolicOperator}
 end
 
 @testitem "Symbolic differentiation" begin
@@ -260,4 +204,16 @@ end
     @test isequal(Dy(-Gy)|> expand_derivatives, - Dy(Gy)|> expand_derivatives)
     # We do not want the default derivation rules to spill our calculation
     @test isequal( Dx(tr(log(inv(Gx)))) |> expand_derivatives,  Dx(tr(log(inv(Gx)))) |> simplify_kernel)
+end
+
+@testitem "Construction of the current observable" begin
+    using Symbolics
+    using LinearAlgebra
+    @variables x,y
+    @variables G_R(x)::Kernel G_K(y)::Kernel
+    @variables Σ_R::Kernel Σ_K::Kernel
+    τz = [1 2; 2 3] // 2
+    G = [0 G_R'; G_R G_K]
+    Σl = [Σ_K Σ_R; Σ_R' 0]
+    expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
 end
