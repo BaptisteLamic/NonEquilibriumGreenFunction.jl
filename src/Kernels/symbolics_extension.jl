@@ -89,9 +89,6 @@ end
 function similarterm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
     similarterm(x, head, args, Kernel ; metadata = metadata)
 end
-#zero(::SymbolicUtils.Symbolic{K}) where K <: AbstractOperator = 0 
-#one(::SymbolicUtils.Symbolic{K}) where K <: AbstractOperator = 1
-
 
 for op = (:*, :+, :-)
     eval(quote
@@ -106,7 +103,7 @@ end
 
 adjoint(kernel::Symbolic{K}) where K <: AbstractOperator = similarterm(kernel, adjoint, [kernel], K) 
 
-(inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [ G], )
+(inv)(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, inv, [G], )
 log(G::Symbolic{K}) where K <: AbstractOperator= similarterm(G, log, [G], )
 tr(G::Symbolic{K}) where K <: AbstractOperator = similarterm(G, tr, [G], )
 
@@ -146,6 +143,7 @@ for op = (:*, :+, :-)
     end)
 end
 
+
 (inv)(G::SymbolicOperator)  = G |> unwrap |> inv |> wrap
 function (/)(x::SymbolicOperator,G::SymbolicOperator) 
     return  wrap(unwrap(x)/unwrap(G))
@@ -174,9 +172,6 @@ function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number
 end
 
 Base.display(A::SymbolicOperator) = display(unwrap(A))
-#=function Base.show(io::IO, A::SymbolicOperator) 
-    display(A)
-end=#
 
 @testitem "Wrapper and promotion rule" begin
     using Symbolics
@@ -216,4 +211,14 @@ end
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
     expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
+end
+
+@testitem "Derivation of the current observable" begin
+    using Symbolics
+    using LinearAlgebra
+    @variables ηf ηb
+    Df = Differential(ηf)
+    Db = Differential(ηb)
+    @variables G(ηf, ηb)::Kernel g(ηf, ηb)::Kernel Σ(ηf, ηb)::Kernel
+    expr = tr(Db( inv(inv(g) - Σ) * Df(Σ) ))
 end

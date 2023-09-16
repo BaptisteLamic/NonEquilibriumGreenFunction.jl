@@ -102,11 +102,11 @@ end
 
 abstract type AbstractCompression end
 
-struct HssCompression{T,G} <: AbstractCompression
-    atol::T
-    rtol::T
-    kest::G
-    leafsize::G
+struct HssCompression <: AbstractCompression
+    atol::Float64
+    rtol::Float64
+    kest::Int
+    leafsize::Int
 end
 HssCompression(; atol = 1E-4, rtol = 1E-4, kest = 20, leafsize=32) = HssCompression(atol,rtol,kest,leafsize)
 struct NONCompression <: AbstractCompression end
