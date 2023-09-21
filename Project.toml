@@ -1,7 +1,7 @@
 name = "NonEquilibriumGreenFunction"
 uuid = "23f16301-fe5b-45da-b088-f1dd23511803"
 authors = ["Baptiste Lamic"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
@@ -21,20 +21,8 @@ TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [compat]
-DSP = "0.7"
-SpecialFunctions = "2"
-HssMatrices = "0.1"
-NNlib = "0.9"
-FFTW = "1"
-TestItemRunner = "0.2"
-LsqFit = "0.13"
-TestItems = "0.1"
-StaticArrays = "1"
-Symbolics = "5"
-SymbolicUtils = "1"
-TermInterface = "0.3"
-StatsBase = "0.34"
-julia = "1.5"
+julia = "1.8"
+Symbolics = "5.0.0 - 5.5.0"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
