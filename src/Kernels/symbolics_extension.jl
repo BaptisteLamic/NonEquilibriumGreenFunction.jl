@@ -113,17 +113,38 @@ end
 
 function simplify_kernel(expr)
     is_number(x) = x isa Number
+
+    is_operator(::BasicSymbolic{K}) where K <: AbstractOperator = true  
+    is_operator(::K) where K <: AbstractOperator = true  
+    is_operator(x) = false  
+
+    is_differential(::Differential) = true
+    is_differential(x) = false
     rules = [
-        @rule 0 * ~x => 0
-        @rule 0 + ~x => ~x
-        @rule ~x + 0 => ~x
+        @acrule 0 * ~x => 0
+        @acrule 0 + ~x => ~x
+        @acrule ~x + 0 => ~x
         @rule 0 - ~x => - ~x
         @rule ~x - 0 => ~x
         @rule 1 * ~x => ~x
         @rule -1 * ~x => - ~x
+        @rule -( ~a + ~b) => - (~a) - (~b) 
+        @rule ~c - ( ~a + ~b) => ~c - (~a) - (~b) 
+        @rule -( ~a - ~b) => - (~a) + (~b) 
+
         @rule ~x * ~n::is_number => ~n * ~x
+        @acrule ~n::is_number * ~x + ~m::is_number * ~x  => (~n+m) * ~x
+        @rule ~x + ~x  => 2 * ~x
+        @rule ~n::is_number * ~x + ~x  => (~n+1) * ~x
+        @rule ~n::is_number * ~x - ~x  => (~n-1) * ~x
         @rule ~a::is_number * ~b::is_number * ~z => (~a * ~b) * ~z
-    ] |> SymbolicUtils.Chain |> SymbolicUtils.Postwalk
+        @rule ~n::is_number * (~x + ~y)  =>  ~n * ~x + ~n* ~y
+
+        @rule inv(inv(~a::is_operator)) => ~a 
+        @rule (~f::is_differential)(tr(~a)) => tr( (~f)(~a ) )
+        @rule (~f::is_differential)( ~a + ~b) => (~f)(~a) + (~f)(~b) 
+        @rule (~f::is_differential)( ~a - ~b) => (~f)(~a) - (~f)(~b) 
+    ] |> SymbolicUtils.RestartedChain |> SymbolicUtils.Postwalk 
     simplify(expr, rewriter = rules)
 end
 
@@ -183,6 +204,19 @@ Base.display(A::SymbolicOperator) = display(unwrap(A))
     @test (A * A) isa Matrix{SymbolicOperator}
 end
 
+@testitem "simplification" begin
+    #TODO: add detection of singular kernel ?
+    using Symbolics
+    using LinearAlgebra
+    @variables η
+    D = Differential(η)
+    @variables G(η)::Kernel Σ(η)::Kernel
+    isequal(inv(inv(G)) |> simplify_kernel, G)
+    isequal(D(G +  Σ)  |> simplify_kernel, simplify_kernel( D(G) +   D(Σ) ) )
+    @test isequal(simplify_kernel( G + G + G - G),2G)
+    @test isequal(simplify_kernel(D(G +  Σ)  +  ( D(G) +   D(Σ) ) ), 2D(G) + 2D(Σ))
+end
+
 @testitem "Symbolic differentiation" begin
     using Symbolics
     using LinearAlgebra
@@ -197,7 +231,6 @@ end
     @test !isequal(Dy(Gy*Gx) |> expand_derivatives, Gx*Dy(Gy))
     @test isequal(Dy(Gy + Gx) |> expand_derivatives, Dy(Gy))
     @test isequal(Dy(-Gy)|> expand_derivatives, - Dy(Gy)|> expand_derivatives)
-    # We do not want the default derivation rules to spill our calculation
     @test isequal( Dx(tr(log(inv(Gx)))) |> expand_derivatives,  Dx(tr(log(inv(Gx)))) |> simplify_kernel)
 end
 
@@ -211,14 +244,4 @@ end
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
     expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
-end
-
-@testitem "Derivation of the current observable" begin
-    using Symbolics
-    using LinearAlgebra
-    @variables ηf ηb
-    Df = Differential(ηf)
-    Db = Differential(ηb)
-    @variables G(ηf, ηb)::Kernel g(ηf, ηb)::Kernel Σ(ηf, ηb)::Kernel
-    expr = tr(Db( inv(inv(g) - Σ) * Df(Σ) ))
 end

@@ -58,14 +58,9 @@ function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::Abstra
     result = cpr(step(left)*weighted_L * matrix(right))
     return similar(left, result)
 end
-function prod(::Acausal, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
+function prod(::T, ::T, left::AbstractDiscretisation, right::AbstractDiscretisation) where T <: Union{Instantaneous,Acausal}
     result = step(left)*matrix(left) * matrix(right)
     return similar(left, result)
-end
-
-function prod(::Instantaneous, ::Instantaneous,left::AbstractDiscretisation, right::AbstractDiscretisation)
-    # fix this hack 
-    return prod(Acausal(),Acausal(),left,right)
 end
 
 function adjoint(kernel::Kernel)
