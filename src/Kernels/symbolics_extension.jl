@@ -126,6 +126,7 @@ function simplify_kernel(expr)
         @acrule ~x + 0 => ~x
         @rule 0 - ~x => - ~x
         @rule ~x - 0 => ~x
+        @rule ~x - ~x => 0
         @rule 1 * ~x => ~x
         @rule -1 * ~x => - ~x
         @rule -( ~a + ~b) => - (~a) - (~b) 
@@ -144,7 +145,7 @@ function simplify_kernel(expr)
         @rule (~f::is_differential)(tr(~a)) => tr( (~f)(~a ) )
         @rule (~f::is_differential)( ~a + ~b) => (~f)(~a) + (~f)(~b) 
         @rule (~f::is_differential)( ~a - ~b) => (~f)(~a) - (~f)(~b) 
-    ] |> SymbolicUtils.RestartedChain |> SymbolicUtils.Postwalk 
+    ] |> SymbolicUtils.Chain |> SymbolicUtils.Postwalk |>  SymbolicUtils.Fixpoint
     simplify(expr, rewriter = rules)
 end
 
@@ -211,8 +212,9 @@ end
     @variables η
     D = Differential(η)
     @variables G(η)::Kernel Σ(η)::Kernel
-    isequal(inv(inv(G)) |> simplify_kernel, G)
-    isequal(D(G +  Σ)  |> simplify_kernel, simplify_kernel( D(G) +   D(Σ) ) )
+    @test isequal(inv(inv(G)) |> simplify_kernel, G)
+    @test isequal(D(G +  Σ)  |> simplify_kernel, simplify_kernel( D(G) +   D(Σ) ) )
+    @test isequal(simplify_kernel( G - G), 0)
     @test isequal(simplify_kernel( G + G + G - G),2G)
     @test isequal(simplify_kernel(D(G +  Σ)  +  ( D(G) +   D(Σ) ) ), 2D(G) + 2D(Σ))
 end
