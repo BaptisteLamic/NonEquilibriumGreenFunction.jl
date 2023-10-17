@@ -9,7 +9,6 @@ isretarded(g::Kernel) = causality(g) == Retarded()
 isadvanced(g::Kernel) = causality(g) == Advanced()
 isacausal(g::Kernel) = causality(g) == Acausal()
 
-
 function similar(g::Kernel, new_discretization::AbstractDiscretisation )
     return Kernel(new_discretization, g |> causality)
 end
