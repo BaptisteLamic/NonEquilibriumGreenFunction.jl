@@ -7,27 +7,33 @@ import Symbolics: unwrap
 
 
 import SymbolicUtils: similarterm
-
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
 
 function similarterm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
-    similarterm(x, head, args, Kernel ; metadata = metadata)
+    similarterm(x, head, args, AbstractOperator ; metadata = metadata)
 end
 
 @symbolic_wrap struct SymbolicOperator <: AbstractOperator
     val
 end
 unwrap(x::SymbolicOperator) = x.val
-#=
 wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
-symtype(a::SymbolicOperator) = AbstractOperator
-=#
+symtype(a::SymbolicOperator) = Kernel
 
-@wrapped function +(x::AbstractOperator)
-     similarterm(x, +, [x],)
-end 
+
+@wrapped function +(x::AbstractOperator, y::AbstractOperator)
+    if x  isa Number && y isa Number
+        x+y
+    else
+        if x isa Number
+            similarterm(y, +, [x,y],)
+        else 
+            similarterm(x, +, [x,y],)
+        end
+    end
+end
 @wrapped function +(x::AbstractOperator, y::AbstractOperator)
      similarterm(x, +, [x,y],)
 end
@@ -38,9 +44,18 @@ end
     similarterm(x, +, [x,y],)
 end
 
-@wrapped function -(x::AbstractOperator)
-    similarterm(x, -, [x],)
-end 
+
+@wrapped function -(x::AbstractOperator, y::AbstractOperator)
+    if x  isa Number && y isa Number
+        x-y
+    else
+        if x isa Number
+            similarterm(y, -, [x,y],)
+        else 
+            similarterm(x, -, [x,y],)
+        end
+    end
+end
 @wrapped function -(x::AbstractOperator, y::AbstractOperator)
     similarterm(x, -, [x,y],)
 end
@@ -51,11 +66,18 @@ end
    similarterm(x, -, [x,y],)
 end
 
-@wrapped function *(x::AbstractOperator)
-    similarterm(x, *, [x],)
-end 
+
+
 @wrapped function *(x::AbstractOperator, y::AbstractOperator)
-    similarterm(x, *, [x,y],)
+    if x  isa Number && y isa Number
+        x*y
+    else
+        if x isa Number
+            similarterm(y, *, [x,y],)
+        else 
+            similarterm(x, *, [x,y],)
+        end
+    end
 end
 @wrapped function *(x::Number, y::AbstractOperator)
    similarterm(y, *, [x,y],)
@@ -78,6 +100,11 @@ end
 end
 @wrapped function (/)(left::AbstractOperator, right::AbstractOperator)
     return   similarterm(left, /, [left, right], )
+end
+
+Base.zero(::AbstractOperator) = zero(typeof(AbstractOperator))
+function Base.zero(::typeof(AbstractOperator))
+    return 0
 end
 
 @wrapped function simplify_kernel(expr::AbstractOperator)
@@ -116,25 +143,38 @@ convert(::Type{SymbolicOperator}, x::Number) = SymbolicOperator(x)
 function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number 
      return SymbolicOperator
 end
+#Dirty ?
+function *(A::Matrix{SymbolicOperator},B::Matrix{SymbolicOperator})
+    return wrap.(unwrap.(A)*unwrap.(B))
+end
+function *(A::Matrix,B::Matrix{SymbolicOperator})
+    return wrap.(A*unwrap.(B))
+end
+function *(A::Matrix{SymbolicOperator},B::Matrix)
+    return wrap.(unwrap.(A)*B)
+end
+
 
 Base.display(A::SymbolicOperator) = display(unwrap(A))
 
 @testitem "Wrapper and promotion rule" begin
     using Symbolics
     using LinearAlgebra
-    @variables Gx::Kernel
-    @test 1 * Gx |> simplify_kernel == Gx
-    @test 0 * Gx |> simplify_kernel == 0
-    A = [Gx Gx; Gx Gx]
-    @test_broken (A * A) isa Matrix{SymbolicOperator}
+    @variables G::Kernel x
+    @test 1 * G |> simplify_kernel == G
+    @test 0 * G |> simplify_kernel == 0
+    @test zero(G) == 0
+    A = [G G; G G]
+    @test A isa Matrix{SymbolicOperator}
+    @test isequal(tr(A) |> simplify_kernel, 2G )
+    @test (A * A) isa Matrix{SymbolicOperator}
 end
 
 @testitem "simplification" begin
     #TODO: add detection of singular kernel ?
     using Symbolics
     using LinearAlgebra
-    @variables η
-    @variables G(η)::Kernel Σ(η)::Kernel
+    @variables G::Kernel Σ::Kernel
     @test isequal(inv(inv(G)) |> simplify_kernel, G)
     @test isequal(simplify_kernel( G - G), 0)
     @test isequal(simplify_kernel( G + G + G - G),2G)
@@ -149,5 +189,5 @@ end
     τz = [1 2; 2 3] // 2
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
-    @test_broken expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
+    @test expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
 end
