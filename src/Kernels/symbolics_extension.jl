@@ -3,12 +3,20 @@ export SymbolicOperator
 using SymbolicUtils: Symbolic, BasicSymbolic
 using Symbolics: wrap
 
-import Symbolics: unwrap
+using TermInterface
+using Metatheory
+using Symbolics: @rule
 
+import Symbolics: unwrap
 import SymbolicUtils: similarterm
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
+
+TermInterface.exprhead(::SymbolicUtils.BasicSymbolic{K}) where K = :call
+TermInterface.istree(x::SymbolicUtils.BasicSymbolic{K}) where K = SymbolicUtils.istree(x)
+TermInterface.operation(x::SymbolicUtils.BasicSymbolic{K}) where K = SymbolicUtils.operation(x)
+TermInterface.arguments(x::SymbolicUtils.BasicSymbolic{K}) where K = SymbolicUtils.arguments(x)
 
 function similarterm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
     similarterm(x, head, args, AbstractOperator ; metadata = metadata)
@@ -20,8 +28,6 @@ end
 Base.:(==)(a::SymbolicOperator, b::SymbolicOperator) = unwrap(a) == unwrap(b)
 Base.:hash(a::SymbolicOperator) = hash(a.val)
 unwrap(x::SymbolicOperator) = x.val
-#=wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
-symtype(::SymbolicOperator) = Kernel=#
 
 
 @wrapped function +(x::AbstractOperator)
@@ -149,8 +155,8 @@ function _simplify_kernel(expr)
         @rule ~n::is_number * (~x + ~y)  =>  ~n * ~x + ~n* ~y
 
         @rule inv(inv(~a::is_operator)) => ~a 
-    ] |> SymbolicUtils.Chain |> SymbolicUtils.Postwalk |>  SymbolicUtils.Fixpoint
-    simplify(expr, rewriter = rules)
+    ] #|> SymbolicUtils.Chain |> SymbolicUtils.Postwalk |>  SymbolicUtils.Fixpoint
+    Metatheory.rewrite(expr, rules)
 end
 
 Base.isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(unwrap(a), unwrap(b))
