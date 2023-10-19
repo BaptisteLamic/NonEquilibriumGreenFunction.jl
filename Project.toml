@@ -23,6 +23,7 @@ TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [compat]
 LsqFit = "0.15"
+FFTW = "1"
 Symbolics = "5.0.0 - 5.5.0"
 julia = "1.8"
 
