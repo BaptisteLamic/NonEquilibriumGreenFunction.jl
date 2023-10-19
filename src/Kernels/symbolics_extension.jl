@@ -212,6 +212,6 @@ end
     GR = RetardedKernel(ax, A, bs, NONCompression())
     GK = AcausalKernel(ax, A, bs, NONCompression())
     f = build_function(expr, G_R, G_K, Σ_R, Σ_K, expression=Val{false})
-    f(GR,GK,GR,GK) isa Vector{ComplexF32}
+    @test diag(matrix(f(GR,GK,GR,GK))) isa Vector{ComplexF32}
 end
 
