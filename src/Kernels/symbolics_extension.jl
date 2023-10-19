@@ -17,11 +17,16 @@ end
 @symbolic_wrap struct SymbolicOperator <: AbstractOperator
     val
 end
+Base.:(==)(a::SymbolicOperator, b::SymbolicOperator) = unwrap(a) == unwrap(b)
+Base.:hash(a::SymbolicOperator) = hash(a.val)
 unwrap(x::SymbolicOperator) = x.val
-wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
-symtype(::SymbolicOperator) = Kernel
+#=wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
+symtype(::SymbolicOperator) = Kernel=#
 
 
+@wrapped function +(x::AbstractOperator)
+    similarterm(x, +, [x],)
+end
 @wrapped function +(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x+y
@@ -33,9 +38,6 @@ symtype(::SymbolicOperator) = Kernel
         end
     end
 end
-@wrapped function +(x::AbstractOperator, y::AbstractOperator)
-     similarterm(x, +, [x,y],)
-end
 @wrapped function +(x::Number, y::AbstractOperator)
     similarterm(y, +, [x,y],)
 end
@@ -43,7 +45,9 @@ end
     similarterm(x, +, [x,y],)
 end
 
-
+@wrapped function -(x::AbstractOperator)
+    similarterm(x, -, [x],)
+end
 @wrapped function -(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x-y
@@ -54,9 +58,6 @@ end
             similarterm(x, -, [x,y],)
         end
     end
-end
-@wrapped function -(x::AbstractOperator, y::AbstractOperator)
-    similarterm(x, -, [x,y],)
 end
 @wrapped function -(x::Number, y::AbstractOperator)
    similarterm(y, -, [x,y],)
@@ -101,12 +102,27 @@ end
     return   similarterm(left, /, [left, right], )
 end
 
+SymbolicUtils.simplify(n::SymbolicOperator; kw...) = wrap(SymbolicUtils.simplify(unwrap(n); kw...))
+SymbolicUtils.simplify_fractions(n::SymbolicOperator; kw...) = wrap(SymbolicUtils.simplify_fractions(unwrap(n); kw...))
+SymbolicUtils.expand(n::SymbolicOperator) = wrap(SymbolicUtils.expand(unwrap(n)))
+substitute(expr::SymbolicOperator, s::Pair; kw...) = wrap(substituter(s)(unwrap(expr); kw...)) # backward compat
+substitute(expr::SymbolicOperator, s::Vector; kw...) = wrap(substituter(s)(unwrap(expr); kw...))
+substitute(expr::SymbolicOperator, s::Dict; kw...) = wrap(substituter(s)(unwrap(expr); kw...))
+SymbolicUtils.Code.toexpr(x::SymbolicOperator) = SymbolicUtils.Code.toexpr(unwrap(x))
+SymbolicUtils.Code.toexpr(x::SymbolicOperator,st) = SymbolicUtils.Code.toexpr(unwrap(x),st)
+SymbolicUtils.setmetadata(x::SymbolicOperator, t, v) = wrap(SymbolicUtils.setmetadata(unwrap(x), t, v))
+SymbolicUtils.getmetadata(x::SymbolicOperator, t) = SymbolicUtils.getmetadata(unwrap(x), t)
+SymbolicUtils.hasmetadata(x::SymbolicOperator, t) = SymbolicUtils.hasmetadata(unwrap(x), t)
+
+Broadcast.broadcastable(x::SymbolicOperator) = x
+
 Base.zero(::AbstractOperator) = zero(typeof(AbstractOperator))
 function Base.zero(::typeof(AbstractOperator))
     return 0
 end
 
-@wrapped function simplify_kernel(expr::AbstractOperator)
+simplify_kernel(expr) = expr |> unwrap |> _simplify_kernel |> wrap
+function _simplify_kernel(expr)
     is_number(x) = x isa Number
     is_operator(::BasicSymbolic{K}) where K <: AbstractOperator = true  
     is_operator(::K) where K <: AbstractOperator = true  
@@ -115,7 +131,7 @@ end
         @acrule 0 * ~x => 0
         @acrule 0 + ~x => ~x
         @acrule ~x + 0 => ~x
-        @rule 0 - ~x => - ~x
+        @rule 0 - ~x => -(~x)
         @rule ~x - 0 => ~x
         @rule ~x - ~x => 0
         @rule 1 * ~x => ~x
@@ -162,6 +178,7 @@ Base.display(A::SymbolicOperator) = display(unwrap(A))
     @variables G::Kernel x
     @test 1 * G |> simplify_kernel == G
     @test 0 * G |> simplify_kernel == 0
+    @test isequal(0 - G |> simplify_kernel, -G)
     @test zero(G) == 0
     A = [G G; G G]
     @test A isa Matrix{SymbolicOperator}
@@ -182,11 +199,19 @@ end
 @testitem "Construction of the current observable" begin
     using Symbolics
     using LinearAlgebra
-    @variables x,y
-    @variables G_R(x)::Kernel G_K(y)::Kernel
+    @variables G_R::Kernel G_K::Kernel
     @variables Σ_R::Kernel Σ_K::Kernel
     τz = [1 2; 2 3] // 2
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
-    @test expr = -tr(τz * (G * Σl - Σl * G)) isa SymbolicOperator
+    expr = simplify_kernel(-tr(τz * (G * Σl - Σl * G)))
+    @test expr isa SymbolicOperator
+    bs, N, Dt = 2, 128, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    A = randn(ComplexF32, bs * N, bs * N)
+    GR = RetardedKernel(ax, A, bs, NONCompression())
+    GK = AcausalKernel(ax, A, bs, NONCompression())
+    f = build_function(expr, G_R, G_K, Σ_R, Σ_K, expression=Val{false})
+    f(GR,GK,GR,GK) isa Vector{ComplexF32}
 end
+
