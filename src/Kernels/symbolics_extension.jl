@@ -5,7 +5,6 @@ using Symbolics: wrap
 
 import Symbolics: unwrap
 
-
 import SymbolicUtils: similarterm
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
@@ -20,7 +19,7 @@ end
 end
 unwrap(x::SymbolicOperator) = x.val
 wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
-symtype(a::SymbolicOperator) = Kernel
+symtype(::SymbolicOperator) = Kernel
 
 
 @wrapped function +(x::AbstractOperator, y::AbstractOperator)
