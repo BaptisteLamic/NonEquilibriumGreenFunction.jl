@@ -1,3 +1,4 @@
+#First version of the symbolics_extension, works well enought ot get the examples to run
 export SymbolicOperator
 
 using SymbolicUtils: Symbolic, BasicSymbolic
