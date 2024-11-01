@@ -7,15 +7,15 @@ struct TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
 end
 
 
-axis(k::AbstractDiscretisation) = k.axis
 step(k::AbstractDiscretisation) = k |> axis |> step
-matrix(k::AbstractDiscretisation) = k.matrix
-blocksize(k::AbstractDiscretisation) = k.blocksize
-compression(k::AbstractDiscretisation) = k.compression
 scalartype(k::AbstractDiscretisation) = k |> matrix |> eltype
 size(dis::AbstractDiscretisation) = (length(axis(dis)), length(axis(dis)))
 size(dis::AbstractDiscretisation, k) = size(dis)[k]
 
+blocksize(k::TrapzDiscretisation) = k.blocksize
+compression(k::TrapzDiscretisation) = k.compression
+matrix(k::TrapzDiscretisation) = k.matrix
+axis(k::TrapzDiscretisation) = k.axis
 
 function getindex(A::AbstractDiscretisation, ::Colon, I, ::Colon, J)
     sbk = blocksize(A)
