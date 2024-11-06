@@ -1,19 +1,12 @@
 module NonEquilibriumGreenFunction
 
-using SpecialFunctions: Threads
-using HssMatrices: Threads
-using StatsBase: Threads
-using NNlib: similar
-using LinearAlgebra: similar, Threads, length, Core
+using NNlib: similar, batched_mul, batched_adjoint
 using HssMatrices
 using SparseArrays
 using LinearAlgebra
 using StatsBase
-using NNlib
-using SpecialFunctions
+using SpecialFunctions: polygamma
 using FFTW
-using StaticArrays
-using DSP
 using TestItems
 using Symbolics
 using SymbolicUtils
