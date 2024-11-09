@@ -9,7 +9,7 @@
 This package solves the non-equilibrium Dyson equation in the time domain with quasi-linear time complexity. It is the research code accompanying:
 
 1. The thesis: [Quantum transport in voltage-biased Josephson junctions](https://www.theses.fr/s210157#)
-2. The paper: [Efficient computation of non-equilibrium Green's functions in the time domain](https://arxiv.org/html/2410.11057v1)
+2. The paper: [Solving the Transient Dyson Equation with Quasilinear Complexity via Matrix Compression](https://arxiv.org/html/2410.11057v1)
 
 ## Features
 
