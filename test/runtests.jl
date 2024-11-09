@@ -3,8 +3,6 @@ using Test
 using LinearAlgebra
 using SparseArrays
 using HssMatrices
-using StaticArrays
-using LsqFit
 using TestItemRunner
 
 #run all tests defined using @testitem

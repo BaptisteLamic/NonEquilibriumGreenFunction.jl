@@ -28,13 +28,13 @@ end
 
 function pauli(k::Int)
     if k == 1
-        return @SMatrix[0 1; 1 0]
+        return [0 1; 1 0]
     elseif k == 2
-        return @SMatrix[0 -1im; 1im 0]
+        return [0 -1im; 1im 0]
     elseif k == 3
-        return  @SMatrix[1 0; 0 -1]
+        return  [1 0; 0 -1]
     else
-        return @SMatrix[1 0; 0 1]
+        return [1 0; 0 1]
     end
 end
 #=
