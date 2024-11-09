@@ -35,4 +35,4 @@ The notebook `examples/SQDS_junction.ipynb` shows how to compute the Green funct
 
 ```julia
 using Pkg
-Pkg.add("NonEquilibriumGreenFunction")
+Pkg.add("https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl")
