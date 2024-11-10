@@ -41,7 +41,7 @@ jobs:
             ${{ runner.os }}-
       - name: Run benchmark
         run: |
-          cd examples/julia
+          cd test/benchmarks
           julia --project --color=yes -e '
             using Pkg;
             Pkg.instantiate();
