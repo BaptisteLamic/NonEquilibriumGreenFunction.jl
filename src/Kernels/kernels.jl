@@ -27,6 +27,28 @@ function discretize_kernel(::Type{D},::Type{C},axis, f; compression=HssCompressi
     return Kernel(discretization, causality)
 end
 
+function discretize_lowrank_kernel(::Type{D},::Type{C}, axis, f,g ;compression=HssCompression())  where {D<:AbstractDiscretisation, C<:AbstractCausality}
+    f00 = f(axis[1])
+    g00 = g(axis[1])
+    @assert size(f00,1) == size(f00,2)
+    @assert size(f00) == size(g00)
+    bs = size(f00,1)
+    matrix = triangularLowRankCompression(compression,C(), axis, f, g)
+    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
+    return Kernel(discretization, Acausal())
+end
+
+function triangularLowRankCompression(compression, causality, axis, f, g)
+    f00 = f(axis[1])
+    @assert size(f00,1) == size(f00,2)
+    fg(t,tp) = f(t) * g(tp)
+    _mask(::Retarded) = (x, y) -> x >= y ? fg(x, y) : zero(f00)
+    _mask(::Advanced) = (x, y) -> x <= y ? fg(x, y) : zero(f00)
+    _mask(::Acausal) = (x, y) -> fg(x, y) 
+    fg_masked = _mask(causality)
+    return compression(axis, fg_masked; stationary = false)
+end
+
 function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDiscretisation, C<:AbstractCausality}
     causality = C()
     discretization = D(axis, matrix, blocksize, compression)
@@ -57,16 +79,7 @@ function discretize_acausalkernel(axis, f; compression=HssCompression(), station
         compression=compression, stationary=stationary
         )
 end
-function discretize_lowrank_kernel(axis, f,g; compression=HssCompression())
-    f00 = f(axis[1])
-    g00 = g(axis[1])
-    @assert size(f00,1) == size(f00,2)
-    @assert size(f00) == size(g00)
-    bs = size(f00,1)
-    matrix = compression(axis, f, g)
-    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
-    return Kernel(discretization, Acausal())
-end
+
 function AcausalKernel(axis, matrix, blocksize, compression)
     Kernel{TrapzDiscretisation,Acausal}(axis, matrix, blocksize, compression)
 end

@@ -59,19 +59,26 @@ end
         end
     end
 end
-@testitem "Low rank kernel discretization" begin
+@testitem "scalar low rank kernel discretization" begin
     using LinearAlgebra
-    bs, N, Dt = 2, 128, 2.0
-    tol = 1E-12
+    N, Dt = 128, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
-    f(x) = exp(-1im * x)
-    g(x) = exp(1im * x)
-    for cpr in (NONCompression(), HssCompression())
-        GA = discretize_lowrank_kernel(ax, f, g, compression=cpr)
-        compress!(GA)
-        GB = discretize_acausalkernel(ax, (t, tp) -> f(t) * g(tp), compression=cpr)
-        compress!(GB)
-        @test matrix(GA) - matrix(GB) |> norm < tol
+    for causality in (Acausal, Retarded, Advanced)
+        for T = [Float64, ComplexF64, ComplexF32]
+            tol = 5 * max(1E-14, eps(real(T)))
+            f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
+            g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
+            _getMask(::Type{Acausal}) = (i,j) -> T(true)
+            _getMask(::Type{Retarded}) = (i,j) -> T(i>=j)
+            _getMask(::Type{Advanced}) = (i,j) -> T(i<=j)
+            mask = _getMask(causality)
+            refMatrix = [f(x) * g(y) * mask(x,y) for x in ax, y in ax]
+            for cpr in (NONCompression(), HssCompression())
+                GA = discretize_lowrank_kernel(TrapzDiscretisation, causality, ax, f, g, compression=cpr)
+                compress!(GA)
+                @test matrix(GA) - refMatrix |> norm < tol*N^2
+            end
+        end
     end
 end
 
@@ -95,6 +102,7 @@ end
         end
     end
 end
+
 
 @testitem "Kernel discretization causality" begin
     using LinearAlgebra
@@ -127,7 +135,8 @@ end
         bs, N, Dt = 2, 128, 2.0
         ax = LinRange(-Dt / 2, Dt, N)
         for left_kernel in (RetardedKernel, AdvancedKernel, AcausalKernel),
-            right_kernel in  (RetardedKernel, AdvancedKernel, AcausalKernel)
+            right_kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+
             GA = left_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
             GB = right_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
             gsum = GA + GB
