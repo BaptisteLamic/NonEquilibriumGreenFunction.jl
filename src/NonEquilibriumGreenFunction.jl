@@ -22,7 +22,9 @@ import LinearAlgebra.diag
 import LinearAlgebra.norm
 import Base: convert
 
+include("causality.jl")
 include("circulant_matrix.jl")
+include("triangularLowRankMatrix.jl")
 include("compression.jl")
 include("utils.jl")
 include("discretizations.jl")

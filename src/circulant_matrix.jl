@@ -20,7 +20,8 @@ function getindex(A::BlockCirculantMatrix, I::Vararg{Int,2})
 end
 function _pad_for_convolution(x)
     nz = size(x,3)-1
-    r = similar(x,size(x,1),size(x,2),size(x,3) + nz)
+    padSize = size(x,3) + nz
+    r = similar(x,size(x,1),size(x,2),padSize)
     r[:,:,1:size(x,3)] .= x
     r[:,:,size(x,3)+1:end] .= 0
     return r
