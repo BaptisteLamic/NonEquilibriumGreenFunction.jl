@@ -38,17 +38,6 @@ function discretize_lowrank_kernel(::Type{D},::Type{C}, axis, f,g ;compression=H
     return Kernel(discretization, Acausal())
 end
 
-function triangularLowRankCompression(compression, causality, axis, f, g)
-    f00 = f(axis[1])
-    @assert size(f00,1) == size(f00,2)
-    fg(t,tp) = f(t) * g(tp)
-    _mask(::Retarded) = (x, y) -> x >= y ? fg(x, y) : zero(f00)
-    _mask(::Advanced) = (x, y) -> x <= y ? fg(x, y) : zero(f00)
-    _mask(::Acausal) = (x, y) -> fg(x, y) 
-    fg_masked = _mask(causality)
-    return compression(axis, fg_masked; stationary = false)
-end
-
 function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDiscretisation, C<:AbstractCausality}
     causality = C()
     discretization = D(axis, matrix, blocksize, compression)
