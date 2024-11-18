@@ -203,7 +203,6 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     end
     matrix = BlockTriangularLowRankMatrix(u, v, causality)
     lm = build_triangularLowRankMap(matrix)
-    @show size(matrix, 1)
     cc = bisection_cluster(size(matrix, 1), leafsize=compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=compression.atol, rtol=compression.rtol, kest=compression.kest, leafsize=compression.leafsize)
     recompress!(r, atol=compression.atol, rtol=compression.rtol, leafsize=compression.leafsize)
