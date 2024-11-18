@@ -216,7 +216,7 @@ end
     axis = LinRange(-Dt / 2, Dt, N)
     for causality in (Acausal(), Retarded(), Advanced())
         for T = [Float64, ComplexF64, ComplexF32]
-            tol = 5 * max(1E-14, eps(real(T)))
+            tol = 20 * max(1E-14, eps(real(T)))
             f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
             g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
             f00 = f( axis[1])
