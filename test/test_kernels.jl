@@ -63,7 +63,7 @@ end
     using LinearAlgebra
     N, Dt = 128, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
-    for causality in (Acausal, Retarded, Advanced)
+    for _causality in (Acausal, Retarded, Advanced)
         for T = [Float64, ComplexF64, ComplexF32]
             tol = 5 * max(1E-14, eps(real(T)))
             f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
@@ -71,12 +71,13 @@ end
             _getMask(::Type{Acausal}) = (i,j) -> T(true)
             _getMask(::Type{Retarded}) = (i,j) -> T(i>=j)
             _getMask(::Type{Advanced}) = (i,j) -> T(i<=j)
-            mask = _getMask(causality)
+            mask = _getMask(_causality)
             refMatrix = [f(x) * g(y) * mask(x,y) for x in ax, y in ax]
             for cpr in (NONCompression(), HssCompression())
-                GA = discretize_lowrank_kernel(TrapzDiscretisation, causality, ax, f, g, compression=cpr)
+                GA = discretize_lowrank_kernel(TrapzDiscretisation, _causality, ax, f, g, compression=cpr)
                 compress!(GA)
                 @test matrix(GA) - refMatrix |> norm < tol*N^2
+                @test _causality() == causality(GA)
             end
         end
     end
