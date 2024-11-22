@@ -35,8 +35,8 @@ end
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
 
-function estimate_norm(operator::AbstractOperator)
-    return estimate_norm(matrix(operator))
+function norm(operator::AbstractOperator)
+    return norm(matrix(operator))#/(axis[end]-axis[1])^2
 end
 
 struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator

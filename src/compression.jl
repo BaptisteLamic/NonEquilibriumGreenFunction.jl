@@ -1,5 +1,4 @@
 
-using KrylovKit
 function build_CirculantlinearMap(ax0, f)
     f00 = f(ax0[1], ax0[1])
     T = eltype(f00)
@@ -210,15 +209,15 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     return r
 end
 
-function estimate_norm(matrix)
-    Q = matrix'*matrix
-    val, _, _, _ = svdsolve(Q,1,:LR)
-    return val[1]
+function norm(matrix)
+    norm2 = real(tr(matrix' * matrix))
+    if norm2 <= 0 
+        return zero(norm2)
+    else
+        return sqrt(norm2)
+    end
 end
 
-function estimate_norm(matrix::Matrix)
-    return opnorm(matrix)
-end
 
 @testitem "TriangularLowRankCompression_map" begin
     using LinearAlgebra
@@ -256,11 +255,11 @@ end
     for T = [Float64, ComplexF64, ComplexF32]
         tol = 100 * max(1E-12, eps(real(T)))
         A = [sin(i + j)^4 for i in 1:N, j in 1:N]
-        if  T <: Complex
-        A = A*(1+1im)
+        if T <: Complex
+            A = A * (1 + 1im)
         end
-        hssA = hss(A, atol = tol/100, rtol = tol/100)
-        @test estimate_norm(A) - estimate_norm(hssA) <  tol
-        @test (estimate_norm(A) - estimate_norm(hssA))/estimate_norm(A) <  tol
+        hssA = hss(A, atol=tol / 100, rtol=tol / 100)
+        @test norm(A) - norm(hssA) < tol
+        @test abs(norm(A) - norm(hssA)) / norm(A) < tol
     end
 end

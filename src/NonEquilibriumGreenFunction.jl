@@ -52,7 +52,7 @@ export causality
 export solve_dyson
 export adjoint
 export simplify_kernel
-export estimate_norm
+export norm
 
 export BlockCirculantMatrix
 export NONCompression, HssCompression
