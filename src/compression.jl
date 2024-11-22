@@ -209,7 +209,7 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     return r
 end
 
-function norm(matrix)
+function norm(matrix::HssMatrix)
     norm2 = real(tr(matrix' * matrix))
     if norm2 <= 0 
         return zero(norm2)
