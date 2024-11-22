@@ -17,7 +17,7 @@ import Base: ==
 
 function compress!(discretization::AbstractDiscretisation)
     cpr = discretization |> compression
-    cpr( discretization |> matrix)
+    cpr( discretization |> matrix )
     return discretization
 end
 function compress!(op::SimpleOperator)
@@ -34,6 +34,10 @@ end
 *(op::SimpleOperator, λ::Number) = λ * op
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
+
+function estimate_norm(operator::AbstractOperator)
+    return estimate_norm(matrix(operator))
+end
 
 struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator
     discretization::D

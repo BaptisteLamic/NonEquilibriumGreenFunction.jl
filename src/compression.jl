@@ -209,6 +209,23 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     return r
 end
 
+function estimate_norm(matrix::HssMatrix)
+    #Probably not enought is the diagonal blocks have high ranks
+    #Just a lower bound of the actual norm
+    oversampling = 10
+    nSamples = hssrank(matrix) + oversampling
+    samplingPoints = randn(eltype(matrix), size(matrix, 1), nSamples)
+    samples =  (matrix * samplingPoints)
+    subSampledMatrix = samples'* samples
+    size( subSampledMatrix )  == (nSamples,nSamples)
+    _,s,_ = svd(subSampledMatrix)
+    return maximum(s)
+end
+
+function estimate_norm(matrix)
+    return opnorm(matrix)
+end
+
 @testitem "TriangularLowRankCompression_map" begin
     using LinearAlgebra
     using NonEquilibriumGreenFunction
@@ -219,7 +236,7 @@ end
             tol = 20 * max(1E-14, eps(real(T)))
             f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
             g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
-            f00 = f( axis[1])
+            f00 = f(axis[1])
             @assert size(f00, 1) == size(f00, 2)
             blocksize = size(f00, 1)
             u = zeros(eltype(f00), blocksize, blocksize, length(axis))
@@ -230,9 +247,26 @@ end
             end
             matrix = NonEquilibriumGreenFunction.BlockTriangularLowRankMatrix(u, v, causality)
             lm = NonEquilibriumGreenFunction.build_triangularLowRankMap(matrix)
-            x = randn(T,size(matrix,2))
-            @test norm(lm*x - matrix*x) < tol * length(x)
-            @test norm(lm'*x - matrix'*x) < tol * length(x)
+            x = randn(T, size(matrix, 2))
+            @test norm(lm * x - matrix * x) < tol * length(x)
+            @test norm(lm' * x - matrix' * x) < tol * length(x)
         end
+    end
+end
+
+@testitem "TriangularLowRankCompression_map" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction
+    using HssMatrices
+    N = 1024
+    for T = [Float64, ComplexF64, ComplexF32]
+        tol = 100 * max(1E-12, eps(real(T)))
+        A = [sin(i + j)^4 for i in 1:N, j in 1:N]
+        if  T <: Complex
+        A = A*(1+1im)
+        end
+        hssA = hss(A, atol = tol/100, rtol = tol/100)
+        @test estimate_norm(A) - estimate_norm(hssA) <  tol
+        @test (estimate_norm(A) - estimate_norm(hssA))/estimate_norm(A) <  tol
     end
 end
