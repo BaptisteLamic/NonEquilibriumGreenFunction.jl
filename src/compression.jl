@@ -1,4 +1,5 @@
 
+using KrylovKit
 function build_CirculantlinearMap(ax0, f)
     f00 = f(ax0[1], ax0[1])
     T = eltype(f00)
@@ -209,20 +210,13 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     return r
 end
 
-function estimate_norm(matrix::HssMatrix)
-    #Probably not enought is the diagonal blocks have high ranks
-    #Just a lower bound of the actual norm
-    oversampling = 10
-    nSamples = hssrank(matrix) + oversampling
-    samplingPoints = randn(eltype(matrix), size(matrix, 1), nSamples)
-    samples =  (matrix * samplingPoints)
-    subSampledMatrix = samples'* samples
-    size( subSampledMatrix )  == (nSamples,nSamples)
-    _,s,_ = svd(subSampledMatrix)
-    return maximum(s)
+function estimate_norm(matrix)
+    Q = matrix'*matrix
+    val, _, _, _ = svdsolve(Q,1,:LR)
+    return val[1]
 end
 
-function estimate_norm(matrix)
+function estimate_norm(matrix::Matrix)
     return opnorm(matrix)
 end
 
@@ -254,7 +248,7 @@ end
     end
 end
 
-@testitem "TriangularLowRankCompression_map" begin
+@testitem "Norm estimate" begin
     using LinearAlgebra
     using NonEquilibriumGreenFunction
     using HssMatrices
