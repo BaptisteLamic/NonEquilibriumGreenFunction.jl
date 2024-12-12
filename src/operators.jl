@@ -11,6 +11,7 @@ matrix(g::SimpleOperator) = g |> discretization |> matrix
 scalartype(g::SimpleOperator) = g |> discretization |> scalartype
 size(g::SimpleOperator) = g |> discretization |> size
 
+
 import Base: ==
 ==(A::SimpleOperator,B::SimpleOperator) = axis(A) == axis(B) && compression(A) == compression(B) && matrix(A) == matrix(B)
 
@@ -27,6 +28,9 @@ end
 function similar(op::AbstractOperator, new_matrix_discretization::Union{AbstractMatrix,UniformScaling})
     similar(op,similar(discretization(op),new_matrix_discretization))
 end
+function similar(op::AbstractOperator, compression::AbstractCompression)
+    similar(op,similar(discretization(op),matrix(op),compression = compression))
+end
 
 -(op::AbstractOperator) = -1 * op
 
@@ -36,7 +40,7 @@ end
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
 
 function norm(operator::AbstractOperator)
-    return norm(matrix(operator))#/(axis[end]-axis[1])^2
+    return norm(matrix(operator))
 end
 
 struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator
@@ -146,6 +150,21 @@ adjoint(op::SumOperator) = SumOperator(op.left', op.right')
     @assert kernelC == kernelA
     @assert causality(kernelA + kernelB) == Acausal()
     @assert kernelA + kernelB == kernelB + kernelC
+end
+@testitem "Mechanical actions" begin
+    using LinearAlgebra
+    N, Dt = 256, 2.0
+    ax = LinRange(-Dt / 2, Dt, N)
+    c = 100
+    cprA = HssCompression(atol = 1E-4,rtol = 1E-4)
+    cprB = HssCompression(atol = 1E-6,rtol = 1E-6)
+    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=cprA)
+    kernelB = similar(kernelA, cprB)
+    @test compression(kernelA) == cprA
+    @test compression(kernelB) == cprB
+    compress!(kernelB)
+    @test norm(matrix(kernelA) - matrix(kernelB)) < cprB.atol
+    @test norm(matrix(kernelA) - matrix(kernelB)) / norm(matrix(kernelB)) < cprB.rtol
 end
 @testitem "Action of UniformScaling on kernel" begin
     using LinearAlgebra
