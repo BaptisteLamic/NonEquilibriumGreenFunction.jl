@@ -269,7 +269,7 @@ end
     end
 end
 
-@testitem "Scaling of norm estimates" begin
+@testitem "Scaling of norm estimates with N" begin
     using LinearAlgebra
     atol = 1E-5
     rtol = 1E-5
@@ -287,6 +287,23 @@ end
     end
 end
 
+@testitem "Scaling of norm estimates with tf" begin
+    using LinearAlgebra
+    atol = 1E-5
+    rtol = 1E-5
+    kest = 20
+    n = 128
+    compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
+    for T in [Float64, ComplexF64]
+        g(x) = T(cos(10*x))
+        g(x, y) = g(x - y)
+        tf1 = 1
+        tf2 = 2 * tf1
+        g1 = discretize_retardedkernel(LinRange(0, tf1, n), g, compression=compression)
+        g2 = discretize_retardedkernel(LinRange(0, tf2, n), g, compression=compression)
+        @test abs(norm(g1) / norm(g2) - 1) < 0.1
+    end
+end
 
 @testitem "solving dyson equation" begin
     using LinearAlgebra
