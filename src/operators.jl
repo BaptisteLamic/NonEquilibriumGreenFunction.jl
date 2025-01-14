@@ -40,7 +40,8 @@ end
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
 
 function norm(operator::AbstractOperator)
-    return norm(matrix(operator))
+    mat = matrix(operator)
+    return norm(mat) / sqrt(prod(size(mat)))
 end
 
 struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator

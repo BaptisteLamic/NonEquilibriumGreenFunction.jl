@@ -68,15 +68,15 @@ end
             tol = 5 * max(1E-14, eps(real(T)))
             f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
             g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
-            _getMask(::Type{Acausal}) = (i,j) -> T(true)
-            _getMask(::Type{Retarded}) = (i,j) -> T(i>=j)
-            _getMask(::Type{Advanced}) = (i,j) -> T(i<=j)
+            _getMask(::Type{Acausal}) = (i, j) -> T(true)
+            _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
+            _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
             mask = _getMask(_causality)
-            refMatrix = [f(x) * g(y) * mask(x,y) for x in ax, y in ax]
+            refMatrix = [f(x) * g(y) * mask(x, y) for x in ax, y in ax]
             for cpr in (NONCompression(), HssCompression())
                 GA = discretize_lowrank_kernel(TrapzDiscretisation, _causality, ax, f, g, compression=cpr)
                 compress!(GA)
-                @test matrix(GA) - refMatrix |> norm < tol*N^2
+                @test matrix(GA) - refMatrix |> norm < tol * N^2
                 @test _causality() == causality(GA)
             end
         end
@@ -266,6 +266,24 @@ end
                 @test norm(integral - matrix(prod)) / norm(integral) < tol
             end
         end
+    end
+end
+
+@testitem "Scaling of norm estimates" begin
+    using LinearAlgebra
+    atol = 1E-5
+    rtol = 1E-5
+    kest = 20
+    compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
+    t0, t1 = 0, 1
+    for T in [Float64, ComplexF64]
+        g(x) = T(sin(9 * x))
+        g(x, y) = g(x - y)
+        n1 = 128
+        n2 = 2 * n1
+        g1 = discretize_retardedkernel(LinRange(t0, t1, n1), g, compression=compression)
+        g2 = discretize_retardedkernel(LinRange(t0, t1, n2), g, compression=compression)
+        @test abs(norm(g1) / norm(g2) - 1) < 0.1
     end
 end
 

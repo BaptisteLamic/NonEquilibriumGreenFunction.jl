@@ -16,11 +16,12 @@ import Base: sum
 import Base: ==
 import Base: getindex, step
 import Base: similar, zero
+import Base: convert, prod
 import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
-import Base: convert
+
 
 include("causality.jl")
 include("circulant_matrix.jl")
