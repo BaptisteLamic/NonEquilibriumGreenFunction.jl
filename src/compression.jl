@@ -119,7 +119,10 @@ struct HssCompression <: AbstractCompression
     kest::Int
     leafsize::Int
 end
-HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32) = HssCompression(atol, rtol, kest, leafsize)
+function HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32, multithreaded = true)
+    HssMatrices.setopts(multithreaded=multithreaded)
+    HssCompression(atol, rtol, kest, leafsize)
+end
 struct NONCompression <: AbstractCompression end
 
 
