@@ -117,7 +117,7 @@ causality(op::SumOperator) = causality_of_sum(causality(op.left), causality(op.r
 function compression(op::SumOperator)
     cl = compression(op.left)
     cr = compression(op.right)
-    @assert cr == cr
+    @assert cr == cl
     return cr
 end
 
