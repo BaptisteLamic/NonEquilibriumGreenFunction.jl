@@ -27,7 +27,18 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
             I = [I; reshape(newI, :)]
         end
     end
-    V = [m[I[k], J[k]] for k = 1:length(I)]
+    IJ = sort([ij for ij in zip(I, J)])
+    V = Vector{T}(undef, length(IJ))
+    @inbounds for i in eachindex(IJ)
+        V[i] = m[IJ[i][1], IJ[i][2]]
+    end
+    V = [m[ij[1], ij[2]] for ij in IJ]
+    #=while i<=length(I)
+        next = findnext(Ip-> Ip != IJ[i], IJ, i+1)
+        next_i = isnothing(next) ? length(IJ)+1 : Int(next)
+        V[i:next_i-1] = @views m[I[i:next_i-1], J[i:next_i-1]]
+        i = next_i
+    end=#
     return sparse(I, J, V, size(m)...)
 end
 function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0; compression=HssCompression()) where {T}
@@ -46,8 +57,10 @@ end
 function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compression=HssCompression()) where {T}
     _A = zeros(T, size(A[1])..., length(A))
     for p = 1:length(A)
-        for j = 1:size(A[1], 2)
-            for i = 1:size(A[1], 1)
+        @assert size(A[p], 1) == size(A[p], 2)
+        @assert size(A[p]) == size(A[1])
+        @simd for j = 1:size(A[1], 2)
+            @simd for i = 1:size(A[1], 1)
                 _A[i, j, p] = A[p][i, j]
             end
         end
