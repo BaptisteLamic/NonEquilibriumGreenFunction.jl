@@ -13,7 +13,7 @@ function blockindex(tp, bs)
     return (r_block, r_inblock)
 end
 function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) where {T}
-    @assert size(m, 1) == size(m, 2)
+    @assert size(m, 1) == size(m, 2) "Matrix must be square to extract block diagonal"
     N = div(size(m, 1), bs)
     I = Vector{Int}()
     J = Vector{Int}()
@@ -29,8 +29,8 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
     end
     IJ = sort([ij for ij in zip(I, J)])
     V = Vector{T}(undef, length(IJ))
-    @inbounds for i in eachindex(IJ)
-        V[i] = m[IJ[i][1], IJ[i][2]]
+    for i in eachindex(IJ)
+        @inbounds V[i] = m[IJ[i][1], IJ[i][2]]
     end
     V = [m[ij[1], ij[2]] for ij in IJ]
     #=while i<=length(I)
