@@ -213,5 +213,5 @@ end
     GK = AcausalKernel(ax, A, bs, NONCompression())
     f = build_function(expr, G_R, G_K, Σ_R, Σ_K, expression=Val{false})
     @test diag(matrix(f(GR,GK,GR,GK))) isa Vector{ComplexF32}
+    simplify_kernel(0 - (Σ_R*G_K + Σ_K*adjoint(G_R)))
 end
-
