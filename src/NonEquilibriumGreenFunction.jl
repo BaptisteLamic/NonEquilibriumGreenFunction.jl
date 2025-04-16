@@ -11,7 +11,7 @@ using TestItems
 using Symbolics
 using SymbolicUtils
 
-import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one, inv
 import Base: sum
 import Base: ==
 import Base: getindex, step

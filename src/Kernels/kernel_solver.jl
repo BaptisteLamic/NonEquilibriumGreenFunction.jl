@@ -1,5 +1,20 @@
 
-
+function inv(k::Kernel)
+    @assert isretarded(k)
+    cp = compression(k)
+    bs = blocksize(k)
+    diag_k = extract_blockdiag(k |> matrix, bs, compression = cp)
+    eye = cp(sparse(scalartype(k)(1)*I,size(diag_k)...))
+    diag_eye = extract_blockdiag(eye, bs, compression = cp)
+    right = cp( eye - 1 // 2 * diag_eye)
+    #left = cp( scalartype(k)(step(k)) * (matrix(k) - 1//2 * diag_k) ) 
+    right = eye
+    left = matrix(k) * step(k)
+    sol_biased = left\right
+    #correction = cp( diag_eye - extract_blockdiag( sol_biased,bs, compression = cp) )
+    #return similar(k, cp(sol_biased + correction) ) 
+    return similar(k, sol_biased) 
+end
 
 """
     Solve the equation  G = g + K⋅G  for G

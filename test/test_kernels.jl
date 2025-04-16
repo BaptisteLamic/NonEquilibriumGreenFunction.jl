@@ -305,6 +305,24 @@ end
     end
 end
 
+@testitem "Inverse smooth kernel" begin
+    using LinearAlgebra
+    t0, t1 = 0, 10
+    ax = LinRange(t0, t1, 2^8)
+    atol = 1E-5
+    rtol = 1E-5
+    kest = 20
+    #compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
+    compression = NONCompression()
+    for T in [Float64, ComplexF64]
+        g(x) = T(1)
+        g(x, y) = g(x - y)
+        kernel = discretize_retardedkernel(ax, g, compression=compression)
+        @show norm(kernel) 
+        @show norm(kernel - inv(kernel)*kernel*kernel) 
+    end
+end
+
 @testitem "solving dyson equation" begin
     using LinearAlgebra
     for T in [Float32, Float64, ComplexF32, ComplexF64]
