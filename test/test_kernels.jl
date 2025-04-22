@@ -312,25 +312,26 @@ end
 
 @testitem "solving dyson equation" begin
     using LinearAlgebra
-    for T in [Float32, Float64, ComplexF32, ComplexF64]
-        g(x) = T(sin(9 * x))
-        g(x, y) = g(x - y)
-        k(x) = T(-cos(9 * x))
-        k(x, y) = k(x - y)
-        sol_ana(x) = T((18 * exp(-x / 2) * sin(sqrt(323) * x / 2)) / sqrt(323) * (x >= 0 ? 1.0 : 0.0))
-        sol_ana(x, y) = sol_ana(x - y)
-        t0, t1 = 0, 10
-        ax = LinRange(t0, t1, 2^8)
-        atol = 1E-5
-        rtol = 1E-5
-        kest = 20
-        compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
-        G0 = discretize_retardedkernel(ax, g, compression=compression)
-        @test scalartype(G0) == T
-        K = discretize_retardedkernel(ax, k, compression=compression)
-        @test scalartype(K) == T
-        G = solve_dyson(G0, K)
-        G_ana = discretize_retardedkernel(ax, sol_ana, compression=compression)
-        @test norm(matrix(G - G_ana)) / norm(G_ana |> matrix) < 1E-3
+    atol = 1E-5
+    rtol = 1E-5
+    kest = 20
+    for compressionMethod in (NONCompression(), HssCompression(atol=atol, rtol=rtol, kest=kest))
+        for T in [Float32, Float64, ComplexF32, ComplexF64]
+            g(x) = T(sin(9 * x))
+            g(x, y) = g(x - y)
+            k(x) = T(-cos(9 * x))
+            k(x, y) = k(x - y)
+            sol_ana(x) = T((18 * exp(-x / 2) * sin(sqrt(323) * x / 2)) / sqrt(323) * (x >= 0 ? 1.0 : 0.0))
+            sol_ana(x, y) = sol_ana(x - y)
+            t0, t1 = 0, 10
+            ax = LinRange(t0, t1, 2^8)
+            G0 = discretize_retardedkernel(ax, g, compression=compressionMethod)
+            @test scalartype(G0) == T
+            K = discretize_retardedkernel(ax, k, compression=compressionMethod)
+            @test scalartype(K) == T
+            G = solve_dyson(G0, K)
+            G_ana = discretize_retardedkernel(ax, sol_ana, compression=compressionMethod)
+            @test norm(matrix(G - G_ana)) / norm(G_ana |> matrix) < 1E-3
+        end
     end
 end

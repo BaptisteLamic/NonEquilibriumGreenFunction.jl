@@ -1,12 +1,12 @@
 function +(left::Kernel, right::Kernel)
-    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality))
+    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
     similar(left, matrix(left) + matrix(right))
 end
 function -(left::Kernel, right::Kernel)
-    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality))
+    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 function -(left::D, right::D) where {D<:AbstractDiscretisation}
     similar(left, matrix(left) - matrix(right))

@@ -10,10 +10,17 @@ function solve_dyson(g::Kernel,K::Kernel)
     bs = blocksize(g)
     diag_K = extract_blockdiag(K |> matrix, bs)
     diag_g = extract_blockdiag(g |> matrix, bs)
-    eye = sparse(scalartype(K)(1)*I,size(diag_K)...) #bypass limitation of HssMatrices.jl
-    left = cp( eye - scalartype(K)(step(K)) * (matrix(K) - 1//2 * diag_K) )
-    right = cp( matrix(g) -1 // 2 * diag_g)
-    sol_biased = ldiv!(left,right)
+    eye = cp(sparse(scalartype(K)(1)*I,size(diag_K)...)) #bypass limitation of HssMatrices.jl
+    left = cp( eye - scalartype(K)(step(K)) * (matrix(K) - cp(1//2 * diag_K)) )
+    right = cp( matrix(g) - cp(1 // 2 * diag_g))
+    sol_biased = _ldiv!(left,right)
     correction = cp(diag_g - extract_blockdiag( sol_biased,bs))
     return similar(g, sol_biased + correction )
+end
+
+function _ldiv!(left::T,right::T) where {T<:AbstractMatrix}
+    return left \ right
+end
+function _ldiv!(left::HssMatrix,right::HssMatrix) where {T<:AbstractMatrix}
+    return ldiv!(left, right)
 end
