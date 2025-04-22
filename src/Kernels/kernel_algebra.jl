@@ -27,7 +27,7 @@ function *(left::Kernel, right::Kernel)
 end
 
 function _dressing(g::TrapzDiscretisation, d)
-     return matrix(g) - eltype(d)(0.5) * d
+     return matrix(g) - compression(g)(eltype(d)(0.5) * d)
 end
 function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
@@ -39,7 +39,7 @@ function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation)
 end
 function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::AbstractDiscretisation) where {C<:Union{Retarded,Advanced}}
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
-    result = biased_result - (1/4)*dl*dr
+    result = biased_result - compression(left)((1/4)*dl*dr)
     result = step(left)*result
     return similar(left, result)
 end
