@@ -46,7 +46,7 @@ function _g_conv!(r,A::BlockCirculantMatrix,x,f)
             return r .= _r .|> real .|>eltype(A)
         end
     else
-        return r .= _r  .|>eltype(A)
+        return r .= _r  .|> eltype(A)
     end
 end
 function _mul!(r,A::BlockCirculantMatrix,x)

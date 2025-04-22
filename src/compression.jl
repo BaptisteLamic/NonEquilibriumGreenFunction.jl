@@ -131,7 +131,6 @@ function (Compression::HssCompression)(axis, f; stationary=false)
     bs = size(f(axis[1], axis[1]), 1)
     cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest, leafsize=Compression.leafsize)
-    recompress!(r, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
     return r
 end
 function (Compression::HssCompression)(axis, f, g)
@@ -159,7 +158,6 @@ function (Compression::HssCompression)(axis, tab::BlockCirculantMatrix)
     lm = build_CirculantlinearMap(tab)
     cc = bisection_cluster(size(tab, 1), leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest)
-    recompress!(r, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
 end
 
 function (Compression::NONCompression)(axis, f; stationary=false)
@@ -208,7 +206,6 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     lm = build_triangularLowRankMap(matrix)
     cc = bisection_cluster(size(matrix, 1), leafsize=compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=compression.atol, rtol=compression.rtol, kest=compression.kest, leafsize=compression.leafsize)
-    recompress!(r, atol=compression.atol, rtol=compression.rtol, leafsize=compression.leafsize)
     return r
 end
 

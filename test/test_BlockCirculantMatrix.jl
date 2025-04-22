@@ -1,7 +1,7 @@
 @testset "BlockCirculantMatrix" for T = [Float64,ComplexF64]
     # "safety" factor
     c = 500
-    # increase tolerance for Float32 and ComplexF32
+
     tol = max(1E-6,c*eps(real(T)))
     foo(x) = if T <: Complex
         T.([-x 5x; x 3im*x])

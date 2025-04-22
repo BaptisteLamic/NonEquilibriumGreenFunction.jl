@@ -20,25 +20,30 @@ end
 
 @testitem "Kernel creation and accessor" begin
     using LinearAlgebra
-    for T = [Float64, ComplexF64]
-        bs, N, Dt = 2, 128, 2.0
-        ax = LinRange(-Dt / 2, Dt, N)
-        for (Kernel, Causality) in zip(
-            (RetardedKernel, AdvancedKernel, AcausalKernel),
-            (Retarded, Advanced, Acausal)
-        )
-            A = randn(T, bs * N, bs * N)
-            GA = Kernel(ax, A, bs, NONCompression())
-            @test causality(GA) isa Causality
-            @test matrix(GA) == A
-            @test axis(GA) == ax
-            @test compression(GA) == NONCompression()
-            @test blocksize(GA) == bs
-            @test scalartype(GA) == T
-            @test axis(GA) == ax
+    for compressionMethod in (NONCompression(), HssCompression())
+        for T = [Float32, Float64, ComplexF64]
+            bs, N, Dt = 2, 128, 2.0
+            ax = LinRange(-Dt / 2, Dt, N)
+            for (Kernel, Causality) in zip(
+                (RetardedKernel, AdvancedKernel, AcausalKernel),
+                (Retarded, Advanced, Acausal)
+            )
+                A = randn(T, bs * N, bs * N)
+                GA = Kernel(ax, A, bs, compressionMethod)
+                @test causality(GA) isa Causality
+                @test matrix(GA) == A
+                @test eltype(matrix(GA)) == eltype(A)
+                @test eltype(matrix(GA)) == T
+                @test axis(GA) == ax
+                @test compression(GA) == compressionMethod
+                @test blocksize(GA) == bs
+                @test scalartype(GA) == T
+                @test axis(GA) == ax
+            end
         end
     end
 end
+
 @testitem "Kernel discretization" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
@@ -295,7 +300,7 @@ end
     n = 128
     compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
     for T in [Float64, ComplexF64]
-        g(x) = T(cos(10*x))
+        g(x) = T(cos(10 * x))
         g(x, y) = g(x - y)
         tf1 = 1
         tf2 = 2 * tf1
@@ -321,7 +326,9 @@ end
         kest = 20
         compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
         G0 = discretize_retardedkernel(ax, g, compression=compression)
+        @test scalartype(G0) == T
         K = discretize_retardedkernel(ax, k, compression=compression)
+        @test scalartype(K) == T
         G = solve_dyson(G0, K)
         G_ana = discretize_retardedkernel(ax, sol_ana, compression=compression)
         @test norm(matrix(G - G_ana)) / norm(G_ana |> matrix) < 1E-3

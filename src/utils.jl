@@ -41,8 +41,8 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
     end=#
     return sparse(I, J, V, size(m)...)
 end
-function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0; compression=HssCompression()) where {T}
-    return compression(sparse_extract_blockdiag(m, bs, d))
+function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0) where {T}
+    return sparse_extract_blockdiag(m, bs, d)
 end
 function blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompression()) where {T}
     shift_I = d < 0 ? abs(d) : 0
