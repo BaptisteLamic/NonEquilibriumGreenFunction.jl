@@ -21,6 +21,6 @@ end
 function _ldiv!(left::T,right::T) where {T<:AbstractMatrix}
     return left \ right
 end
-function _ldiv!(left::HssMatrix,right::HssMatrix) where {T<:AbstractMatrix}
+function _ldiv!(left::HssMatrix,right::HssMatrix)
     return ldiv!(left, right)
 end
