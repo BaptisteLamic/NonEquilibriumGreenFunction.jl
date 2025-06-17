@@ -76,7 +76,11 @@ end
 *(left::DiracOperator, right::SimpleOperator) = similar(right, matrix(left) * matrix(right))
 *(left::SimpleOperator, right::DiracOperator) = similar(left, matrix(left) * matrix(right))
 adjoint(op::DiracOperator) = DiracOperator( discretization(op)' )
-
+function apodize(operator :: SimpleOperator; T = maximum(axis(operator))/4, epsilon = 1E-4) 
+    @assert T > 0
+    @assert epsilon > 0
+    #TODO
+end
 struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
@@ -127,15 +131,51 @@ end
 -(left::AbstractOperator, right::AbstractOperator) = SumOperator(left, -right)
 -(left::AbstractOperator, right::UniformScaling) = SumOperator(left, -right)
 -(left::UniformScaling, right::AbstractOperator) = SumOperator(left, -right)
-
 function *(left::SumOperator, right::SumOperator)
     left.left * right.left + left.left * right.right + 
     left.right * right.left + left.right * right.right
 end
 *(left::SumOperator, right::Union{Number,UniformScaling,AbstractOperator}) = left.left * right + left.right * right
 *(left::Union{Number,UniformScaling,AbstractOperator}, right::SumOperator) = left * right.left + left * right.right
+function apodize(op::SumOperator; T = maximum(axis(op))/4, epsilon = 1E-4)
+    left_apodized = apodize(op.left, T = T, epsilon = epsilon)
+    right_apodized = apodize(op.right, T = T, epsilon = epsilon)
+    return SumOperator(left_apodized, right_apodized)
+end
 
 adjoint(op::SumOperator) = SumOperator(op.left', op.right')
+
+function _buildApodizationMatrix(op, T, epsilon = 1E-4, n = 4)
+    mask = _generate_apodization_mask(T, epsilon = epsilon, n = n)
+
+    discretize_kernel(discretization(op),causality(op),
+     axis(op),
+     (t,tp) -> mask(t-tp),
+     compression=compression(op),
+     stationary=true
+    )
+    #TODO: implement apodization 
+end
+
+function _generate_apodization_mask(T; epsilon = 1E-4, n=4)
+        @assert epsilon > 0
+        tau = T * log(1/epsilon)^(-1/2n)
+        return t->exp(-(t/tau)^(2*n))
+end
+
+
+
+@testitem "Test apodization" begin
+    T = 50
+    epsilon = 1E-4
+    n = 3 
+    mask = NonEquilibriumGreenFunction._generate_apodization_mask(T, epsilon = epsilon, n = n)
+    @test mask(T/3) ≈ mask(-T/3)
+    @test mask(T) ≈ epsilon
+    @test mask(2T) < 1e-16
+    @test mask(0) ≈ 1.0
+end
+
 
 
 @testitem "Equality test" begin
