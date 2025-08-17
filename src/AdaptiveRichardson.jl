@@ -1,7 +1,9 @@
 module AdaptativeRichardson
 using LinearAlgebra
+using Statistics
 
-export observed_order, AdaptativeConfig
+export AdaptativeConfig
+export observed_order, is_asymptotic
 
 """
 Configuration for adaptive Richardson extrapolation.
@@ -12,7 +14,7 @@ Base.@kwdef struct AdaptativeConfig
     r_small::Float64 = sqrt(2.0)
     
     # Method properties
-    p_theory::Float64 = 1.0
+    p_theory::Float64 = NaN  # Theoretical order of convergence, NaN for automatic detection
     
     # Point limits
     max_pointsA::Int = 4
@@ -45,6 +47,24 @@ Base.@kwdef struct AdaptativeConfig
     max_time::Union{Float64, Nothing} = nothing
     verbose::Bool = false
     
+end
+
+function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
+    if length(order_history) < cfg.window
+        return false
+    end
+    recent = order_history[end-cfg.window+1:end]
+    any(!isfinite, recent) && return false
+
+    #Check convergeance to theoritical order
+    deviations = abs.(recent .- cfg.p_theory)
+    mean_dev = mean(deviations)
+    var_dev = var(recent)
+    if  isnan(cfg.p_theory)
+        return sqrt(var_dev) < cfg.p_variance_tol
+    else
+        return mean_dev < cfg.p_tol && sqrt(var_dev) < cfg.p_variance_tol
+    end
 end
 
 function  observed_order(x,y, cfg::AdaptativeConfig=AdaptativeConfig())
@@ -92,4 +112,5 @@ end
     y = [f(ti) for ti in t]
     list_of_orders = observed_order(t, y)
     @test mean(list_of_orders) ≈ 3.0 atol=1e-1
+    @test is_asymptotic(list_of_orders)
 end
