@@ -32,6 +32,7 @@ include("discretizations.jl")
 include("operators.jl")
 include("Kernels/kernels.jl")
 include("physics.jl")
+include("AdaptiveRichardson.jl")
 
 export axis, blocksize
 export getindex
