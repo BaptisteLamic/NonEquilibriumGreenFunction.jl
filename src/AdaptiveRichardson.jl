@@ -3,7 +3,7 @@ using LinearAlgebra
 using Statistics
 
 export AdaptativeConfig
-export observed_order, is_asymptotic
+export observed_order, is_asymptotic, fit_polynomial
 
 """
 Configuration for adaptive Richardson extrapolation.
@@ -206,7 +206,7 @@ function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int, Nothing}, cf
     return best_result
 end
 
-function fit_polynomial(dt_vals, u_vals, weights, degree, cfg::AdaptativeConfig)
+function fit_polynomial(dt_vals, u_vals, degree; weights=ones(length(dt_vals)))
     n = length(dt_vals)
     
     # Build Vandermonde matrix
@@ -255,6 +255,7 @@ function compute_weights(n::Int, switch_idx::Union{Int, Nothing})
         w ./= sum(w)
         return w
     end
+end # module AdaptativeRichardson
 
 @testitem "Adaptative Richardson Extrapolation" begin
     using NonEquilibriumGreenFunction.AdaptativeRichardson
@@ -277,4 +278,35 @@ function compute_weights(n::Int, switch_idx::Union{Int, Nothing})
     list_of_orders = observed_order(t, y)
     @test mean(list_of_orders) ≈ 3.0 atol=1e-1
     @test is_asymptotic(list_of_orders)
+end
+
+@testitem "Polynomial Interpolation" begin
+    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    # Test polynomial fitting with weights
+    dt_vals = [0.1, 0.05, 0.025, 0.0125]
+    u_vals = [1.0, 1.5, 2.0, 2.5]
+    weights = [1.0, 0.8, 0.6, 0.4]
+    
+    result = fit_polynomial(dt_vals, u_vals, length(dt_vals); weights=weights)
+    function fitted(t)
+        return sum(result.coeffs[i] * t^(i-1) for i in 1:length(result.coeffs))
+    end
+    @test norm(fitted.(dt_vals) .- u_vals) < 1e-6
+end
+
+@testitem "Polynomial fit" begin
+    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using LinearAlgebra
+    # Test polynomial fitting with weights
+    dt_vals = LinRange(10, 0.001, 1024)
+    f(x) = 1 - x^2
+    weights = [1/i for i in 1:length(dt_vals)]
+    # Simulate noisy observations
+    u_vals = f.(dt_vals) + weights .* randn(length(dt_vals)) * 1e-4
+    
+    result = fit_polynomial(dt_vals, u_vals, 3; weights=weights)
+    function fitted(t)
+        return sum(result.coeffs[i] * t^(i-1) for i in 1:length(result.coeffs))
+    end
+    @test norm(fitted.(dt_vals) .- f.(dt_vals))/length(dt_vals) < 1e-6
 end
