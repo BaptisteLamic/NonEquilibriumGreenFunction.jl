@@ -49,6 +49,93 @@ Base.@kwdef struct AdaptativeConfig
     
 end
 
+"""
+Result structure for Richardson extrapolation.
+"""
+struct RichardsonResult{T}
+    u0_est::T
+    dt_list::Vector{Float64}
+    u_list::Vector{T}
+    p_obs::Vector{Float64}
+    weights::Vector{Float64}
+    errors::Vector{Float64}
+    phase_switch_index::Union{Int, Nothing}
+    polynomial_degree::Int
+    condition_number::Float64
+    converged::Bool
+    restarts::Int
+    total_time::Float64
+    extrapolation_error_est::Float64
+end
+
+function Base.show(io::IO, r::RichardsonResult)
+    println(io, "RichardsonResult:")
+    println(io, "  Extrapolated u(0): $(r.u0_est)")
+    println(io, "  Points used: $(length(r.dt_list))")
+    println(io, "  Phase switch at: $(r.phase_switch_index)")
+    println(io, "  Converged: $(r.converged)")
+    println(io, "  Polynomial degree: $(r.polynomial_degree)")
+    println(io, "  Condition number: $(r.condition_number)")
+    println(io, "  Error estimate: $(r.extrapolation_error_est)")
+    println(io, "  Total time: $(r.total_time)s")
+end
+
+"""
+    adaptative_richardson(f, dt0; config=AdaptiveConfig(), normfun=default_norm)
+
+Advanced adaptive Richardson extrapolation with two-phase refinement.
+
+# Arguments
+- `f(dt)`: simulation function returning observable at time step dt
+- `dt0`: initial time step
+
+# Keyword Arguments  
+- `config::AdaptiveConfig`: configuration parameters
+
+# Returns
+- `RichardsonResult`: comprehensive results structure
+"""
+function adaptative_richardson(f, dt0; cfg::AdaptativeConfig=AdaptativeConfig())
+    t_start = time()
+    function time_budget_ok()
+        cfg.max_time === nothing && return true
+        return (time() - t_start) < cfg.max_time
+    end 
+    error("adaptative_richardson is not yet implemented.")
+    dt_list = [dt0]
+    u_list = [f(dt0)]
+    p_list = Float64[]
+    phase_switch_index = nothing
+    for i in 1:cfg.max_pointsA
+        if !time_budget_ok()
+            break
+        end
+        dt = dt_list[end] / cfg.r_large
+        push!(dt_list, dt)
+        push!(u_list, f(dt))
+        if length(dt_list) >= 3
+            p = observed_order(dt_list[end-3:end], u_list[end-3:end], cfg)
+            push!(p_list, p)
+            if is_asymptotic(p_list, cfg)
+                phase_switch_index = length(dt_list)
+                cfg.verbose && @info "Asymptotic regime detected at point $phase_switch_index"
+                break
+            end
+        end
+        cfg.verbose && @info "Phase A[$i]: dt=$(dt), p_obs=$p"
+    end
+    #Phase B: refine the last point
+    for i in 1:cfg.max_pointsB
+        length(dt_list) >= cfg.max_total_points && break
+        !time_budget_ok() && break
+        dt = dt_list[end] / cfg.r_small
+        push!(dt_list, dt)
+        push!(u_list, f(dt))
+        p = observed_order(dt_list[end-3:end], u_list[end-3:end], cfg)
+    end
+end
+
+
 function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
     if length(order_history) < cfg.window
         return false
@@ -56,7 +143,6 @@ function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
     recent = order_history[end-cfg.window+1:end]
     any(!isfinite, recent) && return false
 
-    #Check convergeance to theoritical order
     deviations = abs.(recent .- cfg.p_theory)
     mean_dev = mean(deviations)
     var_dev = var(recent)
@@ -90,7 +176,85 @@ function  observed_order(x,y, cfg::AdaptativeConfig=AdaptativeConfig())
     end
 end
 
+function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int, Nothing}, cfg)
+    n = length(dt_vals)
+    max_degree = min(3, n - 1)
+    
+    best_result = nothing
+    best_condition = Inf
+    weights = _compute_weights(n::Int, switch_idx::Union{Int, Nothing})
+    # Try different polynomial degrees
+    for degree in 1:max_degree
+        result = fit_polynomial(dt_vals, u_vals, weights, degree)
+        if isnothing(result)
+             cfg.verbose && @warn "Degree $degree failed: $e"
+            continue
+        end
+        if result.condition < cfg.condition_threshold && 
+            result.condition < best_condition
+            best_result = result
+            best_condition = result.condition
+        end
+    end
+    
+    if best_result === nothing
+        # Fallback to unweighted linear fit
+        cfg.verbose && @warn "All weighted fits failed, using fallback"
+        return fit_polynomial(dt_vals, u_vals, ones(n), 1)
+    end
+    
+    return best_result
 end
+
+function fit_polynomial(dt_vals, u_vals, weights, degree, cfg::AdaptativeConfig)
+    n = length(dt_vals)
+    
+    # Build Vandermonde matrix
+    Φ = [ dt_vals[i]^j for i in 1:n, j in 0:degree ]
+    #TODO
+    # Weight matrix
+    W = Diagonal(sqrt.(weights))
+    WΦ = W * Φ
+    
+    # Convert u_vals to matrix form
+    sample = u_vals[1]
+    if sample isa Number
+        Wu = W * Float64.(u_vals)
+        β = WΦ \ Wu
+        u0_est = β[1]
+        residual = norm(WΦ * β - Wu)
+    else
+        # Handle array-valued observables
+        m = length(vec(sample))
+        Wu = zeros(n, m)
+        for i in 1:n
+            Wu[i, :] = vec(u_vals[i])
+        end
+        Wu = W * Wu
+        
+        β = WΦ \ Wu
+        u0_est = reshape(β[1, :], size(vec(sample)))
+        residual = norm(WΦ * β - Wu)
+    end
+    
+    # Condition number and error estimate
+    cond_num = cond(WΦ)
+    error_est = residual / sqrt(sum(weights))
+    
+    return (u0=u0_est, coeffs=β, condition=cond_num, 
+            residual=residual, error_est=error_est, degree=degree)
+end
+
+function compute_weights(n::Int, switch_idx::Union{Int, Nothing})
+        w = cfg.w_decay.^(n .- i)
+        # Penalty for pre-asymptotic points
+        if !isnothing(switch_idx)
+            w[1:switch_idx-1] .*= cfg.pre_asymptotic_penalty
+        end
+        # Normalize weights
+        w ./= sum(w)
+        return w
+    end
 
 @testitem "Adaptative Richardson Extrapolation" begin
     using NonEquilibriumGreenFunction.AdaptativeRichardson
