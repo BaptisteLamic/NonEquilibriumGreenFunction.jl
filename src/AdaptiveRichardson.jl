@@ -355,7 +355,7 @@ end
     n = 12
     p = 3
     dt_vals = LinRange(10, 0.001, n) 
-    f(x) = 1 - x^3
+    f(x) = 1 - x^p
     # Simulate noisy observations
     u_vals = f.(dt_vals) .+ 1e-6 .* randn(n)
     cfg = AdaptativeConfig(verbose=true)
