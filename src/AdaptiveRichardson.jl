@@ -227,7 +227,7 @@ function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg
             cfg.verbose && @warn "Degree $degree failed: $e"
             continue
         end
-        if isnothing(best_result) || (result.condition < cfg.condition_threshold && result.error_est < best_result.error_est)
+        if isnothing(best_result) || (result.condition < cfg.condition_threshold && result.error_est < 0.5 * best_result.error_est)
             best_result = result
             best_condition = result.condition
         end
@@ -352,12 +352,14 @@ end
     using NonEquilibriumGreenFunction.AdaptativeRichardson
     using LinearAlgebra
     # Test polynomial fitting with weights
-    dt_vals = LinRange(10, 0.001, 12)
-    f(x) = 1 - x^2
+    n = 12
+    p = 3
+    dt_vals = LinRange(10, 0.001, n) 
+    f(x) = 1 - x^3
     # Simulate noisy observations
-    u_vals = f.(dt_vals)
+    u_vals = f.(dt_vals) .+ 1e-6 .* randn(n)
     cfg = AdaptativeConfig(verbose=true)
-    result = robust_extrapolate(dt_vals, u_vals, nothing, AdaptativeConfig())
-    @test result.degree == 2
+    result = robust_extrapolate(dt_vals, u_vals, nothing, cfg)
+    @test result.degree == p
     @test isapprox(result.u0[1],f(0), atol=1e-6)
 end
