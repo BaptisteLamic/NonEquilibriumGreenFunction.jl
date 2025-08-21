@@ -17,9 +17,9 @@ Base.@kwdef struct AdaptativeConfig
     p_theory::Float64 = NaN  # Theoretical order of convergence, NaN for automatic detection
 
     # Point limits
-    max_pointsA::Int = 4
-    max_pointsB::Int = 3
-    max_total_points::Int = 7
+    max_pointsA::Int = 5
+    max_pointsB::Int = 5
+    max_total_points::Int = 10
 
     # Convergence criteria
     rtol::Float64 = 1e-6
@@ -41,7 +41,7 @@ Base.@kwdef struct AdaptativeConfig
 
     # Numerical stability
     min_error_ratio::Float64 = 1e-14
-    condition_threshold::Float64 = 1e6
+    condition_threshold::Float64 = 1e9
 
     # Control
     max_time::Union{Float64,Nothing} = nothing
@@ -97,6 +97,14 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         cfg.max_time === nothing && return true
         return (time() - t_start) < cfg.max_time
     end
+    function get_error_estimate(results)
+        #TODO find a better error estimate
+        if length(results) < 2
+            return NaN
+        else
+            return 10*abs(results[end]-results[end-1])
+        end
+    end
     dt_list = [dt0]
     u_list = [f(dt0)]
     p_list = Float64[]
@@ -141,14 +149,14 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
             p = observed_order(dt_list[end-3:end], u_list[end-3:end], cfg)
             push!(p_list, last(p))
             cfg.verbose && @info "Phase B[$i]: dt=$(dt), p_obs=$p"
-            current_fit = robust_extrapolate(dt_list, u_list, nothing, cfg)
+            current_fit = robust_extrapolate(dt_list, u_list, nothing, cfg, minimum_degree=last(p)+1)
             push!(results, current_fit.coeffs[1])
             condition_number = current_fit.condition
             polynomial_degree = current_fit.degree
             extrapolation_error_est = current_fit.error_est
             result = current_fit.u0[1]
             if length(results) >= 2
-                error_estimate = abs(results[end] - results[end-1])
+                error_estimate = get_error_estimate(results)
                 if error_estimate / abs(results[end]) < cfg.rtol || error_estimate < cfg.atol
                     converged = true
                     break
@@ -172,7 +180,7 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         dt_list=dt_list,
         u_list=u_list,
         p_obs=p_list,
-        error=abs(results[end] - results[end-1]),
+        error=get_error_estimate(results),
         converged=converged,
         total_time=total_time,
         polynomial_degree=polynomial_degree,
@@ -209,30 +217,29 @@ function observed_order(x, y, cfg::AdaptativeConfig=AdaptativeConfig())
     #Use successive triplets to evaluate a sequence of convergence orders
     successives_differences = norm.(y[2:end] .- y[1:end-1])
     ratio = (x[2:end-1] - x[1:end-2]) ./ (x[3:end] - x[2:end-1])
-    return map(zip(successives_differences[2:end], successives_differences[1:end-1], y[1:end-2], y[2:end-1], y[3:end], ratio)) do (e2, e1, u1, u2, u3, r)
-        if e1 <= cfg.min_error_ratio * max(norm(u1), norm(u2)) || e2 <= cfg.min_error_ratio * max(norm(u2), norm(u3))
+    return map(zip(successives_differences[2:end], successives_differences[1:end-1], y[1:end-2], y[2:end-1], y[3:end], ratio)) do (e2, e1, r)
+        diff_ratio = e1 / e2
+        if diff_ratio <= cfg.min_error_ratio
             return NaN
         end
-
-        ratio = e1 / e2
-        if ratio <= cfg.min_error_ratio || ratio >= 1 / cfg.min_error_ratio
-            return NaN
-        end
-        return log(ratio) / log(r)
+        return log(diff_ratio) / log(r)
     end
 end
 
 function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg; minimum_degree = 0)
     #TODO: improve fit selection logic
     n = length(dt_vals)
-    max_degree = n - 1
-
+    if isnothing(switch_idx)
+        max_degree = n - 1
+    else
+        max_degree = n - switch_idx + 1
+    end
     best_result = nothing
     best_condition = Inf
     weights = compute_weights(n::Int, switch_idx::Union{Int,Nothing}, cfg)
     # Try different polynomial degrees
     for degree in minimum_degree:max_degree
-        result = fit_polynomial(dt_vals, u_vals, degree, weights=weights, minimum_degree=minimum_degree)
+        result = fit_polynomial(dt_vals, u_vals, degree, weights=weights)
         if isnothing(result)
             cfg.verbose && @warn "Degree $degree failed: $e"
             continue
@@ -251,11 +258,11 @@ function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg
     return best_result
 end
 
-function fit_polynomial(dt_vals, u_vals, degree; weights=ones(length(dt_vals)),minimum_degree=0)
+function fit_polynomial(dt_vals, u_vals, degree; weights=ones(length(dt_vals)))
     n = length(dt_vals)
 
     # Build Vandermonde matrix
-    Φ = [dt_vals[i]^j for i in 1:n, j in minimum_degree:degree]
+    Φ = [dt_vals[i]^j for i in 1:n, j in 0:degree]
     # Weight matrix
     W = Diagonal(sqrt.(weights))
     WΦ = W * Φ
@@ -317,6 +324,7 @@ end # module AdaptativeRichardson
     result = adaptative_richardson(f,1., cfg)
     @test result.converged
     @test result.error < cfg.rtol
+    @test abs(f(0)-result.u0_est) < result.error 
 end
 
 @testitem "Polynomial Interpolation" begin
