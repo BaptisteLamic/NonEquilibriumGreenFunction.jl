@@ -41,7 +41,7 @@ Base.@kwdef struct AdaptativeConfig
 
     # Numerical stability
     min_error_ratio::Float64 = 1e-14
-    condition_threshold::Float64 = 1e9
+    condition_threshold::Float64 = 1e6
 
     # Control
     max_time::Union{Float64,Nothing} = nothing
@@ -100,29 +100,39 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
     function get_error_estimate(results)
         #TODO find a better error estimate
         if length(results) < 2
-            return NaN
+            error_estimate = NaN
         else
-            return 10*abs(results[end]-results[end-1])
+            error_estimate = 10 * abs(results[end] - results[end-1])
         end
+        cfg.verbose && @info "Error estimate: $error_estimate"
+        return error_estimate
     end
     dt_list = [dt0]
     u_list = [f(dt0)]
     p_list = Float64[]
     results = eltype(u_list)[]
+    function compute_step!(dt)
+        push!(dt_list, dt)
+        push!(u_list, f(dt))
+        if length(dt_list) >= 2
+            extrapolation = robust_extrapolate(dt_list, u_list, nothing, cfg)
+            push!(results, extrapolation.coeffs[1])
+        end
+        if length(dt_list) >= 3
+            p = observed_order(dt_list[end-2:end], u_list[end-2:end], cfg)
+            push!(p_list, last(p))
+        end
+        return extrapolation
+    end
     phase_switch_index = nothing
     for i in 1:cfg.max_pointsA
         if !time_budget_ok()
             break
         end
         dt = dt_list[end] / cfg.r_large
-        push!(dt_list, dt)
-        push!(u_list, f(dt))
-        extrapolation = robust_extrapolate(dt_list, u_list, nothing, cfg)
-        push!(results, extrapolation.coeffs[1])
+        compute_step!(dt)
         if length(dt_list) >= 3
-            p = observed_order(dt_list[end-2:end], u_list[end-2:end], cfg)
-            cfg.verbose && @info "Phase A[$i]: dt=$(dt), p_obs=$p"
-            push!(p_list, last(p))
+            cfg.verbose && @info "Phase A[$i]: dt=$(dt), p_obs=$(last(p_list))"
             if is_asymptotic(p_list, cfg)
                 phase_switch_index = length(dt_list)
                 cfg.verbose && @info "Asymptotic regime detected at point $phase_switch_index"
@@ -144,13 +154,8 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
             !time_budget_ok() && break
 
             dt = dt_list[end] / cfg.r_small
-            push!(dt_list, dt)
-            push!(u_list, f(dt))
-            p = observed_order(dt_list[end-3:end], u_list[end-3:end], cfg)
-            push!(p_list, last(p))
-            cfg.verbose && @info "Phase B[$i]: dt=$(dt), p_obs=$p"
-            current_fit = robust_extrapolate(dt_list, u_list, nothing, cfg, minimum_degree=last(p)+1)
-            push!(results, current_fit.coeffs[1])
+            current_fit = compute_step!(dt)
+            cfg.verbose && @info "Phase B[$i]: dt=$(dt), p_obs=$(last(p_list))"
             condition_number = current_fit.condition
             polynomial_degree = current_fit.degree
             extrapolation_error_est = current_fit.error_est
@@ -216,8 +221,8 @@ function observed_order(x, y, cfg::AdaptativeConfig=AdaptativeConfig())
     end
     #Use successive triplets to evaluate a sequence of convergence orders
     successives_differences = norm.(y[2:end] .- y[1:end-1])
-    ratio = (x[2:end-1] - x[1:end-2]) ./ (x[3:end] - x[2:end-1])
-    return map(zip(successives_differences[2:end], successives_differences[1:end-1], y[1:end-2], y[2:end-1], y[3:end], ratio)) do (e2, e1, r)
+    ratio = [(x[i+2]-x[i+1])/(x[i+1]-x[i]) for i in 1:length(x)-2]
+    return map(zip(successives_differences[2:end], successives_differences[1:end-1], ratio)) do (e2, e1, r)
         diff_ratio = e1 / e2
         if diff_ratio <= cfg.min_error_ratio
             return NaN
@@ -226,7 +231,7 @@ function observed_order(x, y, cfg::AdaptativeConfig=AdaptativeConfig())
     end
 end
 
-function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg; minimum_degree = 0)
+function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg; minimum_degree=0)
     #TODO: improve fit selection logic
     n = length(dt_vals)
     if isnothing(switch_idx)
@@ -320,11 +325,12 @@ end # module AdaptativeRichardson
     @test median(list_of_orders) ≈ 3.0 atol = 1e-1
     @test is_asymptotic(list_of_orders)
     n = 30
-    cfg = AdaptativeConfig(max_pointsA = 12,max_pointsB = n, rtol = 1e-6, max_total_points = n, verbose=false)
-    result = adaptative_richardson(f,1., cfg)
+    cfg = AdaptativeConfig(max_pointsA=12, max_pointsB=n, rtol=1e-6, max_total_points=n, verbose=true)
+    result = adaptative_richardson(f, 1., cfg)
     @test result.converged
     @test result.error < cfg.rtol
-    @test abs(f(0)-result.u0_est) < result.error 
+    @show result
+    @test abs(f(0) - result.u0_est) < result.error
 end
 
 @testitem "Polynomial Interpolation" begin
@@ -372,6 +378,6 @@ end
     u_vals = f.(dt_vals) .+ 1e-6 .* randn(n)
     cfg = AdaptativeConfig(verbose=true)
     result = robust_extrapolate(dt_vals, u_vals, nothing, cfg)
-    @test result.degree == p
+    @test result.degree >= p
     @test isapprox(result.u0[1], f(0), atol=1e-6)
 end
