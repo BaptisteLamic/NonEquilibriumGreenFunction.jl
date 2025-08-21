@@ -1,5 +1,6 @@
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
+dev.ipynb
 /Manifest.toml
 /.vscode
