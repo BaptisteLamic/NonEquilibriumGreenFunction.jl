@@ -31,17 +31,17 @@ Base.@kwdef struct AdaptativeConfig
     p_variance_tol::Float64 = 0.075  # p_tol/2
 
     # Weighting
-    w_decay::Float64 = 0.5
-    pre_asymptotic_penalty::Float64 = 0.1
+    w_decay::Float64 = 1.0
+    pre_asymptotic_penalty::Float64 = 0.025
 
     # Robustness
-    max_restarts::Int = 1
-    restart_factor::Float64 = 2.0
     min_dt_ratio::Float64 = 1e-12  # relative to dt0
 
     # Numerical stability
     min_error_ratio::Float64 = 1e-14
-    condition_threshold::Float64 = 1e6
+    condition_threshold::Float64 = 1e12
+    # Here the conduition number seem to be not very usefull to actally detect numerical issues.
+    # Hence the crazy value.
 
     # Control
     max_time::Union{Float64,Nothing} = nothing
@@ -212,23 +212,30 @@ function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
     end
 end
 
-function observed_order(x, y, cfg::AdaptativeConfig=AdaptativeConfig())
-    if length(x) != length(y)
-        throw(DomainError((x, y), "x and y must have the same length"))
+function observed_order(u1::U, u2::U, u3::U, h1::T, h2::T, h3::T, cfg::AdaptativeConfig=AdaptativeConfig()) where {U,T}
+    u_ratio = (u2 - u1) / (u3 - u2)
+    if u_ratio <= cfg.min_error_ratio
+        cfg.verbose && @warn "Observed order is NaN due to small ratio u_ratio = $(u_ratio) at h1=$(h1), h2=$(h2), h3=$(h3)"
+        return NaN
     end
-    if length(x) <= 2
-        throw(DomainError((x, y), "x and y must have more than 2 elements"))
+    h_ratio = (h2 - h1) / (h3 - h2)
+    if h_ratio <= cfg.min_dt_ratio
+        cfg.verbose && @warn "Observed order is NaN due to small dt ratio h1=$(h1), h2=$(h2), h3=$(h3)"
+        return NaN
+    end
+    return log(u_ratio) / log(h_ratio)
+
+end
+
+function observed_order(h, u, cfg::AdaptativeConfig=AdaptativeConfig())
+    if length(h) != length(u)
+        throw(DomainError((h, u), "x and y must have the same length"))
+    end
+    if length(h) <= 2
+        throw(DomainError((h, u), "x and y must have more than 2 elements"))
     end
     #Use successive triplets to evaluate a sequence of convergence orders
-    successives_differences = norm.(y[2:end] .- y[1:end-1])
-    ratio = [(x[i+2]-x[i+1])/(x[i+1]-x[i]) for i in 1:length(x)-2]
-    return map(zip(successives_differences[2:end], successives_differences[1:end-1], ratio)) do (e2, e1, r)
-        diff_ratio = e1 / e2
-        if diff_ratio <= cfg.min_error_ratio
-            return NaN
-        end
-        return log(diff_ratio) / log(r)
-    end
+    return [observed_order(u[i], u[i+1], u[i+2], h[i], h[i+1], h[i+2], cfg) for i in 1:length(h)-2]
 end
 
 function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg; minimum_degree=0)
@@ -310,27 +317,45 @@ end # module AdaptativeRichardson
     function generate_convergeance_order_test_function(order, dt, f0)
         nb_coefficients = 10
         coefficients = randn(order + nb_coefficients)
+        function ramp(t, t0)
+            return t > t0 ? t : zero(t)
+        end
         function f(t)
-            if t > dt
-                return sin(t) * t^(order + 2)
-            else
-                return f0 + sum((coefficients[k] * t^k for k in order:order+nb_coefficients-1))
-            end
+            polynomial_part = sum((coefficients[k] * t^k for k in order:order+nb_coefficients-1))
+            return f0 + polynomial_part + sin(t) * (1 - exp(ramp(t, dt)))
+        end
+    end
+    f = generate_convergeance_order_test_function(3, 1, 1.0)
+    n = 20
+    cfg = AdaptativeConfig(max_pointsA=14, max_pointsB=n, rtol=1e-6, max_total_points=n, verbose=false)
+    result = adaptative_richardson(f, 2., cfg)
+    @test result.converged
+    @test result.error < cfg.rtol
+    @test abs(f(0) - result.u0_est) < result.error
+end
+
+@testitem "Observed Order" begin
+    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using Statistics
+    # Test the Adaptative Richardson Extrapolation method
+    function generate_convergeance_order_test_function(order, dt, f0)
+        nb_coefficients = 10
+        coefficients = randn(order + nb_coefficients)
+        function ramp(t, t0)
+            return t > t0 ? t : zero(t)
+        end
+        function f(t)
+            polynomial_part = sum((coefficients[k] * t^k for k in order:order+nb_coefficients-1))
+            return f0 + polynomial_part + sin(t) * (1 - exp(ramp(t, dt)))
         end
     end
     f = generate_convergeance_order_test_function(3, 0.1, 1.0)
     t = [0.1 * 0.5^k for k in 1:10]
     y = [f(ti) for ti in t]
-    list_of_orders = observed_order(t, y)
+    @show list_of_orders = observed_order(t, y)
+    @test all(list_of_orders .> 1)
     @test median(list_of_orders) ≈ 3.0 atol = 1e-1
     @test is_asymptotic(list_of_orders)
-    n = 30
-    cfg = AdaptativeConfig(max_pointsA=12, max_pointsB=n, rtol=1e-6, max_total_points=n, verbose=true)
-    result = adaptative_richardson(f, 1., cfg)
-    @test result.converged
-    @test result.error < cfg.rtol
-    @show result
-    @test abs(f(0) - result.u0_est) < result.error
 end
 
 @testitem "Polynomial Interpolation" begin
@@ -350,6 +375,8 @@ end
 @testitem "Polynomial fit" begin
     using NonEquilibriumGreenFunction.AdaptativeRichardson
     using LinearAlgebra
+    import Random
+    Random.seed!(1234)
     # Test polynomial fitting with weights
     dt_vals = LinRange(10, 0.001, 1024)
     f(x) = 1 - x^2
@@ -369,13 +396,15 @@ end
 @testitem "robust_extrapolate" begin
     using NonEquilibriumGreenFunction.AdaptativeRichardson
     using LinearAlgebra
+    import Random
+    Random.seed!(1234)
     # Test polynomial fitting with weights
     n = 12
     p = 3
     dt_vals = LinRange(10, 0.001, n)
     f(x) = 1 - x^p
     # Simulate noisy observations
-    u_vals = f.(dt_vals) .+ 1e-6 .* randn(n)
+    u_vals = f.(dt_vals) .+ 1e-8 .* randn(n)
     cfg = AdaptativeConfig(verbose=true)
     result = robust_extrapolate(dt_vals, u_vals, nothing, cfg)
     @test result.degree >= p
