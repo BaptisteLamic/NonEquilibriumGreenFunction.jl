@@ -23,16 +23,16 @@ Base.@kwdef struct AdaptativeConfig
 
     # Convergence criteria
     rtol::Float64 = 1e-6
-    atol::Float64 = 0.0
+    atol::Float64 = 1e-6
 
     # Asymptotic detection
     window::Int = 3
-    p_tol::Float64 = 0.15
-    p_variance_tol::Float64 = 0.075  # p_tol/2
+    p_tol::Float64 = 0.30
+    p_variance_tol::Float64 = 0.2 # p_tol/2
 
     # Weighting
     w_decay::Float64 = 1.0
-    pre_asymptotic_penalty::Float64 = 0.025
+    pre_asymptotic_penalty::Float64 = 0.1
 
     # Robustness
     min_dt_ratio::Float64 = 1e-12  # relative to dt0
@@ -134,7 +134,7 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         if length(dt_list) >= 3
             cfg.verbose && @info "Phase A[$i]: dt=$(dt), p_obs=$(last(p_list))"
             if is_asymptotic(p_list, cfg)
-                phase_switch_index = length(dt_list)
+                phase_switch_index = length(dt_list) - cfg.window + 1
                 cfg.verbose && @info "Asymptotic regime detected at point $phase_switch_index"
                 break
             end
@@ -205,7 +205,7 @@ function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
     mean_dev = mean(deviations)
     var_dev = var(recent)
     if isnan(cfg.p_theory)
-        return sqrt(var_dev) < cfg.p_variance_tol
+        return var_dev < cfg.p_variance_tol
     else
         #TODO: review this condition
         return mean_dev < cfg.p_tol && sqrt(var_dev) < cfg.p_variance_tol
@@ -352,7 +352,7 @@ end
     f = generate_convergeance_order_test_function(3, 0.1, 1.0)
     t = [0.1 * 0.5^k for k in 1:10]
     y = [f(ti) for ti in t]
-    @show list_of_orders = observed_order(t, y)
+    list_of_orders = observed_order(t, y)
     @test all(list_of_orders .> 1)
     @test median(list_of_orders) ≈ 3.0 atol = 1e-1
     @test is_asymptotic(list_of_orders)
