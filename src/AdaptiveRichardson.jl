@@ -31,8 +31,8 @@ Base.@kwdef struct AdaptativeConfig
     p_variance_tol::Float64 = 0.2 # p_tol/2
 
     # Weighting
-    w_decay::Float64 = 1.0
-    pre_asymptotic_penalty::Float64 = 0.1
+    w_decay::Float64 = 0.6
+    pre_asymptotic_penalty::Float64 = 0.0
 
     # Robustness
     min_dt_ratio::Float64 = 1e-12  # relative to dt0
@@ -57,7 +57,7 @@ Base.@kwdef struct RichardsonResult{T}
     dt_list::Vector{Float64}
     u_list::Vector{T}
     p_obs::Vector{Float64}
-    error
+    error::Float64
     converged::Bool
     total_time::Float64
     phase_switch_index::Union{Int,Nothing} = nothing  # Index where asymptotic behavior is detected
@@ -97,8 +97,14 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         cfg.max_time === nothing && return true
         return (time() - t_start) < cfg.max_time
     end
-    function get_error_estimate(results)
-        #TODO find a better error estimate
+    dt_list = [dt0]
+    u_list = [f(dt0)]
+    p_list = Float64[]
+    results = eltype(u_list)[]
+    phase_switch_index = nothing
+    converged = false
+
+    function compute_error_estimate(results)
         if length(results) < 2
             error_estimate = NaN
         else
@@ -107,30 +113,53 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         cfg.verbose && @info "Error estimate: $error_estimate"
         return error_estimate
     end
-    dt_list = [dt0]
-    u_list = [f(dt0)]
-    p_list = Float64[]
-    results = eltype(u_list)[]
+
+    function extrapolate(dt_list, u_list, phase_switch_index, cfg::AdaptativeConfig)
+        return robust_extrapolate(dt_list, u_list, phase_switch_index, cfg)
+    end
+
     function compute_step!(dt)
         push!(dt_list, dt)
         push!(u_list, f(dt))
-        if length(dt_list) >= 2
-            extrapolation = robust_extrapolate(dt_list, u_list, nothing, cfg)
-            push!(results, extrapolation.coeffs[1])
-        end
+        @assert length(u_list) >= 2 "At least 2 points are required for extrapolation"
+        new_estimate = extrapolate(dt_list, u_list, phase_switch_index, cfg)
+        push!(results, new_estimate.coeffs[1])
         if length(dt_list) >= 3
             p = observed_order(dt_list[end-2:end], u_list[end-2:end], cfg)
             push!(p_list, last(p))
         end
-        return extrapolation
+        return new_estimate
     end
-    phase_switch_index = nothing
-    for i in 1:cfg.max_pointsA
+
+    function isConverged()
+        if length(results) < 2
+            return false
+        end
+        error_estimate = compute_error_estimate(results)
+        return (error_estimate / abs(results[end]) < cfg.rtol) || (error_estimate < cfg.atol)
+    end
+    function build_result(extrapolation)
+        return RichardsonResult(
+            u0_est=extrapolation.u0[1],
+            dt_list=dt_list,
+            u_list=u_list,
+            p_obs=p_list,
+            error=compute_error_estimate(results),
+            converged=isConverged(),
+            total_time=time() - t_start,
+            polynomial_degree=extrapolation.degree,
+            phase_switch_index=phase_switch_index
+        )
+    end
+    for i in 2:cfg.max_pointsA
         if !time_budget_ok()
             break
         end
         dt = dt_list[end] / cfg.r_large
         compute_step!(dt)
+        if isConverged()
+            return build_result(extrapolate(dt_list, u_list, phase_switch_index, cfg))
+        end
         if length(dt_list) >= 3
             cfg.verbose && @info "Phase A[$i]: dt=$(dt), p_obs=$(last(p_list))"
             if is_asymptotic(p_list, cfg)
@@ -140,14 +169,11 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
             end
         end
     end
-
-    converged = false
-    condition_number = NaN
-    polynomial_degree = -1
-    extrapolation_error_est = NaN
-    result = NaN
     if !isnothing(phase_switch_index)
-
+        # Recompute the last estimations, taking into account that we are in the asymptotic regime. 
+        for i in cfg.window-1:-1:0
+            results[end-i] = extrapolate(dt_list[1:end-i], u_list[1:end-i], phase_switch_index, cfg::AdaptativeConfig).coeffs[1]
+        end
         #Phase B: refine the last point
         for i in 1:cfg.max_pointsB
             length(dt_list) >= cfg.max_total_points && break
@@ -156,41 +182,16 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
             dt = dt_list[end] / cfg.r_small
             current_fit = compute_step!(dt)
             cfg.verbose && @info "Phase B[$i]: dt=$(dt), p_obs=$(last(p_list))"
-            condition_number = current_fit.condition
-            polynomial_degree = current_fit.degree
-            extrapolation_error_est = current_fit.error_est
-            result = current_fit.u0[1]
             if length(results) >= 2
-                error_estimate = get_error_estimate(results)
-                if error_estimate / abs(results[end]) < cfg.rtol || error_estimate < cfg.atol
-                    converged = true
-                    break
+                error_estimate = compute_error_estimate(results)
+                if isConverged()
+                     return build_result(current_fit)
                 end
             end
         end
     end
-    if !converged
-        cfg.verbose && @warn "Adaptative Richardson did not converge within the limits"
-        current_fit = robust_extrapolate(dt_list, u_list, nothing, cfg)
-        result = current_fit.u0[1]
-        condition_number = current_fit.condition
-        polynomial_degree = current_fit.degree
-        extrapolation_error_est = current_fit.error_est
-    end
-
-    total_time = time() - t_start
-
-    return RichardsonResult(
-        u0_est=result,
-        dt_list=dt_list,
-        u_list=u_list,
-        p_obs=p_list,
-        error=get_error_estimate(results),
-        converged=converged,
-        total_time=total_time,
-        polynomial_degree=polynomial_degree,
-        phase_switch_index=phase_switch_index
-    )
+    cfg.verbose && @warn "Adaptative Richardson did not converge within the limits"
+    return build_result(robust_extrapolate(dt_list, u_list, phase_switch_index, cfg))
 end
 
 
