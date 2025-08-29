@@ -68,15 +68,3 @@ function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compre
     blockdiag(_A, d, compression=compression)
 end
 
-function _adapt(::HssMatrix, a)
-    return hss(a)
-end
-function _adapt(::G, a) where {G<:AbstractArray}
-    return G(a)
-end
-function _adapt(a::AbstractArray)
-    return Array(a)
-end
-function _adapt(a::HssMatrix)
-    return a
-end

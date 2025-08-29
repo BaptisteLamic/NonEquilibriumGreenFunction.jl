@@ -64,7 +64,7 @@ function similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(discre
 end
 
 function adjoint(dis::TrapzDiscretisation)
-    similar(dis, dis |> matrix |> adjoint |> _adapt)
+    similar(dis, dis |> matrix |> adjoint)
 end
 
 -(discretization::AbstractDiscretisation) = similar(discretization, -matrix(discretization))
