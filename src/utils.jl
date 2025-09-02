@@ -33,12 +33,6 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
         @inbounds V[i] = m[IJ[i][1], IJ[i][2]]
     end
     V = [m[ij[1], ij[2]] for ij in IJ]
-    #=while i<=length(I)
-        next = findnext(Ip-> Ip != IJ[i], IJ, i+1)
-        next_i = isnothing(next) ? length(IJ)+1 : Int(next)
-        V[i:next_i-1] = @views m[I[i:next_i-1], J[i:next_i-1]]
-        i = next_i
-    end=#
     return sparse(I, J, V, size(m)...)
 end
 function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0) where {T}
