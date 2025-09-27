@@ -1,6 +1,8 @@
 
 
 
+export kernelSolve
+
 """
     Solve the equation  G = g + K⋅G  for G
 """
@@ -15,7 +17,7 @@ function solve_dyson(g::Kernel,K::Kernel)
     right = cp( matrix(g) - cp(1 // 2 * diag_g))
     sol_biased = _ldiv!(left,right)
     correction = cp(diag_g - extract_blockdiag( sol_biased,bs))
-    return similar(g, sol_biased + correction )
+    return similar(g, cp(sol_biased + correction) )
 end
 
 function _ldiv!(left::T,right::T) where {T<:AbstractMatrix}
