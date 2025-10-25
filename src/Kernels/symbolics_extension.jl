@@ -26,8 +26,8 @@ ex = :(arr[i, j])
 @test ex == maketerm(Expr, :ref, [:arr, :i, :j], nothing)
 =#
 
-function maketerm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
-    maketerm(x, head, args, AbstractOperator ; metadata = metadata)
+function maketerm(x::SymbolicOperator, head, args; metadata = nothing)
+    #TODO 
 end
 
 struct SymbolicOperator <: AbstractOperator
