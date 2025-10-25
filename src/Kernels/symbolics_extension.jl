@@ -1,33 +1,47 @@
 export SymbolicOperator
 
-using SymbolicUtils: Symbolic, BasicSymbolic
-using Symbolics: wrap
+using SymbolicUtils
+import TermInterface: maketerm, head, children, operation, arguments, isexpr, iscall
 
-import Symbolics: unwrap
-
-import SymbolicUtils: similarterm
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
+#=
+ex = :(f(a, b))
+@test head(ex) == :call
+@test children(ex) == [:f, :a, :b]
+@test operation(ex) == :f
+@test arguments(ex) == [:a, :b]
+@test isexpr(ex)
+@test iscall(ex)
+@test ex == maketerm(Expr, :call, [:f, :a, :b], nothing)
 
-function similarterm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
-    similarterm(x, head, args, AbstractOperator ; metadata = metadata)
+
+ex = :(arr[i, j])
+@test head(ex) == :ref
+@test_throws ErrorException operation(ex)
+@test_throws ErrorException arguments(ex)
+@test isexpr(ex)
+@test !iscall(ex)
+@test ex == maketerm(Expr, :ref, [:arr, :i, :j], nothing)
+=#
+
+function maketerm(x::Symbolic{K}, head, args; metadata = nothing)  where K <: AbstractOperator
+    maketerm(x, head, args, AbstractOperator ; metadata = metadata)
 end
 
-@symbolic_wrap struct SymbolicOperator <: AbstractOperator
+struct SymbolicOperator <: AbstractOperator
     val
 end
-Base.:(==)(a::SymbolicOperator, b::SymbolicOperator) = unwrap(a) == unwrap(b)
+Base.:(==)(a::SymbolicOperator, b::SymbolicOperator) = a.val == b.val
 Base.:hash(a::SymbolicOperator) = hash(a.val)
-unwrap(x::SymbolicOperator) = x.val
-#=wrapper_type(::Type{AbstractOperator}) = SymbolicOperator
-symtype(::SymbolicOperator) = Kernel=#
 
 
-@wrapped function +(x::AbstractOperator)
+
+function +(x::AbstractOperator)
     similarterm(x, +, [x],)
 end
-@wrapped function +(x::AbstractOperator, y::AbstractOperator)
+ function +(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x+y
     else
@@ -38,17 +52,17 @@ end
         end
     end
 end
-@wrapped function +(x::Number, y::AbstractOperator)
+ function +(x::Number, y::AbstractOperator)
     similarterm(y, +, [x,y],)
 end
-@wrapped function +(x::AbstractOperator, y::Number)
+ function +(x::AbstractOperator, y::Number)
     similarterm(x, +, [x,y],)
 end
 
-@wrapped function -(x::AbstractOperator)
+ function -(x::AbstractOperator)
     similarterm(x, -, [x],)
 end
-@wrapped function -(x::AbstractOperator, y::AbstractOperator)
+ function -(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x-y
     else
@@ -59,16 +73,16 @@ end
         end
     end
 end
-@wrapped function -(x::Number, y::AbstractOperator)
+ function -(x::Number, y::AbstractOperator)
    similarterm(y, -, [x,y],)
 end
-@wrapped function -(x::AbstractOperator, y::Number)
+ function -(x::AbstractOperator, y::Number)
    similarterm(x, -, [x,y],)
 end
 
 
 
-@wrapped function *(x::AbstractOperator, y::AbstractOperator)
+ function *(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x*y
     else
@@ -79,26 +93,26 @@ end
         end
     end
 end
-@wrapped function *(x::Number, y::AbstractOperator)
+ function *(x::Number, y::AbstractOperator)
    similarterm(y, *, [x,y],)
 end
-@wrapped function *(x::AbstractOperator, y::Number)
+ function *(x::AbstractOperator, y::Number)
    similarterm(x, *, [x,y],)
 end
 
-@wrapped function inv(G::AbstractOperator)
+ function inv(G::AbstractOperator)
     similarterm(G, inv, [G])
 end
-@wrapped function adjoint(G::AbstractOperator)
+ function adjoint(G::AbstractOperator)
     similarterm(G, adjoint, [G])
 end
-@wrapped function log(G::AbstractOperator)
+ function log(G::AbstractOperator)
     similarterm(G, log, [G])
 end
-@wrapped function tr(G::AbstractOperator)
+ function tr(G::AbstractOperator)
     similarterm(G, tr, [G])
 end
-@wrapped function (/)(left::AbstractOperator, right::AbstractOperator)
+ function (/)(left::AbstractOperator, right::AbstractOperator)
     return   similarterm(left, /, [left, right], )
 end
 
