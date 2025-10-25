@@ -39,45 +39,45 @@ Base.:hash(a::SymbolicOperator) = hash(a.val)
 
 
 function +(x::AbstractOperator)
-    similarterm(x, +, [x],)
+    maketerm(x, +, [x],)
 end
  function +(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x+y
     else
         if x isa Number
-            similarterm(y, +, [x,y],)
+            maketerm(y, +, [x,y],)
         else 
-            similarterm(x, +, [x,y],)
+            maketerm(x, +, [x,y],)
         end
     end
 end
  function +(x::Number, y::AbstractOperator)
-    similarterm(y, +, [x,y],)
+    maketerm(y, +, [x,y],)
 end
  function +(x::AbstractOperator, y::Number)
-    similarterm(x, +, [x,y],)
+    maketerm(x, +, [x,y],)
 end
 
  function -(x::AbstractOperator)
-    similarterm(x, -, [x],)
+    maketerm(x, -, [x],)
 end
  function -(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x-y
     else
         if x isa Number
-            similarterm(y, -, [x,y],)
+            maketerm(y, -, [x,y],)
         else 
-            similarterm(x, -, [x,y],)
+            maketerm(x, -, [x,y],)
         end
     end
 end
  function -(x::Number, y::AbstractOperator)
-   similarterm(y, -, [x,y],)
+   maketerm(y, -, [x,y],)
 end
  function -(x::AbstractOperator, y::Number)
-   similarterm(x, -, [x,y],)
+   maketerm(x, -, [x,y],)
 end
 
 
@@ -87,33 +87,33 @@ end
         x*y
     else
         if x isa Number
-            similarterm(y, *, [x,y],)
+            maketerm(y, *, [x,y],)
         else 
-            similarterm(x, *, [x,y],)
+            maketerm(x, *, [x,y],)
         end
     end
 end
  function *(x::Number, y::AbstractOperator)
-   similarterm(y, *, [x,y],)
+   maketerm(y, *, [x,y],)
 end
  function *(x::AbstractOperator, y::Number)
-   similarterm(x, *, [x,y],)
+   maketerm(x, *, [x,y],)
 end
 
  function inv(G::AbstractOperator)
-    similarterm(G, inv, [G])
+    maketerm(G, inv, [G])
 end
  function adjoint(G::AbstractOperator)
-    similarterm(G, adjoint, [G])
+    maketerm(G, adjoint, [G])
 end
  function log(G::AbstractOperator)
-    similarterm(G, log, [G])
+    maketerm(G, log, [G])
 end
  function tr(G::AbstractOperator)
-    similarterm(G, tr, [G])
+    maketerm(G, tr, [G])
 end
  function (/)(left::AbstractOperator, right::AbstractOperator)
-    return   similarterm(left, /, [left, right], )
+    return   maketerm(left, /, [left, right], )
 end
 
 SymbolicUtils.simplify(n::SymbolicOperator; kw...) = wrap(SymbolicUtils.simplify(unwrap(n); kw...))
