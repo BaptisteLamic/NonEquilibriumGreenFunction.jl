@@ -3,6 +3,8 @@ export SymbolicOperator
 using SymbolicUtils
 import TermInterface: maketerm, head, children, operation, arguments, isexpr, iscall
 
+export maketerm
+
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
@@ -26,15 +28,43 @@ ex = :(arr[i, j])
 @test ex == maketerm(Expr, :ref, [:arr, :i, :j], nothing)
 =#
 
-function maketerm(x::SymbolicOperator, head, args; metadata = nothing)
-    #TODO 
+struct SymbolicOperator <: AbstractOperator
+    head::Symbol
+    operation::Symbol
+    args::Vector{SymbolicOperator}
 end
 
-struct SymbolicOperator <: AbstractOperator
-    val
+function Base.:(==)(a::SymbolicOperator, b::SymbolicOperator)
+    return a.head == b.head && a.operation == b.operation && a.args == b.args
 end
-Base.:(==)(a::SymbolicOperator, b::SymbolicOperator) = a.val == b.val
-Base.:hash(a::SymbolicOperator) = hash(a.val)
+function Base.hash(a::SymbolicOperator, h::UInt)
+    return hash(a.head, hash(a.operation, hash(a.args, h)))
+end
+
+head(x::SymbolicOperator) = x.head
+children(x::SymbolicOperator)::Vector{Union{SymbolicOperator, Symbol}} = [x.operation; x.args]
+operation(x::SymbolicOperator) = x.operation
+arguments(x::SymbolicOperator) = x.args
+isexpr(::SymbolicOperator) = true
+iscall(x::SymbolicOperator) = x.head == :call
+function maketerm(::SymbolicOperator, head, args, metadata = nothing)
+    return SymbolicOperator(head, args[1], args[2:end])
+end
+@testitem "SymbolicOperator maketerm" begin
+    using Symbolics
+    using TermInterface
+    leaf_a = SymbolicOperator(:call, :a, [])
+    @test leaf_a == SymbolicOperator(:call, :a, [])
+    leaf_b = SymbolicOperator(:call, :b, [])
+    kernel = SymbolicOperator(:call, :f, [leaf_a, leaf_b])
+    @test head(kernel) == :call
+    @test children(kernel) == [:f, SymbolicOperator(:call, :a, []), SymbolicOperator(:call, :b, [])]
+    @test operation(kernel) == :f
+    @test arguments(kernel) == [leaf_a, leaf_b]
+    @test isexpr(kernel)
+    @test iscall(kernel)
+    @test kernel == maketerm(kernel, head(kernel), children(kernel), nothing)
+end
 
 
 
@@ -82,7 +112,7 @@ end
 
 
 
- function *(x::AbstractOperator, y::AbstractOperator)
+function *(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x*y
     else
@@ -116,18 +146,6 @@ end
     return   maketerm(left, /, [left, right], )
 end
 
-SymbolicUtils.simplify(n::SymbolicOperator; kw...) = wrap(SymbolicUtils.simplify(unwrap(n); kw...))
-SymbolicUtils.simplify_fractions(n::SymbolicOperator; kw...) = wrap(SymbolicUtils.simplify_fractions(unwrap(n); kw...))
-SymbolicUtils.expand(n::SymbolicOperator) = wrap(SymbolicUtils.expand(unwrap(n)))
-substitute(expr::SymbolicOperator, s::Pair; kw...) = wrap(substituter(s)(unwrap(expr); kw...)) # backward compat
-substitute(expr::SymbolicOperator, s::Vector; kw...) = wrap(substituter(s)(unwrap(expr); kw...))
-substitute(expr::SymbolicOperator, s::Dict; kw...) = wrap(substituter(s)(unwrap(expr); kw...))
-SymbolicUtils.Code.toexpr(x::SymbolicOperator) = SymbolicUtils.Code.toexpr(unwrap(x))
-SymbolicUtils.Code.toexpr(x::SymbolicOperator,st) = SymbolicUtils.Code.toexpr(unwrap(x),st)
-SymbolicUtils.setmetadata(x::SymbolicOperator, t, v) = wrap(SymbolicUtils.setmetadata(unwrap(x), t, v))
-SymbolicUtils.getmetadata(x::SymbolicOperator, t) = SymbolicUtils.getmetadata(unwrap(x), t)
-SymbolicUtils.hasmetadata(x::SymbolicOperator, t) = SymbolicUtils.hasmetadata(unwrap(x), t)
-
 Broadcast.broadcastable(x::SymbolicOperator) = x
 
 Base.zero(::AbstractOperator) = zero(typeof(AbstractOperator))
@@ -135,10 +153,10 @@ function Base.zero(::typeof(AbstractOperator))
     return 0
 end
 
-simplify_kernel(expr) = expr |> unwrap |> _simplify_kernel |> wrap
+simplify_kernel(expr) = _simplify_kernel(expr)
 function _simplify_kernel(expr)
     is_number(x) = x isa Number
-    is_operator(::BasicSymbolic{K}) where K <: AbstractOperator = true  
+    is_operator(::SymbolicOperator) = true  
     is_operator(::K) where K <: AbstractOperator = true  
     is_operator(x) = false  
     rules = [
@@ -167,24 +185,14 @@ function _simplify_kernel(expr)
     simplify(expr, rewriter = rules)
 end
 
-Base.isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(unwrap(a), unwrap(b))
+Base.isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(a.val, b.val)
 convert(::Type{SymbolicOperator}, x::Number) = SymbolicOperator(x)
 function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number 
      return SymbolicOperator
 end
-#Dirty ?
-function *(A::Matrix{SymbolicOperator},B::Matrix{SymbolicOperator})
-    return wrap.(unwrap.(A)*unwrap.(B))
-end
-function *(A::Matrix,B::Matrix{SymbolicOperator})
-    return wrap.(A*unwrap.(B))
-end
-function *(A::Matrix{SymbolicOperator},B::Matrix)
-    return wrap.(unwrap.(A)*B)
-end
 
 
-Base.display(A::SymbolicOperator) = display(unwrap(A))
+Base.display(A::SymbolicOperator) = error("Display not implemented yet for SymbolicOperator")
 
 @testitem "Wrapper and promotion rule" begin
     using Symbolics
