@@ -8,30 +8,13 @@ export maketerm
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
-#=
-ex = :(f(a, b))
-@test head(ex) == :call
-@test children(ex) == [:f, :a, :b]
-@test operation(ex) == :f
-@test arguments(ex) == [:a, :b]
-@test isexpr(ex)
-@test iscall(ex)
-@test ex == maketerm(Expr, :call, [:f, :a, :b], nothing)
-
-
-ex = :(arr[i, j])
-@test head(ex) == :ref
-@test_throws ErrorException operation(ex)
-@test_throws ErrorException arguments(ex)
-@test isexpr(ex)
-@test !iscall(ex)
-@test ex == maketerm(Expr, :ref, [:arr, :i, :j], nothing)
-=#
-
 struct SymbolicOperator <: AbstractOperator
     head::Symbol
     operation::Symbol
     args::Vector{SymbolicOperator}
+end
+function SymbolicOperator(operation, args)
+    return SymbolicOperator(:call, operation, args)
 end
 
 function Base.:(==)(a::SymbolicOperator, b::SymbolicOperator)
@@ -50,7 +33,7 @@ iscall(x::SymbolicOperator) = x.head == :call
 function maketerm(::SymbolicOperator, head, args, metadata = nothing)
     return SymbolicOperator(head, args[1], args[2:end])
 end
-@testitem "SymbolicOperator maketerm" begin
+@testitem "SymbolicOperator TermInterface" begin
     using Symbolics
     using TermInterface
     leaf_a = SymbolicOperator(:call, :a, [])
@@ -67,83 +50,80 @@ end
 end
 
 
-
 function +(x::AbstractOperator)
-    maketerm(x, +, [x],)
+    SymbolicOperator(+, [x])
 end
  function +(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x+y
     else
         if x isa Number
-            maketerm(y, +, [x,y],)
+            SymbolicOperator(+, [x,y])
         else 
-            maketerm(x, +, [x,y],)
+            SymbolicOperator(+, [x,y])
         end
     end
 end
  function +(x::Number, y::AbstractOperator)
-    maketerm(y, +, [x,y],)
+    SymbolicOperator(+, [x,y])
 end
  function +(x::AbstractOperator, y::Number)
-    maketerm(x, +, [x,y],)
+    SymbolicOperator(+, [x,y])
 end
 
  function -(x::AbstractOperator)
-    maketerm(x, -, [x],)
+    SymbolicOperator(-, [x])
 end
  function -(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x-y
     else
         if x isa Number
-            maketerm(y, -, [x,y],)
+            SymbolicOperator(-, [x,y])
         else 
-            maketerm(x, -, [x,y],)
+            SymbolicOperator(-, [x,y])
         end
     end
 end
  function -(x::Number, y::AbstractOperator)
-   maketerm(y, -, [x,y],)
+   SymbolicOperator(-, [x,y])
 end
  function -(x::AbstractOperator, y::Number)
-   maketerm(x, -, [x,y],)
+   SymbolicOperator(-, [x,y])
 end
-
-
 
 function *(x::AbstractOperator, y::AbstractOperator)
     if x  isa Number && y isa Number
         x*y
     else
         if x isa Number
-            maketerm(y, *, [x,y],)
+            SymbolicOperator(*, [x,y])
         else 
-            maketerm(x, *, [x,y],)
+            SymbolicOperator(*, [x,y])
         end
     end
 end
  function *(x::Number, y::AbstractOperator)
-   maketerm(y, *, [x,y],)
+   SymbolicOperator(*, [x,y])
 end
  function *(x::AbstractOperator, y::Number)
-   maketerm(x, *, [x,y],)
+   SymbolicOperator(*, [x,y])
 end
 
  function inv(G::AbstractOperator)
-    maketerm(G, inv, [G])
+    SymbolicOperator(inv, [G])
 end
  function adjoint(G::AbstractOperator)
-    maketerm(G, adjoint, [G])
+    SymbolicOperator(adjoint, [G])
 end
  function log(G::AbstractOperator)
-    maketerm(G, log, [G])
+    SymbolicOperator(log, [G])
 end
  function tr(G::AbstractOperator)
-    maketerm(G, tr, [G])
+    SymbolicOperator(tr, [G])
 end
  function (/)(left::AbstractOperator, right::AbstractOperator)
-    return   maketerm(left, /, [left, right], )
+    return SymbolicOperator(/, [left, right])
 end
 
 Broadcast.broadcastable(x::SymbolicOperator) = x
@@ -191,13 +171,13 @@ function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number
      return SymbolicOperator
 end
 
-
 Base.display(A::SymbolicOperator) = error("Display not implemented yet for SymbolicOperator")
 
 @testitem "Wrapper and promotion rule" begin
     using Symbolics
     using LinearAlgebra
-    @variables G::Kernel x
+    @variables x
+    G = SymbolicOperator(:call, :G, [])
     @test 1 * G |> simplify_kernel == G
     @test 0 * G |> simplify_kernel == 0
     @test isequal(0 - G |> simplify_kernel, -G)
@@ -212,7 +192,8 @@ end
     #TODO: add detection of singular kernel ?
     using Symbolics
     using LinearAlgebra
-    @variables G::Kernel Σ::Kernel
+    G = SymbolicOperator(:call, :G, [])
+    Σ = SymbolicOperator(:call, :Σ, [])
     @test isequal(inv(inv(G)) |> simplify_kernel, G)
     @test isequal(simplify_kernel( G - G), 0)
     @test isequal(simplify_kernel( G + G + G - G),2G)
@@ -221,8 +202,10 @@ end
 @testitem "Construction of the current observable" begin
     using Symbolics
     using LinearAlgebra
-    @variables G_R::Kernel G_K::Kernel
-    @variables Σ_R::Kernel Σ_K::Kernel
+    G_R = SymbolicOperator(:call, :G_R, [])
+    G_K = SymbolicOperator(:call, :G_K, [])
+    Σ_R = SymbolicOperator(:call, :Σ_R, [])
+    Σ_K = SymbolicOperator(:call, :Σ_K, [])
     τz = [1 2; 2 3] // 2
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
