@@ -8,40 +8,119 @@ export maketerm
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
 
+using Moshi.Match: @match
+using Moshi.Data: @data
+using Moshi.Derive: @derive
+@data SymbolicExpression begin
+    struct Node
+        head::Symbol
+        operation::Symbol
+        args::Vector{SymbolicExpression.Type}
+    end
+    Leaf(Any)
+end
+@derive SymbolicExpression[Hash, Eq, Show]
+
+function head(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(head, _, _) => head
+        SymbolicExpression.Leaf(_) => error("Leaf has no head")
+    end
+end
+function children(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(_, operation, args) => return [operation; args]
+        SymbolicExpression.Leaf(_) => error("Leaf has no children")
+    end
+end
+function operation(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(_, operation, _) => operation
+        SymbolicExpression.Leaf(_) => error("Leaf has no operation")
+    end
+end
+function arguments(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(_, _, arguments) => arguments
+        SymbolicExpression.Leaf(_) => error("Leaf has no arguments")
+    end
+end
+function isexpr(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(_, _, _) => true
+        SymbolicExpression.Leaf(_) => false
+    end
+end
+function iscall(x::SymbolicExpression.Type)
+    @match x begin
+        SymbolicExpression.Node(head, _, _) => head == :call
+        SymbolicExpression.Leaf(_) => false
+    end
+end
+function maketerm(x::SymbolicExpression.Type, head, args, metadata = nothing)
+    return SymbolicExpression.Node(head, args[1], args[2:end])
+end
+
+@testitem "SymbolicExpression TermInterface" begin
+    using Symbolics
+    using TermInterface
+    using NonEquilibriumGreenFunction.SymbolicExpression
+    leaf_a = SymbolicExpression.Leaf(:a)
+    leaf_b = SymbolicExpression.Leaf(:b)
+    kernel = SymbolicExpression.Node(:call, :f, [leaf_a, leaf_b])
+    @test kernel == SymbolicExpression.Node(:call, :f, [leaf_a, leaf_b])
+    @test head(kernel) == :call
+    @test children(kernel) == [:f, leaf_a, leaf_b]
+    @test operation(kernel) == :f
+    @test arguments(kernel) == [leaf_a, leaf_b]
+    @test isexpr(kernel)
+    @test !isexpr(leaf_a)
+    @test iscall(kernel)
+    kernel_bis = maketerm(kernel, head(kernel), children(kernel), nothing)
+    @test head(kernel_bis) == head(kernel)
+    @show children(kernel_bis)
+    @test children(kernel_bis) == children(kernel)
+    @test operation(kernel_bis) == operation(kernel)
+    @test arguments(kernel_bis) == arguments(kernel)
+    @test kernel == kernel_bis
+end
+
 struct SymbolicOperator <: AbstractOperator
-    head::Symbol
-    operation::Symbol
-    args::Vector{SymbolicOperator}
+    expr::SymbolicExpression.Type
 end
+
 function SymbolicOperator(operation, args)
-    return SymbolicOperator(:call, operation, args)
+    expression = SymbolicExpression.Node(:call, operation, args)
+    return SymbolicOperator(expression)
+end
+function SymbolicOperator(value)
+    return SymbolicOperator(Leaf(value))
 end
 
-function Base.:(==)(a::SymbolicOperator, b::SymbolicOperator)
-    return a.head == b.head && a.operation == b.operation && a.args == b.args
+function wrap(x::SymbolicExpression.Type)
+    return SymbolicOperator(x)
 end
-function Base.hash(a::SymbolicOperator, h::UInt)
-    return hash(a.head, hash(a.operation, hash(a.args, h)))
+function unwrap(x::SymbolicOperator)
+    return x.expr
 end
 
-head(x::SymbolicOperator) = x.head
-children(x::SymbolicOperator)::Vector{Union{SymbolicOperator, Symbol}} = [x.operation; x.args]
-operation(x::SymbolicOperator) = x.operation
-arguments(x::SymbolicOperator) = x.args
-isexpr(::SymbolicOperator) = true
-iscall(x::SymbolicOperator) = x.head == :call
-function maketerm(::SymbolicOperator, head, args, metadata = nothing)
-    return SymbolicOperator(head, args[1], args[2:end])
-end
+head(x::SymbolicOperator) = x |> unwrap |> head 
+children(x::SymbolicOperator) = x |> unwrap |> head
+operation(x::SymbolicOperator) = x |> unwrap |> head
+arguments(x::SymbolicOperator) = x |> unwrap |> head
+isexpr(::SymbolicOperator) = x |> unwrap |> head
+iscall(x::SymbolicOperator) = x |> unwrap |> head
+maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(unwrap(x), head, args, metadata))
+
 @testitem "SymbolicOperator TermInterface" begin
     using Symbolics
     using TermInterface
-    leaf_a = SymbolicOperator(:call, :a, [])
-    @test leaf_a == SymbolicOperator(:call, :a, [])
-    leaf_b = SymbolicOperator(:call, :b, [])
-    kernel = SymbolicOperator(:call, :f, [leaf_a, leaf_b])
+    leaf_a = SymbolicOperator(:a, [])
+    @test leaf_a == SymbolicOperator(:a, [])
+    leaf_b = SymbolicOperator(:b, [])
+    kernel = SymbolicOperator(:f, [leaf_a, leaf_b])
     @test head(kernel) == :call
-    @test children(kernel) == [:f, SymbolicOperator(:call, :a, []), SymbolicOperator(:call, :b, [])]
+    @test children(kernel) == [:f, SymbolicOperator(:a, []), SymbolicOperator( :b, [])]
     @test operation(kernel) == :f
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
@@ -173,7 +252,7 @@ end
 
 Base.display(A::SymbolicOperator) = error("Display not implemented yet for SymbolicOperator")
 
-@testitem "Wrapper and promotion rule" begin
+@testitem "Basic matching" begin
     using Symbolics
     using LinearAlgebra
     @variables x
