@@ -3,7 +3,7 @@ export SymbolicOperator
 using SymbolicUtils
 import TermInterface: maketerm, head, children, operation, arguments, isexpr, iscall
 
-export maketerm
+export maketerm, make_leaf
 
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
@@ -29,7 +29,7 @@ function head(x::SymbolicExpression.Type)
 end
 function children(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(_, operation, args) => return [operation; args]
+        SymbolicExpression.Node(_, operation, args) => return Vector{Union{Symbol,SymbolicExpression.Type}}([operation; args])
         SymbolicExpression.Leaf(_) => error("Leaf has no children")
     end
 end
@@ -54,11 +54,13 @@ end
 function iscall(x::SymbolicExpression.Type)
     @match x begin
         SymbolicExpression.Node(head, _, _) => head == :call
-        SymbolicExpression.Leaf(_) => false
+        SymbolicExpression.Leaf(_) => error("Leaf has can't be a call")
     end
 end
 function maketerm(x::SymbolicExpression.Type, head, args, metadata = nothing)
-    return SymbolicExpression.Node(head, args[1], args[2:end])
+    operation::Symbol = args[1]
+    arguments::Vector{SymbolicExpression.Type} = args[2:end]
+    return SymbolicExpression.Node(head, operation, arguments)
 end
 
 @testitem "SymbolicExpression TermInterface" begin
@@ -85,16 +87,21 @@ end
     @test kernel == kernel_bis
 end
 
-struct SymbolicOperator <: AbstractOperator
+struct SymbolicOperator
     expr::SymbolicExpression.Type
 end
 
-function SymbolicOperator(operation, args)
-    expression = SymbolicExpression.Node(:call, operation, args)
+function SymbolicOperator(operation::Symbol, args::Vector{SymbolicOperator})
+    expression = SymbolicExpression.Node(:call, operation, unwrap.(args))
     return SymbolicOperator(expression)
 end
-function SymbolicOperator(value)
-    return SymbolicOperator(Leaf(value))
+
+function (==)(a::SymbolicOperator, b::SymbolicOperator)
+    return a.expr == b.expr
+end
+
+function make_leaf(value)
+    return SymbolicOperator(SymbolicExpression.Leaf(value))
 end
 
 function wrap(x::SymbolicExpression.Type)
@@ -103,24 +110,26 @@ end
 function unwrap(x::SymbolicOperator)
     return x.expr
 end
+wrap(x) = x
+unwrap(x) = x
 
-head(x::SymbolicOperator) = x |> unwrap |> head 
-children(x::SymbolicOperator) = x |> unwrap |> head
-operation(x::SymbolicOperator) = x |> unwrap |> head
-arguments(x::SymbolicOperator) = x |> unwrap |> head
-isexpr(::SymbolicOperator) = x |> unwrap |> head
-iscall(x::SymbolicOperator) = x |> unwrap |> head
-maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(unwrap(x), head, args, metadata))
+head(x::SymbolicOperator) = x |> unwrap |> head  |> wrap
+children(x::SymbolicOperator) = x |> unwrap |> children .|> wrap
+operation(x::SymbolicOperator) = x |> unwrap |> operation |> wrap
+arguments(x::SymbolicOperator) = x |> unwrap |> arguments .|> wrap
+isexpr(x::SymbolicOperator) = x |> unwrap |> isexpr
+iscall(x::SymbolicOperator) = x |> unwrap |> iscall
+maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(unwrap(x), head, unwrap.(args), metadata))
 
 @testitem "SymbolicOperator TermInterface" begin
     using Symbolics
     using TermInterface
-    leaf_a = SymbolicOperator(:a, [])
-    @test leaf_a == SymbolicOperator(:a, [])
-    leaf_b = SymbolicOperator(:b, [])
+    leaf_a = make_leaf(:a)
+    @test leaf_a == make_leaf(:a)
+    leaf_b = make_leaf(:b)
     kernel = SymbolicOperator(:f, [leaf_a, leaf_b])
     @test head(kernel) == :call
-    @test children(kernel) == [:f, SymbolicOperator(:a, []), SymbolicOperator( :b, [])]
+    @test children(kernel) == [:f, leaf_a, leaf_b]
     @test operation(kernel) == :f
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
@@ -129,10 +138,10 @@ maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(u
 end
 
 
-function +(x::AbstractOperator)
+function +(x::SymbolicOperator)
     SymbolicOperator(+, [x])
 end
- function +(x::AbstractOperator, y::AbstractOperator)
+ function +(x::SymbolicOperator, y::SymbolicOperator)
     if x  isa Number && y isa Number
         x+y
     else
@@ -143,17 +152,17 @@ end
         end
     end
 end
- function +(x::Number, y::AbstractOperator)
+ function +(x::Number, y::SymbolicOperator)
     SymbolicOperator(+, [x,y])
 end
- function +(x::AbstractOperator, y::Number)
+ function +(x::SymbolicOperator, y::Number)
     SymbolicOperator(+, [x,y])
 end
 
- function -(x::AbstractOperator)
+ function -(x::SymbolicOperator)
     SymbolicOperator(-, [x])
 end
- function -(x::AbstractOperator, y::AbstractOperator)
+ function -(x::SymbolicOperator, y::SymbolicOperator)
     if x  isa Number && y isa Number
         x-y
     else
@@ -164,14 +173,14 @@ end
         end
     end
 end
- function -(x::Number, y::AbstractOperator)
+ function -(x::Number, y::SymbolicOperator)
    SymbolicOperator(-, [x,y])
 end
- function -(x::AbstractOperator, y::Number)
+ function -(x::SymbolicOperator, y::Number)
    SymbolicOperator(-, [x,y])
 end
 
-function *(x::AbstractOperator, y::AbstractOperator)
+function *(x::SymbolicOperator, y::SymbolicOperator)
     if x  isa Number && y isa Number
         x*y
     else
@@ -182,41 +191,40 @@ function *(x::AbstractOperator, y::AbstractOperator)
         end
     end
 end
- function *(x::Number, y::AbstractOperator)
+ function *(x::Number, y::SymbolicOperator)
    SymbolicOperator(*, [x,y])
 end
- function *(x::AbstractOperator, y::Number)
+ function *(x::SymbolicOperator, y::Number)
    SymbolicOperator(*, [x,y])
 end
 
- function inv(G::AbstractOperator)
+ function inv(G::SymbolicOperator)
     SymbolicOperator(inv, [G])
 end
- function adjoint(G::AbstractOperator)
+ function adjoint(G::SymbolicOperator)
     SymbolicOperator(adjoint, [G])
 end
- function log(G::AbstractOperator)
+ function log(G::SymbolicOperator)
     SymbolicOperator(log, [G])
 end
- function tr(G::AbstractOperator)
+ function tr(G::SymbolicOperator)
     SymbolicOperator(tr, [G])
 end
- function (/)(left::AbstractOperator, right::AbstractOperator)
+ function (/)(left::SymbolicOperator, right::SymbolicOperator)
     return SymbolicOperator(/, [left, right])
 end
 
 Broadcast.broadcastable(x::SymbolicOperator) = x
 
-Base.zero(::AbstractOperator) = zero(typeof(AbstractOperator))
-function Base.zero(::typeof(AbstractOperator))
+Base.zero(::SymbolicOperator) = zero(typeof(SymbolicOperator))
+function Base.zero(::typeof(SymbolicOperator))
     return 0
 end
 
 simplify_kernel(expr) = _simplify_kernel(expr)
 function _simplify_kernel(expr)
     is_number(x) = x isa Number
-    is_operator(::SymbolicOperator) = true  
-    is_operator(::K) where K <: AbstractOperator = true  
+    is_operator(::K) where K <: SymbolicOperator = true  
     is_operator(x) = false  
     rules = [
         @acrule 0 * ~x => 0
