@@ -7,14 +7,15 @@ export maketerm, make_leaf
 
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
+import Base: +, -, *, /, adjoint
 
 using Moshi.Match: @match
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 @data SymbolicExpression begin
     struct Node
-        head::Symbol
-        operation::Symbol
+        head
+        operation #TODO: make that type stable
         args::Vector{SymbolicExpression.Type}
     end
     Leaf(Any)
@@ -29,7 +30,7 @@ function head(x::SymbolicExpression.Type)
 end
 function children(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(_, operation, args) => return Vector{Union{Symbol,SymbolicExpression.Type}}([operation; args])
+        SymbolicExpression.Node(_, operation, args) => return [operation; args]
         SymbolicExpression.Leaf(_) => error("Leaf has no children")
     end
 end
@@ -54,11 +55,11 @@ end
 function iscall(x::SymbolicExpression.Type)
     @match x begin
         SymbolicExpression.Node(head, _, _) => head == :call
-        SymbolicExpression.Leaf(_) => error("Leaf has can't be a call")
+        SymbolicExpression.Leaf(_) => false
     end
 end
-function maketerm(x::SymbolicExpression.Type, head, args, metadata = nothing)
-    operation::Symbol = args[1]
+function maketerm(::Type{SymbolicExpression.Type}, head, args, metadata = nothing)
+    operation = args[1]
     arguments::Vector{SymbolicExpression.Type} = args[2:end]
     return SymbolicExpression.Node(head, operation, arguments)
 end
@@ -69,16 +70,16 @@ end
     using NonEquilibriumGreenFunction.SymbolicExpression
     leaf_a = SymbolicExpression.Leaf(:a)
     leaf_b = SymbolicExpression.Leaf(:b)
-    kernel = SymbolicExpression.Node(:call, :f, [leaf_a, leaf_b])
-    @test kernel == SymbolicExpression.Node(:call, :f, [leaf_a, leaf_b])
+    kernel = SymbolicExpression.Node(:call, *, [leaf_a, leaf_b])
+    @test kernel == SymbolicExpression.Node(:call, *, [leaf_a, leaf_b])
     @test head(kernel) == :call
-    @test children(kernel) == [:f, leaf_a, leaf_b]
-    @test operation(kernel) == :f
+    @test children(kernel) == [*, leaf_a, leaf_b]
+    @test operation(kernel) == *
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
     @test !isexpr(leaf_a)
     @test iscall(kernel)
-    kernel_bis = maketerm(kernel, head(kernel), children(kernel), nothing)
+    kernel_bis = maketerm(typeof(kernel), head(kernel), children(kernel), nothing)
     @test head(kernel_bis) == head(kernel)
     @show children(kernel_bis)
     @test children(kernel_bis) == children(kernel)
@@ -91,7 +92,7 @@ struct SymbolicOperator
     expr::SymbolicExpression.Type
 end
 
-function SymbolicOperator(operation::Symbol, args::Vector{SymbolicOperator})
+function SymbolicOperator(operation, args::Vector{SymbolicOperator})
     expression = SymbolicExpression.Node(:call, operation, unwrap.(args))
     return SymbolicOperator(expression)
 end
@@ -110,6 +111,9 @@ end
 function unwrap(x::SymbolicOperator)
     return x.expr
 end
+function unwrap(::Type{SymbolicOperator})
+    return SymbolicExpression.Type
+end
 wrap(x) = x
 unwrap(x) = x
 
@@ -119,7 +123,9 @@ operation(x::SymbolicOperator) = x |> unwrap |> operation |> wrap
 arguments(x::SymbolicOperator) = x |> unwrap |> arguments .|> wrap
 isexpr(x::SymbolicOperator) = x |> unwrap |> isexpr
 iscall(x::SymbolicOperator) = x |> unwrap |> iscall
-maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(unwrap(x), head, unwrap.(args), metadata))
+function maketerm(::Type{T}, head, args, metadata = nothing) where T <: SymbolicOperator
+      wrap(maketerm(unwrap(T), head, unwrap.(args), metadata))
+end
 
 @testitem "SymbolicOperator TermInterface" begin
     using Symbolics
@@ -127,14 +133,14 @@ maketerm(x::SymbolicOperator, head, args, metadata = nothing) =  wrap(maketerm(u
     leaf_a = make_leaf(:a)
     @test leaf_a == make_leaf(:a)
     leaf_b = make_leaf(:b)
-    kernel = SymbolicOperator(:f, [leaf_a, leaf_b])
+    kernel = SymbolicOperator(*, [leaf_a, leaf_b])
     @test head(kernel) == :call
-    @test children(kernel) == [:f, leaf_a, leaf_b]
-    @test operation(kernel) == :f
+    @test children(kernel) == [*, leaf_a, leaf_b]
+    @test operation(kernel) == *
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
     @test iscall(kernel)
-    @test kernel == maketerm(kernel, head(kernel), children(kernel), nothing)
+    @test kernel == maketerm(typeof(kernel), head(kernel), children(kernel), nothing)
 end
 
 
@@ -252,8 +258,7 @@ function _simplify_kernel(expr)
     simplify(expr, rewriter = rules)
 end
 
-Base.isequal(a::SymbolicOperator,b::SymbolicOperator) = isequal(a.val, b.val)
-convert(::Type{SymbolicOperator}, x::Number) = SymbolicOperator(x)
+convert(::Type{SymbolicOperator}, x::Number) = make_leaf(x)
 function Base.promote_rule(::Type{SymbolicOperator}, ::Type{K}) where K<:Number 
      return SymbolicOperator
 end
@@ -264,9 +269,11 @@ Base.display(A::SymbolicOperator) = error("Display not implemented yet for Symbo
     using Symbolics
     using LinearAlgebra
     @variables x
-    G = SymbolicOperator(:call, :G, [])
-    @test 1 * G |> simplify_kernel == G
-    @test 0 * G |> simplify_kernel == 0
+    G = make_leaf(:G)
+    expr = 1 * G 
+    @test expr |> simplify_kernel == G
+    expr = 0 * G 
+    @test expr |> simplify_kernel == 0
     @test isequal(0 - G |> simplify_kernel, -G)
     @test zero(G) == 0
     A = [G G; G G]
@@ -279,8 +286,8 @@ end
     #TODO: add detection of singular kernel ?
     using Symbolics
     using LinearAlgebra
-    G = SymbolicOperator(:call, :G, [])
-    Σ = SymbolicOperator(:call, :Σ, [])
+    G = make_leaf(:G)
+    Σ = make_leaf(:Σ)
     @test isequal(inv(inv(G)) |> simplify_kernel, G)
     @test isequal(simplify_kernel( G - G), 0)
     @test isequal(simplify_kernel( G + G + G - G),2G)
@@ -289,10 +296,10 @@ end
 @testitem "Construction of the current observable" begin
     using Symbolics
     using LinearAlgebra
-    G_R = SymbolicOperator(:call, :G_R, [])
-    G_K = SymbolicOperator(:call, :G_K, [])
-    Σ_R = SymbolicOperator(:call, :Σ_R, [])
-    Σ_K = SymbolicOperator(:call, :Σ_K, [])
+    G_R = make_leaf(:G_R)
+    G_K = make_leaf(:G_K)
+    Σ_R = make_leaf(:Σ_R)
+    Σ_K = make_leaf(:Σ_K)
     τz = [1 2; 2 3] // 2
     G = [0 G_R'; G_R G_K]
     Σl = [Σ_K Σ_R; Σ_R' 0]
