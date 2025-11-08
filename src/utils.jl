@@ -38,7 +38,7 @@ end
 function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0) where {T}
     return sparse_extract_blockdiag(m, bs, d)
 end
-function blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompression()) where {T}
+function build_blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompression()) where {T}
     shift_I = d < 0 ? abs(d) : 0
     shift_J = d > 0 ? d : 0
     @assert size(A, 1) == size(A, 2)
@@ -48,7 +48,7 @@ function blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompressi
     J = [(t + shift_J - 1) * bs + jb for ib in 1:bs, jb in 1:bs, t = 1:N]
     return sparse(I[:], J[:], A[:], (N + abs(d)) * bs, (N + abs(d)) * bs) |> compression
 end
-function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compression=HssCompression()) where {T}
+function build_blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compression=HssCompression()) where {T}
     _A = zeros(T, size(A[1])..., length(A))
     for p = 1:length(A)
         @assert size(A[p], 1) == size(A[p], 2)
@@ -59,6 +59,6 @@ function blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compre
             end
         end
     end
-    blockdiag(_A, d, compression=compression)
+    build_blockdiag(_A, d, compression=compression)
 end
 

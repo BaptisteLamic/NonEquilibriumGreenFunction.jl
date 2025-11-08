@@ -8,8 +8,6 @@ using StatsBase
 using SpecialFunctions: polygamma
 using FFTW
 using TestItems
-using Symbolics
-using SymbolicUtils
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
@@ -17,7 +15,6 @@ import Base: ==
 import Base: getindex, step
 import Base: similar, zero
 import Base: convert, prod
-import SparseArrays: blockdiag
 import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
@@ -53,19 +50,15 @@ export discretize_lowrank_kernel
 export causality
 export solve_dyson
 export adjoint
-export simplify_kernel
+#export simplify_kernel
 export norm
 
 export BlockCirculantMatrix
 export NONCompression, HssCompression
-export energy2time
-export extract_blockdiag, blockdiag
 export pauli
 export matrix
-export energy2RetardedKernel
 export compression
 export compress!
 export scalartype
-export getindex!
 
 end

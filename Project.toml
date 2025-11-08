@@ -1,7 +1,7 @@
 name = "NonEquilibriumGreenFunction"
 uuid = "23f16301-fe5b-45da-b088-f1dd23511803"
-authors = ["Baptiste Lamic"]
 version = "0.2.0"
+authors = ["Baptiste Lamic"]
 
 [deps]
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
@@ -12,20 +12,16 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
-Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
-TermInterface = "8ea1fca8-c5ef-4a55-8b96-4e9afe9c9a3c"
-TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 
 [compat]
 FFTW = "1"
-Statistics = "1.11.1"
-TestItems = "1.0.0"
+HssMatrices = "0.1"
+LinearAlgebra = "1"
+NNlib = "0.9"
+SparseArrays = "1"
+SpecialFunctions = "2"
+Statistics = "1"
+StatsBase = "0.34"
+TestItems = "1"
 julia = "1.10"
-
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test"]

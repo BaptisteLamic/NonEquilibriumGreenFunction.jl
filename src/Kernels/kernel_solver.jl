@@ -1,8 +1,4 @@
 
-
-
-export kernelSolve
-
 """
     Solve the equation  G = g + K⋅G  for G
 """

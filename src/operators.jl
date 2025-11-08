@@ -55,7 +55,7 @@ function discretize_dirac(axis, f; compression::AbstractCompression=HssCompressi
     for i = 1:length(axis)
         δ[:, :, i] .= f(axis[i])
     end
-    matrix = blockdiag(δ, compression=compression)
+    matrix = build_blockdiag(δ, compression=compression)
     return DiracOperator(
         TrapzDiscretisation(
             axis,
@@ -93,7 +93,7 @@ function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
     for i = 1:length(ax)
         δ[:, :, i] = block_mat
     end
-    matrix = blockdiag(δ, compression=compression(discretization))
+    matrix = build_blockdiag(δ, compression=compression(discretization))
     TrapzDiscretisation(
         ax,
         matrix,
