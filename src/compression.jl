@@ -209,7 +209,11 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     return r
 end
 
-function norm(matrix::HssMatrix)
+function computeMatrixNorm(matrix)
+    return norm(matrix)
+end
+
+function computeMatrixNorm(matrix::HssMatrix)
     norm2 = real(tr(matrix' * matrix))
     if norm2 <= 0 
         return zero(norm2)
@@ -221,7 +225,7 @@ end
 
 @testitem "TriangularLowRankCompression_map" begin
     using LinearAlgebra
-    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction: computeMatrixNorm
     N, Dt = 128, 2.0
     axis = LinRange(-Dt / 2, Dt, N)
     for causality in (Acausal(), Retarded(), Advanced())
@@ -241,15 +245,15 @@ end
             matrix = NonEquilibriumGreenFunction.BlockTriangularLowRankMatrix(u, v, causality)
             lm = NonEquilibriumGreenFunction.build_triangularLowRankMap(matrix)
             x = randn(T, size(matrix, 2))
-            @test norm(lm * x - matrix * x) < tol * length(x)
-            @test norm(lm' * x - matrix' * x) < tol * length(x)
+            @test computeMatrixNorm(lm * x - matrix * x) < tol * length(x)
+            @test computeMatrixNorm(lm' * x - matrix' * x) < tol * length(x)
         end
     end
 end
 
 @testitem "Norm estimate" begin
     using LinearAlgebra
-    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction: computeMatrixNorm
     using HssMatrices
     N = 1024
     for T = [Float64, ComplexF64, ComplexF32]
@@ -259,7 +263,7 @@ end
             A = A * (1 + 1im)
         end
         hssA = hss(A, atol=tol / 100, rtol=tol / 100)
-        @test norm(A) - norm(hssA) < tol
-        @test abs(norm(A) - norm(hssA)) / norm(A) < tol
+        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
+        @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
     end
 end
