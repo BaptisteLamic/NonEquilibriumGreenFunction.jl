@@ -1,6 +1,6 @@
 name = "NonEquilibriumGreenFunction"
 uuid = "23f16301-fe5b-45da-b088-f1dd23511803"
-version = "0.2.5.1"
+version = "0.2.5"
 authors = ["Baptiste Lamic"]
 
 [deps]
