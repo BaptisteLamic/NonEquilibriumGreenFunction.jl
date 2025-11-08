@@ -76,5 +76,3 @@ end
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")
-include("symbolics_extension.jl")
-

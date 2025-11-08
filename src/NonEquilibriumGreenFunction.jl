@@ -8,8 +8,6 @@ using StatsBase
 using SpecialFunctions: polygamma
 using FFTW
 using TestItems
-using Symbolics
-using SymbolicUtils
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
@@ -53,7 +51,7 @@ export discretize_lowrank_kernel
 export causality
 export solve_dyson
 export adjoint
-export simplify_kernel
+#export simplify_kernel
 export norm
 
 export BlockCirculantMatrix
