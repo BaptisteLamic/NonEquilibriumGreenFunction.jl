@@ -1,6 +1,5 @@
 export SymbolicOperator
 
-using SymbolicUtils
 import TermInterface: maketerm, head, children, operation, arguments, isexpr, iscall
 
 export maketerm, make_leaf
