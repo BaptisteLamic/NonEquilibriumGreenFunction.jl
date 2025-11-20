@@ -2,7 +2,6 @@ using NonEquilibriumGreenFunction
 using HssMatrices
 using LinearAlgebra
 using SpecialFunctions
-using Symbolics
 #HssMatrices does not benefit from the use of multithreading BLAS.
 BLAS.set_num_threads(1)
 

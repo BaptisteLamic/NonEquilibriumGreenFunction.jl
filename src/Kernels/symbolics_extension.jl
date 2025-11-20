@@ -11,6 +11,9 @@ import Base: +, -, *, /, adjoint
 using Moshi.Match: @match
 using Moshi.Data: @data
 using Moshi.Derive: @derive
+
+using Metatheory
+using Metatheory.EGraphs
 @data SymbolicExpression begin
     struct Node
         head
@@ -64,7 +67,6 @@ function maketerm(::Type{SymbolicExpression.Type}, head, args, metadata = nothin
 end
 
 @testitem "SymbolicExpression TermInterface" begin
-    using Symbolics
     using TermInterface
     using NonEquilibriumGreenFunction.SymbolicExpression
     leaf_a = SymbolicExpression.Leaf(:a)
@@ -127,7 +129,6 @@ function maketerm(::Type{T}, head, args, metadata = nothing) where T <: Symbolic
 end
 
 @testitem "SymbolicOperator TermInterface" begin
-    using Symbolics
     using TermInterface
     leaf_a = make_leaf(:a)
     @test leaf_a == make_leaf(:a)
@@ -227,34 +228,22 @@ function Base.zero(::typeof(SymbolicOperator))
 end
 
 simplify_kernel(expr) = _simplify_kernel(expr)
+const symbolic_zero = make_leaf(0)
+const symbolic_unity = make_leaf(0)
+using Metatheory.Rewriters
 function _simplify_kernel(expr)
-    is_number(x) = x isa Number
-    is_operator(::K) where K <: SymbolicOperator = true  
-    is_operator(x) = false  
-    rules = [
-        @acrule 0 * ~x => 0
-        @acrule 0 + ~x => ~x
-        @acrule ~x + 0 => ~x
-        @rule 0 - ~x => -(~x)
-        @rule ~x - 0 => ~x
-        @rule ~x - ~x => 0
-        @rule 1 * ~x => ~x
-        @rule -1 * ~x => - ~x
-        @rule -( ~a + ~b) => - (~a) - (~b) 
-        @rule ~c - ( ~a + ~b) => ~c - (~a) - (~b) 
-        @rule -( ~a - ~b) => - (~a) + (~b) 
-
-        @rule ~x * ~n::is_number => ~n * ~x
-        @acrule ~n::is_number * ~x + ~m::is_number * ~x  => (~n+m) * ~x
-        @rule ~x + ~x  => 2 * ~x
-        @rule ~n::is_number * ~x + ~x  => (~n+1) * ~x
-        @rule ~n::is_number * ~x - ~x  => (~n-1) * ~x
-        @rule ~a::is_number * ~b::is_number * ~z => (~a * ~b) * ~z
-        @rule ~n::is_number * (~x + ~y)  =>  ~n * ~x + ~n* ~y
-
-        @rule inv(inv(~a::is_operator)) => ~a 
-    ] |> SymbolicUtils.Chain |> SymbolicUtils.Postwalk |>  SymbolicUtils.Fixpoint
-    simplify(expr, rewriter = rules)
+    isNumber(x) = x isa Number 
+    th = @theory x y begin
+        y+y == 2*y
+        y-y => symbolic_zero
+        symbolic_zero-y == -y
+        symbolic_zero*y => symbolic_zero
+        inv(inv(x)) == x
+    end 
+    graph = EGraph(expr)
+    @show report = saturate!(graph, th)
+    extracted = extract!(graph, astsize)
+    return extracted
 end
 
 convert(::Type{SymbolicOperator}, x::Number) = make_leaf(x)
@@ -265,14 +254,10 @@ end
 Base.display(A::SymbolicOperator) = error("Display not implemented yet for SymbolicOperator")
 
 @testitem "Basic matching" begin
-    using Symbolics
     using LinearAlgebra
-    @variables x
     G = make_leaf(:G)
-    expr = 1 * G 
-    @test expr |> simplify_kernel == G
-    expr = 0 * G 
-    @test expr |> simplify_kernel == 0
+    @test G+G |> simplify_kernel == 2*G
+    @test 0 * G  |> simplify_kernel == NonEquilibriumGreenFunction.symbolic_zero
     @test isequal(0 - G |> simplify_kernel, -G)
     @test zero(G) == 0
     A = [G G; G G]
@@ -283,17 +268,15 @@ end
 
 @testitem "simplification" begin
     #TODO: add detection of singular kernel ?
-    using Symbolics
     using LinearAlgebra
     G = make_leaf(:G)
     Σ = make_leaf(:Σ)
     @test isequal(inv(inv(G)) |> simplify_kernel, G)
-    @test isequal(simplify_kernel( G - G), 0)
+    @test isequal(simplify_kernel( G - G ), NonEquilibriumGreenFunction.symbolic_zero)
     @test isequal(simplify_kernel( G + G + G - G),2G)
 end
 
 @testitem "Construction of the current observable" begin
-    using Symbolics
     using LinearAlgebra
     G_R = make_leaf(:G_R)
     G_K = make_leaf(:G_K)

@@ -8,8 +8,6 @@ using StatsBase
 using SpecialFunctions: polygamma
 using FFTW
 using TestItems
-using Symbolics
-using SymbolicUtils
 
 import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
