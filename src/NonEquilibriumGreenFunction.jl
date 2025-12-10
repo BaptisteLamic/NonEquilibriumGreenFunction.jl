@@ -20,6 +20,8 @@ import LinearAlgebra.diag
 import LinearAlgebra.norm
 
 
+include("hodlr/hodlr.jl")
+
 include("causality.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")

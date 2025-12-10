@@ -380,7 +380,7 @@ end
     Random.seed!(1234)
     # Test polynomial fitting with weights
     dt_vals = LinRange(10, 0.001, 1024)
-    f(x) = 1 - x^2
+    h(x) = 1 - x^2
     weights = [1 / i for i in 1:length(dt_vals)]
     # Simulate noisy observations
     u_vals = f.(dt_vals) + weights .* randn(length(dt_vals)) * 1e-4
@@ -403,7 +403,7 @@ end
     n = 12
     p = 3
     dt_vals = LinRange(10, 0.001, n)
-    f(x) = 1 - x^p
+    g(x) = 1 - x^p
     # Simulate noisy observations
     u_vals = f.(dt_vals) .+ 1e-8 .* randn(n)
     cfg = AdaptativeConfig(verbose=true)
