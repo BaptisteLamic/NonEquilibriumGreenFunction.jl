@@ -2,13 +2,22 @@ using Moshi.Match: @match
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 using StaticArrays
+using ACAFact
 
+struct HodlrContext
+    tol :: Real
+    maxrank :: Int
+end
 
 struct LowRankBlock{M}
     u :: M
     v :: M
 end
 
+function LowRankBlock(kf::KernelFunction, tol::Real; maxrank::Int)
+    (U, V) = aca(kf, tol, maxrank=maxrank)
+    LowRankBlock(U, V)
+end
 #=
 @data StaticHodlr{N,K,T} begin
     struct StaticLeaf{N,T}
@@ -30,10 +39,6 @@ end
     using StaticArrays
     dom = range(0.0, 1.0, length=100)
     m = @SMatrix [1 2; 3 4]
-    K = KernelFunction((x,y)->m .* exp(-abs2(x-y)), dom)
-    @show typeof(K)
-    (U, V) = aca(K, 1e-12, maxrank=100)
-    NonEquilibriumGreenFunction.LowRankBlock(U, V)
-    atol = 1E-5
-    rtol = 1E-5
+    kf = KernelFunction((x,y)->m .* exp(-abs2(x-y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
 end
