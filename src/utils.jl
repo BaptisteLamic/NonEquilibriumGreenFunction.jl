@@ -2,7 +2,9 @@
 @inline blockrange(i, bs) = (i-1)*bs+1:i*bs
 @inline function blockindex(p::Number, bs)
     a, i = divrem(p - 1, bs)
-    return (a + 1, i + 1)
+    block_idx = a + 1
+    inblock_idx = i + 1
+    return (block_idx, inblock_idx)
 end
 function blockindex(tp, bs)
     r_block = zeros(eltype(tp), length(tp))
