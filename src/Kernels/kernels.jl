@@ -76,4 +76,4 @@ end
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")
-include("kernelFunctions.jl")
+
