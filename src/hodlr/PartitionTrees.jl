@@ -40,12 +40,22 @@ function PartitionTree(range::UnitRange{Int})
     mid = range[idx_mid]
     left = PartitionTree(range.start:mid)
     right = PartitionTree(mid+1:range.stop)
-    return PartitionTree(BinaryTree.Node(range,left,right))
+    return PartitionTree(BinaryTree.Node(range,left.tree,right.tree))
+end
+
+function split_partition(tree::PartitionTree)
+    @match tree.tree begin
+        BinaryTree.Leaf(_) => throw("Bottom of the partition three reached")
+        BinaryTree.Node(data,left,right) => return (PartitionTree(left),PartitionTree(right))
+    end
 end
 
 @testitem "Test PartitionTree" begin
     import NonEquilibriumGreenFunction.PartitionTree
-    a =  PartitionTree(1:1)
+    a =  PartitionTree(1:3)
+    left,right = NonEquilibriumGreenFunction.split_partition(a)
     b = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
-    @test a == b 
+    c = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(3:3))
+    @test left == PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
+    @test right == PartitionTree(2:3)
 end
