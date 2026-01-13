@@ -43,10 +43,28 @@ function PartitionTree(range::UnitRange{Int})
     return PartitionTree(BinaryTree.Node(range,left.tree,right.tree))
 end
 
+function PartitionTree(range::Number)
+    return PartitionTree(range:range)
+end
+
 function split_partition(tree::PartitionTree)
     @match tree.tree begin
         BinaryTree.Leaf(_) => throw("Bottom of the partition three reached")
         BinaryTree.Node(data,left,right) => return (PartitionTree(left),PartitionTree(right))
+    end
+end
+
+function get_range(tree::PartitionTree)
+    @match tree.tree begin
+        BinaryTree.Leaf(range) => range
+        BinaryTree.Node(range, _, _) => range
+    end
+end
+
+function is_leaf(tree::PartitionTree)
+    @match tree.tree begin
+        BinaryTree.Leaf(_) => true
+        _ => false
     end
 end
 
@@ -58,4 +76,6 @@ end
     c = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(3:3))
     @test left == PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
     @test right == PartitionTree(2:3)
+    @test NonEquilibriumGreenFunction.is_leaf(PartitionTree(1))
+    @test !NonEquilibriumGreenFunction.is_leaf(PartitionTree(1:2))
 end
