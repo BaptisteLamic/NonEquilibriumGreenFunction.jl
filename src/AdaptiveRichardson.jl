@@ -254,7 +254,7 @@ function robust_extrapolate(dt_vals, u_vals, switch_idx::Union{Int,Nothing}, cfg
     for degree in minimum_degree:max_degree
         result = fit_polynomial(dt_vals, u_vals, degree, weights=weights)
         if isnothing(result)
-            cfg.verbose && @warn "Degree $degree failed: $e"
+            cfg.verbose && @warn "Degree $degree failed"
             continue
         end
         if isnothing(best_result) || (result.condition < cfg.condition_threshold && result.error_est < best_result.error_est)
