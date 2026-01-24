@@ -19,16 +19,31 @@ struct LowRankBlock{M}
     v::M
 end
 
-function LowRankBlock(kf::KernelFunction, ctx::HodlrContext)
+function LowRankBlock(kf, ctx::HodlrContext)
     LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank)
 end
-function LowRankBlock(kf::KernelFunction, tol::Real; maxrank::Int)
+function LowRankBlock(kf, tol::Real; maxrank::Int)
     (U, V) = aca(kf, tol, maxrank=maxrank)
     LowRankBlock(U, V)
 end
+function rank(A::LowRankBlock)
+    return size(A.u,2)
+end
+function size(A::LowRankBlock, i) :: Int
+    if i == 1
+        s = size(A.u,1)
+    elseif i==2
+        s = size(A.v,1)
+    else
+        s = 1
+    end
+    return s
+end
+function size(A::LowRankBlock) :: Tuple{Int,Int}
+    return (size(A,1),size(A,2))
+end
 
-
-@testitem "Test LowRankBlock" begin
+@testitem "Test LowRankBlock creation" begin
     using LinearAlgebra
     using ACAFact
     using StaticArrays
@@ -36,6 +51,63 @@ end
     m = @SMatrix [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+end
+
+function full(A::LowRankBlock)
+    return A.u * A.v'
+end
+
+@testitem "Test LowRankBlock arithmetic" begin
+    using LinearAlgebra
+    k = 2
+    n = 5
+    m = 6
+    u = randn(ComplexF64,n,k)
+    v = randn(ComplexF64,k,m)
+    A = u*v
+    @test size(A) == (n,m)
+    @test k == rank(A)
+    aca_A = NonEquilibriumGreenFunction.LowRankBlock(A,1e-9, maxrank=10)
+    @test size(aca_A) == size(A)
+    @show size(aca_A.u)
+    @show size(aca_A.v)
+    @test NonEquilibriumGreenFunction.rank(aca_A) >= k
+    @test norm(A - NonEquilibriumGreenFunction.full(aca_A))/norm(A) < 1E-8
+end
+
+function (*)(A::LowRankBlock ,B)
+    return A.u*(A.v'*B)
+end
+function (*)(A ,B::LowRankBlock)
+    return (A*B.u)*B.v'
+end
+
+@testitem "Test LowRankBlock arithmetic right" begin
+    using LinearAlgebra
+    using ACAFact
+    using StaticArrays
+    dom = range(0.0, 1.0, length=100)
+    m = @SMatrix [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, size(block,2))
+    y = block*x
+    y_full = NonEquilibriumGreenFunction.full(block)*x
+    @test norm(y - y_full)/norm(y_full) < 1E-8
+end
+
+@testitem "Test LowRankBlock arithmetic left" begin
+    using LinearAlgebra
+    using ACAFact
+    using StaticArrays
+    dom = range(0.0, 1.0, length=100)
+    m = @SMatrix [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, size(block,1))
+    y = x'*block
+    y_full = x'*NonEquilibriumGreenFunction.full(block)
+    @test norm(y - y_full)/norm(y_full) < 1E-8
 end
 
 @data Holdr{M} begin
@@ -67,7 +139,6 @@ function Hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::
         lower_offdiag = LowRankBlock(lower_offdiag_kernel, ctx)
         return Holdr.Node(A,B,upper_offdiag,lower_offdiag)
     end
-
 end
 
 function Hodlr(kf::KernelFunction,ctx::HodlrContext)
@@ -81,6 +152,7 @@ function _construct_leaf(kf)
     fill_with_kernel!(M, kf)
     return Holdr.Leaf(M)
 end
+
 
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
