@@ -1,8 +1,6 @@
 export SymbolicOperator
-
-import TermInterface: maketerm, head, children, operation, arguments, isexpr, iscall
-
-export maketerm, head, children, operation, arguments, isexpr, iscall, make_leaf
+export make_leaf
+using TermInterface
 
 import Base: zero, one, isequal, log, inv
 import LinearAlgebra: tr
@@ -16,7 +14,6 @@ using Metatheory
 using Metatheory.EGraphs
 @data SymbolicExpression begin
     struct Node
-        head
         operation #TODO: make that type stable
         args::Vector{SymbolicExpression.Type}
     end
@@ -24,46 +21,34 @@ using Metatheory.EGraphs
 end
 @derive SymbolicExpression[Hash, Eq, Show]
 
-function head(x::SymbolicExpression.Type)
+function TermInterface.operation(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(head, _, _) => head
-        SymbolicExpression.Leaf(_) => error("Leaf has no head")
+        SymbolicExpression.Node(operation, _) => operation
+        SymbolicExpression.Leaf(value) => return value
     end
 end
-function children(x::SymbolicExpression.Type)
+TermInterface.head(x::SymbolicExpression.Type) = operation(x)
+function TermInterface.children(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(_, operation, args) => return [operation; args]
-        SymbolicExpression.Leaf(_) => error("Leaf has no children")
+        SymbolicExpression.Node(operation, args) => return args
+        SymbolicExpression.Leaf(_) => return Vector{SymbolicExpression.Type}()  # Leaf has no children
     end
 end
-function operation(x::SymbolicExpression.Type)
+TermInterface.arguments(x::SymbolicExpression.Type) = children(x)
+function TermInterface.isexpr(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(_, operation, _) => operation
-        SymbolicExpression.Leaf(_) => error("Leaf has no operation")
+        SymbolicExpression.Node(_, _) => true
+        SymbolicExpression.Leaf(_) => true
     end
 end
-function arguments(x::SymbolicExpression.Type)
+function TermInterface.iscall(x::SymbolicExpression.Type)
     @match x begin
-        SymbolicExpression.Node(_, _, arguments) => arguments
-        SymbolicExpression.Leaf(_) => error("Leaf has no arguments")
+        SymbolicExpression.Node(_, _) => true
+        SymbolicExpression.Leaf(_) => true
     end
 end
-function isexpr(x::SymbolicExpression.Type)
-    @match x begin
-        SymbolicExpression.Node(_, _, _) => true
-        SymbolicExpression.Leaf(_) => false
-    end
-end
-function iscall(x::SymbolicExpression.Type)
-    @match x begin
-        SymbolicExpression.Node(head, _, _) => head == :call
-        SymbolicExpression.Leaf(_) => false
-    end
-end
-function maketerm(::Type{SymbolicExpression.Type}, head, args, metadata=nothing)
-    operation = args[1]
-    arguments = Vector{SymbolicExpression.Type}(args[2:end])
-    return SymbolicExpression.Node(head, operation, arguments)
+function TermInterface.maketerm(::Type{SymbolicExpression.Type}, head, args, metadata=nothing)
+    return SymbolicExpression.Node(head, args)
 end
 
 @testitem "SymbolicExpression TermInterface" begin
@@ -71,18 +56,18 @@ end
     using NonEquilibriumGreenFunction.SymbolicExpression
     leaf_a = SymbolicExpression.Leaf(:a)
     leaf_b = SymbolicExpression.Leaf(:b)
-    kernel = SymbolicExpression.Node(:call, *, [leaf_a, leaf_b])
-    @test kernel == SymbolicExpression.Node(:call, *, [leaf_a, leaf_b])
-    @test head(kernel) == :call
-    @test children(kernel) == [*, leaf_a, leaf_b]
-    @test operation(kernel) == *
+    kernel = SymbolicExpression.Node(:*, [leaf_a, leaf_b])
+    @test kernel == SymbolicExpression.Node(:*, [leaf_a, leaf_b])
+    @test head(kernel) == :*
+    @test children(kernel) == [leaf_a, leaf_b]
+    @test operation(kernel) == :*
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
-    @test !isexpr(leaf_a)
+    @test isexpr(leaf_a)
     @test iscall(kernel)
     kernel_bis = maketerm(typeof(kernel), head(kernel), children(kernel), nothing)
     @test head(kernel_bis) == head(kernel)
-    @show children(kernel_bis)
+    @test arguments(kernel_bis) == arguments(kernel)
     @test children(kernel_bis) == children(kernel)
     @test operation(kernel_bis) == operation(kernel)
     @test arguments(kernel_bis) == arguments(kernel)
@@ -94,7 +79,7 @@ struct SymbolicOperator
 end
 
 function SymbolicOperator(operation, args::Vector{SymbolicOperator})
-    expression = SymbolicExpression.Node(:call, operation, unwrap.(args))
+    expression = SymbolicExpression.Node(operation, unwrap.(args))
     return SymbolicOperator(expression)
 end
 
@@ -121,13 +106,13 @@ end
 wrap(x) = x
 unwrap(x) = x
 
-head(x::SymbolicOperator) = x |> unwrap |> head |> wrap
-children(x::SymbolicOperator) = x |> unwrap |> children .|> wrap
-operation(x::SymbolicOperator) = x |> unwrap |> operation |> wrap
-arguments(x::SymbolicOperator) = x |> unwrap |> arguments .|> wrap
-isexpr(x::SymbolicOperator) = x |> unwrap |> isexpr
-iscall(x::SymbolicOperator) = x |> unwrap |> iscall
-function maketerm(::Type{T}, head, args, metadata=nothing) where T<:SymbolicOperator
+TermInterface.head(x::SymbolicOperator) = x |> unwrap |> head |> wrap
+TermInterface.children(x::SymbolicOperator) = x |> unwrap |> children .|> wrap
+TermInterface.operation(x::SymbolicOperator) = x |> unwrap |> operation |> wrap
+TermInterface.arguments(x::SymbolicOperator) = x |> unwrap |> arguments .|> wrap
+TermInterface.isexpr(x::SymbolicOperator) = x |> unwrap |> isexpr
+TermInterface.iscall(x::SymbolicOperator) = x |> unwrap |> iscall
+function TermInterface.maketerm(::Type{T}, head, args, metadata=nothing) where T<:SymbolicOperator
     wrap(maketerm(unwrap(T), head, unwrap.(args), metadata))
 end
 
@@ -137,16 +122,16 @@ end
     leaf_a = make_leaf(:a)
     @test leaf_a == make_leaf(:a)
     leaf_b = make_leaf(:b)
-    kernel = SymbolicOperator(*, [leaf_a, leaf_b])
-    @test head(kernel) == :call
-    @test children(kernel) == [*, leaf_a, leaf_b]
-    @test operation(kernel) == *
+    kernel = SymbolicOperator(:*, [leaf_a, leaf_b])
+    @test head(kernel) == :*
+    @test children(kernel) == [leaf_a, leaf_b]
+    @test operation(kernel) == :*
     @test arguments(kernel) == [leaf_a, leaf_b]
     @test isexpr(kernel)
     @test iscall(kernel)
     @test kernel == maketerm(typeof(kernel), head(kernel), children(kernel), nothing)
     @test iscall(kernel)
-    @test !iscall(leaf_b)
+    @test iscall(leaf_b)
     @test wrap(unwrap(kernel)) == kernel
 end
 
@@ -224,6 +209,7 @@ end
 
 @testitem "Test operations" begin
     using LinearAlgebra
+    using TermInterface
     G = make_leaf(:G)
     Σ = make_leaf(:Σ)
     @test isequal(G + Σ, SymbolicOperator(:+, [G, Σ]))
@@ -231,7 +217,7 @@ end
     @test isequal(G - Σ, SymbolicOperator(:-, [G, Σ]))
     @test isequal(2 * G, SymbolicOperator(:*, [make_leaf(2), G]))
     @test isequal(make_leaf(2) * G, 2G)
-    @test head(2G) == :call
+    @test head(2G) == :*
 end
 
 simplify_kernel(expr) = _simplify_kernel(expr)
@@ -241,11 +227,11 @@ using Metatheory.Rewriters
 function _simplify_kernel(expr)
     isNumber(x) = x isa Number
     th = @theory x y begin
-        y + y => y * y
-        #y - y => symbolic_zero
-        #symbolic_zero - y => -y
-        #symbolic_zero * y => symbolic_zero
-        #inv(inv(x)) == x
+        y + y => 2 * y
+        y - y => symbolic_zero
+        symbolic_zero - y => -y
+        symbolic_zero * y => symbolic_zero
+        inv(inv(x)) == x
     end
     graph = EGraph(expr)
     saturate!(graph, th)
@@ -262,6 +248,7 @@ Base.display(A::SymbolicOperator) = error("Display not implemented yet for Symbo
 
 @testitem "Basic matching" begin
     using LinearAlgebra
+    using TermInterface
     G = make_leaf(:G)
     @test G + G |> simplify_kernel == 2 * G
     @test 0 * G |> simplify_kernel == NonEquilibriumGreenFunction.symbolic_zero
