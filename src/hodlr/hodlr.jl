@@ -81,13 +81,17 @@ end
 function (*)(A ,B::LowRankBlock)
     return (A*B.u)*B.v'
 end
+function (*)(A::LowRankBlock ,B::LowRankBlock)
+    #TODO: naive optimization, find a reference paper / implementation 
+    #OPTION: lazy optimization by just storting the sets of low ranks matrices
+    core = A.v'*B.u
+    return LowRankBlock(A.u*core, B.v)
+end
 
-@testitem "Test LowRankBlock arithmetic right" begin
+@testitem "Test LowRankBlock x Dense" begin
     using LinearAlgebra
-    using ACAFact
-    using StaticArrays
     dom = range(0.0, 1.0, length=100)
-    m = @SMatrix [1 2; 3 4]
+    m =  [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
     x = randn(ComplexF32, size(block,2))
@@ -96,18 +100,26 @@ end
     @test norm(y - y_full)/norm(y_full) < 1E-8
 end
 
-@testitem "Test LowRankBlock arithmetic left" begin
+@testitem "Test Dense x LowRankBlock" begin
     using LinearAlgebra
-    using ACAFact
-    using StaticArrays
     dom = range(0.0, 1.0, length=100)
-    m = @SMatrix [1 2; 3 4]
+    m =  [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
     x = randn(ComplexF32, size(block,1))
     y = x'*block
     y_full = x'*NonEquilibriumGreenFunction.full(block)
     @test norm(y - y_full)/norm(y_full) < 1E-8
+end
+
+@testitem "Test LowRankBlock x LowRankBlock" begin
+    using LinearAlgebra
+    n,k1,m,k2,l = 100,12,80,10,100
+    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,n,k1), randn(ComplexF64,k1,m))
+    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,m,k2), randn(ComplexF64,k2,l))
+    full_product = NonEquilibriumGreenFunction.full(block1)*NonEquilibriumGreenFunction.full(block2)
+    block_product = block1*block2
+    @test norm(full_product - NonEquilibriumGreenFunction.full(block_product))/norm(full_product) < 1E-8
 end
 
 @data Holdr{M} begin
