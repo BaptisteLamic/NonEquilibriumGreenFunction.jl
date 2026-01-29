@@ -18,6 +18,12 @@ struct LowRankBlock{M}
     u::M
     v::M
 end
+function LowRankBlock(u::M,v::M) where M
+    if size(u,2) != size(v,2)
+        throw(ArgumentError("Expect vector of size n×k and m×k"))
+    end
+    return LowRankBlock{M}(u,v)
+end
 
 function LowRankBlock(kf, ctx::HodlrContext)
     LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank)
@@ -54,7 +60,9 @@ end
 end
 
 function full(A::LowRankBlock)
-    return A.u * A.v'
+    result = A.u * A.v'
+    @assert(size(A) == size(result))
+    return result
 end
 
 @testitem "Test LowRankBlock arithmetic" begin
@@ -62,9 +70,9 @@ end
     k = 2
     n = 5
     m = 6
-    u = randn(ComplexF64,n,k)
-    v = randn(ComplexF64,k,m)
-    A = u*v
+    u0 = randn(ComplexF64,n,k)
+    v0 = randn(ComplexF64,k,m)
+    A = u0*v0
     @test size(A) == (n,m)
     @test k == rank(A)
     aca_A = NonEquilibriumGreenFunction.LowRankBlock(A,1e-9, maxrank=10)
@@ -115,9 +123,11 @@ end
 @testitem "Test LowRankBlock x LowRankBlock" begin
     using LinearAlgebra
     n,k1,m,k2,l = 100,12,80,10,100
-    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,n,k1), randn(ComplexF64,k1,m))
-    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,m,k2), randn(ComplexF64,k2,l))
-    full_product = NonEquilibriumGreenFunction.full(block1)*NonEquilibriumGreenFunction.full(block2)
+    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,n,k1), randn(ComplexF64,m,k1))
+    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,m,k2), randn(ComplexF64,l,k2))
+    full_block1 = NonEquilibriumGreenFunction.full(block1)
+    full_block2 = NonEquilibriumGreenFunction.full(block2)
+    full_product = full_block1*full_block2
     block_product = block1*block2
     @test norm(full_product - NonEquilibriumGreenFunction.full(block_product))/norm(full_product) < 1E-8
 end
