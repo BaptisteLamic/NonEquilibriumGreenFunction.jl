@@ -6,8 +6,9 @@ using ACAFact
 
 include("PartitionTrees.jl")
 
-export Hodlr
+export build_hodlr
 export HodlrContext
+export full
 
 @kwdef struct HodlrContext
     tol::Real
@@ -168,7 +169,7 @@ end
 end
 @derive Holdr[Hash, Eq, Show]
 
-function Hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
+function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
     if is_leaf(row_partition) && is_leaf(col_partition)
         return _construct_leaf(kf)
     else
@@ -180,18 +181,18 @@ function Hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::
         upper_offdiag_kernel = update_domain(kf,upper_rows |> get_range, right_cols |> get_range)
         lower_offdiag_kernel = update_domain(kf,lower_row |> get_range, left_cols |> get_range)
 
-        A = Hodlr(A_kernel, upper_rows, left_cols, ctx)
-        B = Hodlr(B_kernel, lower_row, right_cols, ctx)
+        A = build_hodlr(A_kernel, upper_rows, left_cols, ctx)
+        B = build_hodlr(B_kernel, lower_row, right_cols, ctx)
         upper_offdiag = LowRankBlock(upper_offdiag_kernel, ctx)
         lower_offdiag = LowRankBlock(lower_offdiag_kernel, ctx)
         return Holdr.Node(A,B,upper_offdiag,lower_offdiag)
     end
 end
 
-function Hodlr(kf::KernelFunction,ctx::HodlrContext)
+function build_hodlr(kf::KernelFunction,ctx::HodlrContext)
     row_partition = PartitionTree(1:size(kf,1))
     col_partition = PartitionTree(1:size(kf,2))
-    return Hodlr(kf, row_partition, col_partition, ctx)
+    return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
 function _construct_leaf(kf)
@@ -204,9 +205,27 @@ end
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
     using ACAFact
-    using StaticArrays
     dom = range(0.0, 1.0, length=100)
-    m = @SMatrix [1 2; 3 4]
+    m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = Hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
+    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
+end
+
+function full(holdr::Holdr.Type{M}) where M
+    dense_matrix = zeros(size(holdr)...)
+    _full!(dense_matrix, holdr)
+    return dense_matrix
+end
+function _full!(out, holdr::Holdr.Type{M}) where M
+    zeros(size(holdr)...)
+end
+
+@testitem "Test Hodlr full" begin
+    using LinearAlgebra
+    using ACAFact
+    dom = range(0.0, 1.0, length=100)
+    m =  [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
+    full(holdr)
 end
