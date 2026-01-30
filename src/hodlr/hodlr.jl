@@ -96,7 +96,7 @@ function (*)(A::LowRankBlock ,B::LowRankBlock)
     return LowRankBlock(A.u*core, B.v)
 end
 
-@testitem "Test LowRankBlock x Dense" begin
+@testitem "Test LowRankBlock x Dense Vector" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=100)
     m =  [1 2; 3 4]
@@ -108,7 +108,19 @@ end
     @test norm(y - y_full)/norm(y_full) < 1E-8
 end
 
-@testitem "Test Dense x LowRankBlock" begin
+@testitem "Test LowRankBlock x Dense Matrix" begin
+    using LinearAlgebra
+    dom = range(0.0, 1.0, length=100)
+    m =  [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, (size(block,2),4))
+    y = block*x
+    y_full = NonEquilibriumGreenFunction.full(block)*x
+    @test norm(y - y_full)/norm(y_full) < 1E-8
+end
+
+@testitem "Test Dense Vector x LowRankBlock" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=100)
     m =  [1 2; 3 4]
@@ -119,6 +131,19 @@ end
     y_full = x'*NonEquilibriumGreenFunction.full(block)
     @test norm(y - y_full)/norm(y_full) < 1E-8
 end
+
+@testitem "Test Dense Matrix x LowRankBlock" begin
+    using LinearAlgebra
+    dom = range(0.0, 1.0, length=100)
+    m =  [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, (12,size(block,1)))
+    y = x*block
+    y_full = x*NonEquilibriumGreenFunction.full(block)
+    @test norm(y - y_full)/norm(y_full) < 1E-8
+end
+
 
 @testitem "Test LowRankBlock x LowRankBlock" begin
     using LinearAlgebra
