@@ -61,7 +61,7 @@ function get_range(tree::PartitionTree)
     end
 end
 
-function is_leaf(tree::PartitionTree)
+function isleaf(tree::PartitionTree)
     @match tree.tree begin
         BinaryTree.Leaf(_) => true
         _ => false
@@ -76,6 +76,6 @@ end
     c = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(3:3))
     @test left == PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
     @test right == PartitionTree(2:3)
-    @test NonEquilibriumGreenFunction.is_leaf(PartitionTree(1))
-    @test !NonEquilibriumGreenFunction.is_leaf(PartitionTree(1:2))
+    @test NonEquilibriumGreenFunction.isleaf(PartitionTree(1))
+    @test !NonEquilibriumGreenFunction.isleaf(PartitionTree(1:2))
 end

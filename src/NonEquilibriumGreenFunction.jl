@@ -19,13 +19,13 @@ import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
 
+include("utils.jl")
 include("kernelFunctions.jl")
 include("hodlr/hodlr.jl")
 include("causality.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
-include("utils.jl")
 include("discretizations.jl")
 include("operators.jl")
 include("Kernels/kernels.jl")

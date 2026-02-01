@@ -1,3 +1,4 @@
+#TODO: get ride of Moshi dependencies, can produce subtile bugs
 using Moshi.Match: @match
 using Moshi.Data: @data
 using Moshi.Derive: @derive
@@ -18,12 +19,6 @@ end
 struct LowRankBlock{M}
     u::M
     v::M
-end
-function LowRankBlock(u::M,v::M) where M
-    if size(u,2) != size(v,2)
-        throw(ArgumentError("Expect vector of size n×k and m×k"))
-    end
-    return LowRankBlock{M}(u,v)
 end
 
 function LowRankBlock(kf, ctx::HodlrContext)
@@ -52,10 +47,8 @@ end
 
 @testitem "Test LowRankBlock creation" begin
     using LinearAlgebra
-    using ACAFact
-    using StaticArrays
     dom = range(0.0, 1.0, length=100)
-    m = @SMatrix [1 2; 3 4]
+    m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
 end
@@ -169,8 +162,24 @@ end
 end
 @derive Holdr[Hash, Eq, Show]
 
+function isleaf(holdr::Holdr.Type)
+    @match holdr begin
+        Holdr.Leaf(_) => true
+        Holdr.Node(_,_,_,_) => false
+    end
+end
+function isnode(holdr::Holdr.Type)
+    return !isleaf(holdr)
+end
+function get_children(holdr::Holdr.Type)
+    @match holdr begin
+        Holdr.Leaf(M) => M
+        Holdr.Node(A,B,upper_offdiag,lower_offdiag) => (A,B,upper_offdiag,lower_offdiag)
+    end
+end
+
 function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
-    if is_leaf(row_partition) && is_leaf(col_partition)
+    if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(kf)
     else
         upper_rows,lower_row = split_partition(row_partition)
@@ -201,14 +210,28 @@ function _construct_leaf(kf)
     return Holdr.Leaf(M)
 end
 
+function size(holdr::Holdr.Type{M}) where M
+    @match holdr begin
+        Holdr.Leaf(M) => size(M)
+        Holdr.Node(A,B,_,_) => (size(A,1)+size(B,1), size(A,2)+size(B,2))
+    end
+end
+function size(holdr::Holdr.Type{M},i) where M
+    s = size(holdr)
+    if i < 1 || i > 2
+        return 1
+    else
+        return s[i]
+    end
+end
 
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
-    using ACAFact
     dom = range(0.0, 1.0, length=100)
     m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
+    @test size(holdr) == size(kf) .* size(m) 
 end
 
 function full(holdr::Holdr.Type{M}) where M
@@ -216,13 +239,26 @@ function full(holdr::Holdr.Type{M}) where M
     _full!(dense_matrix, holdr)
     return dense_matrix
 end
-function _full!(out, holdr::Holdr.Type{M}) where M
-    zeros(size(holdr)...)
+function _full_node!(out, upper_diag, lower_diag, upper_offdiag, lower_offdiag)
+    nA1, nA2 = size(upper_diag)
+    out[1:nA1, 1:nA2] .= upper_diag
+    out[nA1+1:end, nA2+1:end] .= lower_diag
+    out[1:nA1, nA2+1:end] .= full(upper_offdiag)
+    out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
+    return out
+end
+function _full!(out, holdr::Holdr.Type)
+    if isleaf(holdr)
+            M = get_children(holdr)
+            out .= M
+    else
+        A, B, upper_offdiag, lower_offdiag = get_children(holdr)
+        _full_node!(out, full(A), full(B), upper_offdiag, lower_offdiag)
+    end
 end
 
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
-    using ACAFact
     dom = range(0.0, 1.0, length=100)
     m =  [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)

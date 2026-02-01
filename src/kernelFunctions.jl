@@ -57,7 +57,6 @@ function ACAFact.row!(buf, kf::KernelFunction, j)
 end
 
 @testitem "Test symetric KernelFunction" begin
-    using ACAFact
     domain = (0.0:0.1:1.0)
     modulation_11(x,y) = exp(-abs(x))*cos(y)
     modulation_22(x,y) = (atan(x) * sin(y) + 1)
@@ -67,11 +66,11 @@ end
     @test kf.eltype == Float64
     @test size(kf, 1) == length(domain) * kf.blocksize
     buf = zeros(kf.eltype, size(kf, 1))
-    ACAFact.col!(buf, kf, 1)
+    NonEquilibriumGreenFunction.ACAFact.col!(buf, kf, 1)
     @test buf[2:kf.blocksize:end] == zeros(length(domain))
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(domain, domain[1])) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
-    ACAFact.row!(buf, kf, 1)
+    NonEquilibriumGreenFunction.ACAFact.row!(buf, kf, 1)
     @test buf[2:kf.blocksize:end] == zeros(length(domain))
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(domain[1], domain)) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
@@ -82,7 +81,6 @@ function update_domain(kf, dom1, dom2)
 end
 
 @testitem "Test domain reduction" begin
-    using ACAFact
     domain = (0.0:0.1:1.0)
     modulation_11(x,y) = exp(-abs(x))*cos(y)
     modulation_22(x,y) = (atan(x) * sin(y) + 1)
@@ -91,8 +89,8 @@ end
     reduced_domain = 0.0:0.1:0.5
     reduced_kf = NonEquilibriumGreenFunction.update_domain(kf, domain, reduced_domain)
     buf_reduced_kernel = zeros(kf.eltype, size(reduced_kf, 2))
-    ACAFact.row!(buf_full_kernel, kf, 1)
-    ACAFact.row!(buf_reduced_kernel, reduced_kf, 1)
+    NonEquilibriumGreenFunction.ACAFact.row!(buf_full_kernel, kf, 1)
+    NonEquilibriumGreenFunction.ACAFact.row!(buf_reduced_kernel, reduced_kf, 1)
     @test length(buf_reduced_kernel) == length(reduced_domain)*kf.blocksize
     @test buf_reduced_kernel[1:reduced_kf.blocksize:end] == modulation_11.(reduced_domain[1], reduced_domain)
     @test norm(modulation_11.(domain[1], domain)) > 1
@@ -110,7 +108,6 @@ function fill_with_kernel!(array, kf)
 end
 
 @testitem "fill_with_kernel!" begin
-    using ACAFact
     modulation(x) = sin(x)
     domain = (0.0:0.1:1.0)
     kf = KernelFunction(
@@ -119,7 +116,7 @@ end
         (0.0:0.2:10.0)
     )
     buf1 = zeros(kf.eltype, size(kf, 2))
-    ACAFact.row!(buf1, kf, 1)
+    NonEquilibriumGreenFunction.ACAFact.row!(buf1, kf, 1)
     matrix = zeros(kf.eltype, size(kf))
     NonEquilibriumGreenFunction.fill_with_kernel!(matrix, kf)
     @test matrix[1,:] == buf1
