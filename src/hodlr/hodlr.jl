@@ -44,6 +44,9 @@ end
 function size(A::LowRankBlock) :: Tuple{Int,Int}
     return (size(A,1),size(A,2))
 end
+function eltype(::LowRankBlock{M}) where M
+    return eltype(M)
+end
 
 @testitem "Test LowRankBlock creation" begin
     using LinearAlgebra
@@ -59,22 +62,36 @@ function full(A::LowRankBlock)
     return result
 end
 
-@testitem "Test LowRankBlock arithmetic" begin
+@testitem "Test LowRankBlock creation from vectors" begin
     using LinearAlgebra
-    k = 2
-    n = 5
-    m = 6
+    k = 5
+    n = 128
+    m = 243
     u0 = randn(ComplexF64,n,k)
     v0 = randn(ComplexF64,k,m)
     A = u0*v0
     @test size(A) == (n,m)
     @test k == rank(A)
-    aca_A = NonEquilibriumGreenFunction.LowRankBlock(A,1e-9, maxrank=10)
+    const tol = 1E-8
+    aca_A = NonEquilibriumGreenFunction.LowRankBlock(A,0.1*tol, maxrank=10)
     @test size(aca_A) == size(A)
-    @show size(aca_A.u)
-    @show size(aca_A.v)
     @test NonEquilibriumGreenFunction.rank(aca_A) >= k
-    @test norm(A - NonEquilibriumGreenFunction.full(aca_A))/norm(A) < 1E-8
+    @test norm(A - NonEquilibriumGreenFunction.full(aca_A))/norm(A) < tol
+    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) < tol
+end
+
+@testitem "Test LowRankBlock creation from KernelFunction" begin
+    using LinearAlgebra
+    dom = range(0.0, 1.0, length=128)
+    m =  [1 2; 3 4]
+    const tol = 1E-9
+    kf = NonEquilibriumGreenFunction.KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
+    aca_block = NonEquilibriumGreenFunction.LowRankBlock(kf, 0.01*tol, maxrank = 12)
+    full_block = zeros(eltype(aca_block),size(aca_block)...)
+    NonEquilibriumGreenFunction.fill_with_kernel!(full_block,kf)
+    @test eltype(full_block) == eltype(aca_block)
+    @test eltype(full_block) == eltype(kf)
+    @test norm(full_block - full(aca_block)) < tol
 end
 
 function (*)(A::LowRankBlock ,B)
@@ -225,6 +242,10 @@ function size(holdr::Holdr.Type{M},i) where M
     end
 end
 
+function eltype(::Holdr.Type{M}) where M
+    return eltype(M)
+end
+
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=100)
@@ -235,7 +256,7 @@ end
 end
 
 function full(holdr::Holdr.Type{M}) where M
-    dense_matrix = zeros(size(holdr)...)
+    dense_matrix = zeros(eltype(holdr),size(holdr)...)
     _full!(dense_matrix, holdr)
     return dense_matrix
 end
@@ -259,9 +280,18 @@ end
 
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
+    dom = range(0.0, 1.0, length=512)
     m =  [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
-    full(holdr)
+    const tol = 1E-9
+    kf = KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
+    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 2))
+    full_hodlr = full(holdr)
+    dense = zeros(eltype(holdr),size(holdr)...)
+    NonEquilibriumGreenFunction.fill_with_kernel!(dense,kf)
+    @test norm(dense - full_hodlr)/norm(dense) < tol
+    @test norm(dense - full_hodlr) < tol
+    abs_diff = abs.(dense .- full_hodlr) 
+    @show idx = argmax(abs_diff) 
+    @show abs_diff[idx]
+
 end
