@@ -14,6 +14,7 @@ export full
 @kwdef struct HodlrContext
     tol::Real
     maxrank::Int
+    rankstart::Int
 end
 
 struct LowRankBlock{M}
@@ -22,10 +23,10 @@ struct LowRankBlock{M}
 end
 
 function LowRankBlock(kf, ctx::HodlrContext)
-    LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank)
+    LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank, rankstart=ctx.rankstart)
 end
-function LowRankBlock(kf, tol::Real; maxrank::Int)
-    (U, V) = aca(kf, tol, maxrank=maxrank)
+function LowRankBlock(kf, tol::Real; maxrank::Int, rankstart::Int = div(maxrank,4))
+    (U, V) = aca(kf, tol, maxrank=maxrank, rankstart=rankstart)
     LowRankBlock(U, V)
 end
 function rank(A::LowRankBlock)
@@ -82,16 +83,20 @@ end
 
 @testitem "Test LowRankBlock creation from KernelFunction" begin
     using LinearAlgebra
-    dom = range(0.0, 1.0, length=128)
-    m =  [1 2; 3 4]
+    import NonEquilibriumGreenFunction.LowRankBlock
+    dom = range(0.0, 1.0, length=3)
+    m =  [1 2; 1 1]
+    m = m + m'
     const tol = 1E-9
     kf = NonEquilibriumGreenFunction.KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    aca_block = NonEquilibriumGreenFunction.LowRankBlock(kf, 0.01*tol, maxrank = 12)
+    aca_block = NonEquilibriumGreenFunction.LowRankBlock(kf, 0.01*tol, maxrank = 60)
     full_block = zeros(eltype(aca_block),size(aca_block)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(full_block,kf)
     @test eltype(full_block) == eltype(aca_block)
     @test eltype(full_block) == eltype(kf)
     @test norm(full_block - full(aca_block)) < tol
+    @test rank(full_block) == rank(full(aca_block))
+    @test norm(full(LowRankBlock(full_block, 1E-2 * tol, maxrank = 60)) - full_block ) < tol 
 end
 
 function (*)(A::LowRankBlock ,B)
@@ -251,7 +256,7 @@ end
     dom = range(0.0, 1.0, length=100)
     m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 20))
+    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 60, rankstart = 20))
     @test size(holdr) == size(kf) .* size(m) 
 end
 
@@ -281,10 +286,10 @@ end
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=512)
-    m =  [1 2; 3 4]
+    m =  [1 2; 1 1]
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 2))
+    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 60, rankstart = 20))
     full_hodlr = full(holdr)
     dense = zeros(eltype(holdr),size(holdr)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(dense,kf)

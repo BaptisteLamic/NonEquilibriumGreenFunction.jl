@@ -60,8 +60,7 @@ end
     domain = (0.0:0.1:1.0)
     modulation_11(x,y) = exp(-abs(x))*cos(y)
     modulation_22(x,y) = (atan(x) * sin(y) + 1)
-    kf = KernelFunction((x, y) -> [modulation_11(x,y) 0.0; 0.0 modulation_22(x, y)], domain)
-    @show kf.f(0,0)
+    kf = KernelFunction((x, y) -> [modulation_11(x,y) 1.0; 0.0 modulation_22(x, y)], domain)
     @test kf.blocksize == 2
     @test kf.eltype == Float64
     @test size(kf, 1) == length(domain) * kf.blocksize
@@ -71,7 +70,7 @@ end
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(domain, domain[1])) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
     NonEquilibriumGreenFunction.ACAFact.row!(buf, kf, 1)
-    @test buf[2:kf.blocksize:end] == zeros(length(domain))
+    @test buf[2:kf.blocksize:end] == ones(length(domain))
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(domain[1], domain)) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
 end
@@ -109,15 +108,24 @@ end
 
 @testitem "fill_with_kernel!" begin
     modulation(x) = sin(x)
-    domain = (0.0:0.1:1.0)
     kf = KernelFunction(
-        (x, y) -> [modulation(x - pi*y) 0.0; 0.0 modulation(2x - y)],
+        (x, y) -> [modulation(x - pi*y) 2.0; -1.0 modulation(2x - y)],
         (0.0:0.1:1.0),
         (0.0:0.2:10.0)
     )
-    buf1 = zeros(kf.eltype, size(kf, 2))
-    NonEquilibriumGreenFunction.ACAFact.row!(buf1, kf, 1)
+    buf_row = zeros(kf.eltype, size(kf, 2))
     matrix = zeros(kf.eltype, size(kf))
     NonEquilibriumGreenFunction.fill_with_kernel!(matrix, kf)
-    @test matrix[1,:] == buf1
+    for i in 1:size(matrix,1)
+        NonEquilibriumGreenFunction.ACAFact.row!(buf_row, kf, i)
+        @test matrix[i,:] == buf_row
+    end
+
+    buf_col = zeros(kf.eltype, size(kf, 1))
+    matrix = zeros(kf.eltype, size(kf))
+    NonEquilibriumGreenFunction.fill_with_kernel!(matrix, kf)
+    for i in 1:size(matrix,1)
+        NonEquilibriumGreenFunction.ACAFact.col!(buf_col, kf, i)
+        @test matrix[:,i] == buf_col
+    end
 end
