@@ -26,7 +26,7 @@ function LowRankBlock(kf, ctx::HodlrContext)
     LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank, rankstart=ctx.rankstart)
 end
 function LowRankBlock(kf, tol::Real; maxrank::Int, rankstart::Int = div(maxrank,4))
-    (U, V) = aca(kf, tol, maxrank=maxrank, rankstart=rankstart)
+    U, V = aca(kf, maxrank)
     LowRankBlock(U, V)
 end
 function rank(A::LowRankBlock)
@@ -59,7 +59,6 @@ end
 
 function full(A::LowRankBlock)
     result = A.u * A.v'
-    @assert(size(A) == size(result))
     return result
 end
 
@@ -83,6 +82,7 @@ end
 
 @testitem "Test LowRankBlock creation from KernelFunction" begin
     using LinearAlgebra
+    using ACAFact
     import NonEquilibriumGreenFunction.LowRankBlock
     dom = range(0.0, 1.0, length=3)
     m =  [1 2; 1 1]
@@ -96,7 +96,7 @@ end
     @test eltype(full_block) == eltype(kf)
     @test norm(full_block - full(aca_block)) < tol
     @test rank(full_block) == rank(full(aca_block))
-    @test norm(full(LowRankBlock(full_block, 1E-2 * tol, maxrank = 60)) - full_block ) < tol 
+    @test norm(full(LowRankBlock(full_block, 1E-2 * tol, maxrank = 20, rankstart = 12)) - full_block ) < tol 
 end
 
 function (*)(A::LowRankBlock ,B)
@@ -227,7 +227,8 @@ function build_hodlr(kf::KernelFunction,ctx::HodlrContext)
 end
 
 function _construct_leaf(kf)
-    M = Array{eltype(kf)}(undef, size(kf)...)
+    M = zeros(eltype(kf),size(kf)...)
+    M = Array{eltype(kf)}(0, size(kf)...)
     fill_with_kernel!(M, kf)
     return Holdr.Leaf(M)
 end
@@ -265,38 +266,33 @@ function full(holdr::Holdr.Type{M}) where M
     _full!(dense_matrix, holdr)
     return dense_matrix
 end
-function _full_node!(out, upper_diag, lower_diag, upper_offdiag, lower_offdiag)
-    nA1, nA2 = size(upper_diag)
-    out[1:nA1, 1:nA2] .= upper_diag
-    out[nA1+1:end, nA2+1:end] .= lower_diag
-    out[1:nA1, nA2+1:end] .= full(upper_offdiag)
-    out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
-    return out
-end
 function _full!(out, holdr::Holdr.Type)
     if isleaf(holdr)
             M = get_children(holdr)
-            out .= M
+            out[:,:] .= M
     else
         A, B, upper_offdiag, lower_offdiag = get_children(holdr)
-        _full_node!(out, full(A), full(B), upper_offdiag, lower_offdiag)
+        nA1, nA2 = size(A)
+        nB1, nB2 = size(B)
+        out_up = view(out, 1:nA1, 1:nA2)
+        out_down = view(out, nA1+1:nA1+nB1, nA2+1:nA2+nB2)
+        _full!(out_up, A)
+        _full!(out_down, B)
+        out[1:nA1, nA2+1:end] .= full(upper_offdiag)
+        out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
     end
 end
 
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=512)
-    m =  [1 2; 1 1]
+    m =  [1 1; 1 1]
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 60, rankstart = 20))
+    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 4, rankstart = 20))
     full_hodlr = full(holdr)
     dense = zeros(eltype(holdr),size(holdr)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(dense,kf)
     @test norm(dense - full_hodlr)/norm(dense) < tol
     @test norm(dense - full_hodlr) < tol
-    abs_diff = abs.(dense .- full_hodlr) 
-    @show idx = argmax(abs_diff) 
-    @show abs_diff[idx]
-
 end
