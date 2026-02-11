@@ -50,7 +50,7 @@ export discretize_lowrank_kernel
 export causality
 export solve_dyson
 export adjoint
-#export simplify_kernel
+
 export norm
 
 export BlockCirculantMatrix

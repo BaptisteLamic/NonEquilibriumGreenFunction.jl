@@ -152,7 +152,7 @@ adjoint(op::SumOperator) = SumOperator(op.left', op.right')
     @assert causality(kernelA + kernelB) == Acausal()
     @assert kernelA + kernelB == kernelB + kernelC
 end
-@testitem "Mechanical actions" begin
+@testitem "compression and similar" begin
     using LinearAlgebra
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
