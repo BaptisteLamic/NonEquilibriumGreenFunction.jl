@@ -32,19 +32,19 @@ end
     @test NonEquilibriumGreenFunction.childrens(node) == (left, right)
 end
 
-function PartitionTree(range::UnitRange{Int})
-    if length(range) <= 1
+function build_partition(range::UnitRange{Int}, maximal_size::Int)
+    if length(range) <= maximal_size
         return PartitionTree(BinaryTree.Leaf{UnitRange{Int}}(range))
     end
     idx_mid = length(range) ÷ 2
     mid = range[idx_mid]
-    left = PartitionTree(range.start:mid)
-    right = PartitionTree(mid+1:range.stop)
+    left = build_partition(range.start:mid, maximal_size)
+    right = build_partition(mid+1:range.stop, maximal_size)
     return PartitionTree(BinaryTree.Node(range,left.tree,right.tree))
 end
 
-function PartitionTree(range::Number)
-    return PartitionTree(range:range)
+function build_partition(range::Number, maximal_size::Int)
+    return build_partition(range:range, maximal_size)
 end
 
 function split_partition(tree::PartitionTree)
@@ -69,13 +69,13 @@ function isleaf(tree::PartitionTree)
 end
 
 @testitem "Test PartitionTree" begin
-    import NonEquilibriumGreenFunction.PartitionTree
-    a =  PartitionTree(1:3)
+    import NonEquilibriumGreenFunction: build_partition, PartitionTree
+    a =  build_partition(1:3, 1)
     left,right = NonEquilibriumGreenFunction.split_partition(a)
     b = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
     c = PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(3:3))
     @test left == PartitionTree(NonEquilibriumGreenFunction.BinaryTree.Leaf(1:1))
-    @test right == PartitionTree(2:3)
-    @test NonEquilibriumGreenFunction.isleaf(PartitionTree(1))
-    @test !NonEquilibriumGreenFunction.isleaf(PartitionTree(1:2))
+    @test right == build_partition(2:3,1)
+    @test NonEquilibriumGreenFunction.isleaf(build_partition(1,1))
+    @test !NonEquilibriumGreenFunction.isleaf(build_partition(1:2,1))
 end

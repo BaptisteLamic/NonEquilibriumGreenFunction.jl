@@ -15,6 +15,7 @@ export full
     tol::Real
     maxrank::Int
     rankstart::Int
+    leafsize::Int = 64
 end
 
 struct LowRankBlock{M}
@@ -221,14 +222,13 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
 end
 
 function build_hodlr(kf::KernelFunction,ctx::HodlrContext)
-    row_partition = PartitionTree(1:size(kf,1))
-    col_partition = PartitionTree(1:size(kf,2))
+    row_partition = build_partition(1:size(kf,1),ctx.leafsize)
+    col_partition = build_partition(1:size(kf,2),ctx.leafsize)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
 function _construct_leaf(kf)
     M = zeros(eltype(kf),size(kf)...)
-    M = Array{eltype(kf)}(0, size(kf)...)
     fill_with_kernel!(M, kf)
     return Holdr.Leaf(M)
 end
