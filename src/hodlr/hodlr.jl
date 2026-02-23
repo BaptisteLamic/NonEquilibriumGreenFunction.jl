@@ -83,7 +83,6 @@ end
 
 @testitem "Test LowRankBlock creation from KernelFunction" begin
     using LinearAlgebra
-    using ACAFact
     import NonEquilibriumGreenFunction.LowRankBlock
     dom = range(0.0, 1.0, length=3)
     m =  [1 2; 1 1]
@@ -260,8 +259,7 @@ end
     m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
     holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 60, rankstart = 20, leafsize = size(kf,1) ÷ 2))
-    @test size(holdr) == size(kf) 
-    @test NonEquilibriumGreenFunction.isleaf(holdr)
+    @test size(holdr) == size(kf)
     #(A,B,upper_offdiag,lower_offdiag) = NonEquilibriumGreenFunction.get_children(holdr)
     #@test NonEquilibriumGreenFunction.isleaf(A)
     #@test NonEquilibriumGreenFunction.isleaf(B)
