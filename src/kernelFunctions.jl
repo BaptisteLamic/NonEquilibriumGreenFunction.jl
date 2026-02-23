@@ -100,7 +100,7 @@ function fill_with_kernel!(array, kf)
     bs = kf.blocksize
     for j in 1:length(kf.domain[2])
         for i in 1:length(kf.domain[1])
-            array[(i-1)*bs+1:i*bs,(j-1)*bs+1:j*bs] = kf.f(kf.domain[1][i], kf.domain[2][j])
+            array[(i-1)*bs+1:i*bs,(j-1)*bs+1:j*bs] .= kf.f(kf.domain[1][i], kf.domain[2][j])
         end
     end
     return array

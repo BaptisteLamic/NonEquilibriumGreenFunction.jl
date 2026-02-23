@@ -43,8 +43,8 @@ function build_partition(range::UnitRange{Int}, maximal_size::Int)
     return PartitionTree(BinaryTree.Node(range,left.tree,right.tree))
 end
 
-function build_partition(range::Number, maximal_size::Int)
-    return build_partition(range:range, maximal_size)
+function build_partition(range::Number, leaf_size::Int)
+    return build_partition(range:range, leaf_size)
 end
 
 function split_partition(tree::PartitionTree)

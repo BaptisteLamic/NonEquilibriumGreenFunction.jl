@@ -209,7 +209,9 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         left_cols, right_cols = split_partition(col_partition)
 
         A_kernel = update_domain(kf,upper_rows |> get_range , left_cols |> get_range)
-        B_kernel = update_domain(kf,lower_row |> get_range , right_cols |> get_range )
+        B_kernel = update_domain(kf,lower_row |> get_range , right_cols |> get_range)
+        @show size(kf)
+        @show size(A_kernel)
         upper_offdiag_kernel = update_domain(kf,upper_rows |> get_range, right_cols |> get_range)
         lower_offdiag_kernel = update_domain(kf,lower_row |> get_range, left_cols |> get_range)
 
@@ -254,11 +256,15 @@ end
 
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
+    dom = range(0.0, 1.0, length=512)
     m = [1 2; 3 4]
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 60, rankstart = 20))
-    @test size(holdr) == size(kf) .* size(m) 
+    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 60, rankstart = 20, leafsize = size(kf,1) ÷ 2))
+    @test size(holdr) == size(kf) 
+    @test NonEquilibriumGreenFunction.isleaf(holdr)
+    #(A,B,upper_offdiag,lower_offdiag) = NonEquilibriumGreenFunction.get_children(holdr)
+    #@test NonEquilibriumGreenFunction.isleaf(A)
+    #@test NonEquilibriumGreenFunction.isleaf(B)
 end
 
 function full(holdr::Holdr.Type{M}) where M
@@ -283,13 +289,14 @@ function _full!(out, holdr::Holdr.Type)
     end
 end
 
+
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
     dom = range(0.0, 1.0, length=512)
-    m =  [1 1; 1 1]
+    m = ones(Float64,1,1)
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 4, rankstart = 20))
+    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 2, rankstart = 20,leafsize = 256))
     full_hodlr = full(holdr)
     dense = zeros(eltype(holdr),size(holdr)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(dense,kf)
