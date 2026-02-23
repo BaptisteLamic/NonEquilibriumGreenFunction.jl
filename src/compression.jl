@@ -9,7 +9,7 @@ function build_CirculantlinearMap(ax0, f)
     #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
     m = zeros(eltype(f00), bs, bs, length(ax))
-    Threads.@threads for i = 1:length(ax)
+    Threads.@threads for i in eachindex(ax)
         m[:, :, i] .= f(ax[i], 0)
     end
     A = BlockCirculantMatrix(m)

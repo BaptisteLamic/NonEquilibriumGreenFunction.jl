@@ -75,7 +75,13 @@ end
     @test norm(buf[1:kf.blocksize:end]) > 1
 end
 
-function update_domain(kf, dom1, dom2)
+function restrict_domain(kf, dom1, dom2)
+    #We first test that the new domain is included in the old one.
+    for (new_dom, old_dom) in zip((dom1, dom2), kf.domain)
+        if !all(in(old_dom), new_dom)
+            throw(DomainError(new_dom, "new domain must be a subset of $(old_dom)"))
+        end
+    end
     return KernelFunction(kf.f, (dom1, dom2), kf.eltype, kf.blocksize)
 end
 
@@ -86,7 +92,7 @@ end
     kf = KernelFunction((x, y) -> [modulation_11(x,y) 0.0; 0.0 modulation_22(x, y)], domain)
     buf_full_kernel = zeros(kf.eltype, size(kf, 2))
     reduced_domain = 0.0:0.1:0.5
-    reduced_kf = NonEquilibriumGreenFunction.update_domain(kf, domain, reduced_domain)
+    reduced_kf = NonEquilibriumGreenFunction.restrict_domain(kf, domain, reduced_domain)
     buf_reduced_kernel = zeros(kf.eltype, size(reduced_kf, 2))
     NonEquilibriumGreenFunction.ACAFact.row!(buf_full_kernel, kf, 1)
     NonEquilibriumGreenFunction.ACAFact.row!(buf_reduced_kernel, reduced_kf, 1)
