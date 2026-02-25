@@ -122,7 +122,7 @@ end
             _causality = causality(GA)
             bs = blocksize(GA)
             B = zeros(T, N * bs, N * bs)
-            for it in 1:length(ax)
+            for it in eachindex(ax)
                 t0 = _causality == Retarded() || _causality == Acausal() ? 1 : it
                 t1 = _causality == Advanced() || _causality == Acausal() ? length(ax) : it
                 for itp in t0:t1

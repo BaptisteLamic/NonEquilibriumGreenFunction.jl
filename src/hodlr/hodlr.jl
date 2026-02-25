@@ -26,36 +26,28 @@ end
 function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
     LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank, rankstart=ctx.rankstart)
 end
-function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real; maxrank::Int, rankstart::Int = div(maxrank,4))
+function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real; maxrank::Int, rankstart::Int=div(maxrank, 4))
     U, V = aca(kf, tol, maxrank=maxrank, rankstart=rankstart)
     LowRankBlock(U, V)
 end
 function rank(A::LowRankBlock)
-    return size(A.u,2)
+    return size(A.u, 2)
 end
-function size(A::LowRankBlock, i) :: Int
+function size(A::LowRankBlock, i)::Int
     if i == 1
-        s = size(A.u,1)
-    elseif i==2
-        s = size(A.v,1)
+        s = size(A.u, 1)
+    elseif i == 2
+        s = size(A.v, 1)
     else
         s = 1
     end
     return s
 end
-function size(A::LowRankBlock) :: Tuple{Int,Int}
-    return (size(A,1),size(A,2))
+function size(A::LowRankBlock)::Tuple{Int,Int}
+    return (size(A, 1), size(A, 2))
 end
 function eltype(::LowRankBlock{M}) where M
     return eltype(M)
-end
-
-@testitem "Test LowRankBlock creation" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
-    m = [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
 end
 
 function full(A::LowRankBlock)
@@ -63,117 +55,18 @@ function full(A::LowRankBlock)
     return result
 end
 
-@testitem "Test LowRankBlock creation from vectors" begin
-    using LinearAlgebra
-    k = 5
-    n = 128
-    m = 243
-    u0 = randn(ComplexF64,n,k)
-    v0 = randn(ComplexF64,k,m)
-    A = u0*v0
-    @test size(A) == (n,m)
-    @test k == rank(A)
-    tol = 1E-8
-    aca_A = NonEquilibriumGreenFunction.LowRankBlock(A,0.1*tol, maxrank=10)
-    @test size(aca_A) == size(A)
-    @test NonEquilibriumGreenFunction.rank(aca_A) >= k
-    @test norm(A - NonEquilibriumGreenFunction.full(aca_A))/norm(A) < tol
-    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) < tol
-end
 
-@testitem "Test LowRankBlock creation from KernelFunction" begin
-    # NOTE: ACA approximation of block-structured kernels may fail due to discontinuities at block boundaries.
-    # The kernel's piecewise structure violates smoothness assumptions underlying the adaptive cross approximation.
-    # Hence this test fail
-    using LinearAlgebra
-    import NonEquilibriumGreenFunction.LowRankBlock
-    dom = range(0.0, 1.0, length=3)
-    m =  [1 2; 1 1]
-    tol = 1E-12
-    kf = NonEquilibriumGreenFunction.KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    aca_block = NonEquilibriumGreenFunction.LowRankBlock(kf, 0.01*tol, maxrank = 120, rankstart = 60)
-    full_block = zeros(eltype(aca_block),size(aca_block)...)
-    NonEquilibriumGreenFunction.fill_with_kernel!(full_block,kf)
-    @test eltype(full_block) == eltype(aca_block)
-    @test eltype(full_block) == eltype(kf)
-    #TODO fix ACA for non block-structured kernels.
-    @test_broken norm(full_block - full(aca_block)) < tol
-    @test_broken rank(full_block) == rank(full(aca_block))
-    @test_broken norm(full(LowRankBlock(full_block, 1E-2 * tol, maxrank = 20, rankstart = 12)) - full_block ) < tol 
-end
-
-function (*)(A::LowRankBlock ,B::AbstractArray)
-    return A.u*(A.v'*B)
+function (*)(A::LowRankBlock, B::AbstractArray)
+    return A.u * (A.v' * B)
 end
 function (*)(A::AbstractArray, B::LowRankBlock)
-    return (A*B.u)*B.v'
+    return (A * B.u) * B.v'
 end
-function (*)(A::LowRankBlock ,B::LowRankBlock)
+function (*)(A::LowRankBlock, B::LowRankBlock)
     #TODO: naive optimization, find a reference paper / implementation 
     #OPTION: lazy optimization by just storting the sets of low ranks matrices
-    core = A.v'*B.u
-    return LowRankBlock(A.u*core, B.v)
-end
-
-@testitem "Test LowRankBlock x Dense Vector" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
-    m =  [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
-    x = randn(ComplexF32, size(block,2))
-    y = block*x
-    y_full = NonEquilibriumGreenFunction.full(block)*x
-    @test norm(y - y_full)/norm(y_full) < 1E-8
-end
-
-@testitem "Test LowRankBlock x Dense Matrix" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
-    m =  [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
-    x = randn(ComplexF32, (size(block,2),4))
-    y = block*x
-    y_full = NonEquilibriumGreenFunction.full(block)*x
-    @test norm(y - y_full)/norm(y_full) < 1E-8
-end
-
-@testitem "Test Dense Vector x LowRankBlock" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
-    m =  [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
-    x = randn(ComplexF32, size(block,1))
-    y = x'*block
-    y_full = x'*NonEquilibriumGreenFunction.full(block)
-    @test norm(y - y_full)/norm(y_full) < 1E-8
-end
-
-@testitem "Test Dense Matrix x LowRankBlock" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=100)
-    m =  [1 2; 3 4]
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
-    x = randn(ComplexF32, (12,size(block,1)))
-    y = x*block
-    y_full = x*NonEquilibriumGreenFunction.full(block)
-    @test norm(y - y_full)/norm(y_full) < 1E-8
-end
-
-
-@testitem "Test LowRankBlock x LowRankBlock" begin
-    using LinearAlgebra
-    n,k1,m,k2,l = 100,12,80,10,100
-    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,n,k1), randn(ComplexF64,m,k1))
-    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64,m,k2), randn(ComplexF64,l,k2))
-    full_block1 = NonEquilibriumGreenFunction.full(block1)
-    full_block2 = NonEquilibriumGreenFunction.full(block2)
-    full_product = full_block1*full_block2
-    block_product = block1*block2
-    @test norm(full_product - NonEquilibriumGreenFunction.full(block_product))/norm(full_product) < 1E-8
+    core = A.v' * B.u
+    return LowRankBlock(A.u * core, B.v)
 end
 
 @data Holdr{M} begin
@@ -190,7 +83,7 @@ end
 function isleaf(holdr::Holdr.Type)
     @match holdr begin
         Holdr.Leaf(_) => true
-        Holdr.Node(_,_,_,_) => false
+        Holdr.Node(_, _, _, _) => false
     end
 end
 function isnode(holdr::Holdr.Type)
@@ -199,45 +92,51 @@ end
 function get_children(holdr::Holdr.Type)
     @match holdr begin
         Holdr.Leaf(M) => M
-        Holdr.Node(A,B,upper_offdiag,lower_offdiag) => (A,B,upper_offdiag,lower_offdiag)
+        Holdr.Node(A, B, upper_offdiag, lower_offdiag) => (A, B, upper_offdiag, lower_offdiag)
     end
 end
 
-function _convert_matrix_partition_to_domain(partition, domain, bs)
-    range = get_range(partition)
-    converted_partition = div(range[1]-1,bs)+1:div(range[end]-1,bs)+1
-    return domain[converted_partition]
+function _convert_matrix_partition_to_domain(partition_row, partition_col, domain, bs)
+    range = get_range(partition_row)
+    converted_partition_row = div(range[1] - 1, bs)+1:div(range[end] - 1, bs)+1
+    range = get_range(partition_col)
+    converted_partition_col = div(range[1] - 1, bs)+1:div(range[end] - 1, bs)+1
+    raw_domain_row = xaxis(domain)[converted_partition_row]
+    raw_domain_col = yaxis(domain)[converted_partition_col]
+    return KernelDomain((raw_domain_row[1], raw_domain_row[end]), (raw_domain_col[1], raw_domain_col[end]), x_steps=length(raw_domain_row), y_steps=length(raw_domain_col))
 end
 
 function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
+
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(kf, row_partition, col_partition)
     else
+        _xaxis = xaxis(kf.domain)
+        _yaxis = yaxis(kf.domain)
         upper_rows, lower_row = split_partition(row_partition)
         left_cols, right_cols = split_partition(col_partition)
-
-        dom1 = kf.domain[1]
-        dom2 = kf.domain[2]
-        upper_offdiag_kernel = restrict_domain(kf, _convert_matrix_partition_to_domain(upper_rows, dom1, kf.blocksize), _convert_matrix_partition_to_domain(right_cols, dom2, kf.blocksize))
-        lower_offdiag_kernel = restrict_domain(kf, _convert_matrix_partition_to_domain(lower_row, dom1, kf.blocksize), _convert_matrix_partition_to_domain(left_cols, dom2, kf.blocksize))
+        upper_offdiag_kernel = restrict_domain(kf,
+            _convert_matrix_partition_to_domain(upper_rows, right_cols, kf.domain, kf.blocksize))
+        lower_offdiag_kernel = restrict_domain(kf,
+            _convert_matrix_partition_to_domain(lower_row, left_cols, kf.domain, kf.blocksize))
 
         A = build_hodlr(kf, upper_rows, left_cols, ctx)
         B = build_hodlr(kf, lower_row, right_cols, ctx)
         upper_offdiag = LowRankBlock(upper_offdiag_kernel, ctx)
         lower_offdiag = LowRankBlock(lower_offdiag_kernel, ctx)
-        return Holdr.Node(A,B,upper_offdiag,lower_offdiag)
+        return Holdr.Node(A, B, upper_offdiag, lower_offdiag)
     end
 end
 
-function build_hodlr(kf::KernelFunction,ctx::HodlrContext)
-    row_partition = build_partition(1:size(kf,1),ctx.leafsize)
-    col_partition = build_partition(1:size(kf,2),ctx.leafsize)
+function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
+    row_partition = build_partition(1:size(kf, 1), ctx.leafsize)
+    col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
 function _construct_leaf(kf, row_partition, col_partition)
-    restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, kf.domain[1], kf.blocksize), _convert_matrix_partition_to_domain(col_partition, kf.domain[2], kf.blocksize))
-    M = zeros(eltype(restricted_kf),size(restricted_kf,1),size(restricted_kf,1))
+    restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, kf.blocksize))
+    M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
     fill_with_kernel!(M, restricted_kf)
     return Holdr.Leaf(M)
 end
@@ -245,10 +144,10 @@ end
 function size(holdr::Holdr.Type{M}) where M
     @match holdr begin
         Holdr.Leaf(M) => size(M)
-        Holdr.Node(A,B,_,_) => (size(A,1)+size(B,1), size(A,2)+size(B,2))
+        Holdr.Node(A, B, _, _) => (size(A, 1) + size(B, 1), size(A, 2) + size(B, 2))
     end
 end
-function size(holdr::Holdr.Type{M},i) where M
+function size(holdr::Holdr.Type{M}, i) where M
     s = size(holdr)
     if i < 1 || i > 2
         return 1
@@ -261,24 +160,15 @@ function eltype(::Holdr.Type{M}) where M
     return eltype(M)
 end
 
-@testitem "Test Hodlr construction" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=512)
-    m = ones(2,2)
-    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 1e-6, maxrank = 60, rankstart = 20, leafsize = size(kf,1) ÷ 2))
-    @test size(holdr) == size(kf)
-end
-
 function full(holdr::Holdr.Type{M}) where M
-    dense_matrix = zeros(eltype(holdr),size(holdr)...)
+    dense_matrix = zeros(eltype(holdr), size(holdr)...)
     _full!(dense_matrix, holdr)
     return dense_matrix
 end
 function _full!(out, holdr::Holdr.Type)
     if isleaf(holdr)
-            M = get_children(holdr)
-            out[:,:] .= M
+        M = get_children(holdr)
+        out[:, :] .= M
     else
         A, B, upper_offdiag, lower_offdiag = get_children(holdr)
         nA1, nA2 = size(A)
@@ -293,16 +183,3 @@ function _full!(out, holdr::Holdr.Type)
 end
 
 
-@testitem "Test Hodlr full" begin
-    using LinearAlgebra
-    dom = range(0.0, 1.0, length=512)
-    m = [1 1; 1 1]
-    const tol = 1E-9
-    kf = KernelFunction((x, y) -> m .* exp(1im*(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol = 0.01*tol, maxrank = 120, rankstart = 48,leafsize = 64))
-    full_hodlr = full(holdr)
-    dense = zeros(eltype(holdr),size(holdr)...)
-    NonEquilibriumGreenFunction.fill_with_kernel!(dense,kf)
-    @test norm(dense - full_hodlr)/norm(dense) < tol
-    @test norm(dense - full_hodlr) < tol
-end

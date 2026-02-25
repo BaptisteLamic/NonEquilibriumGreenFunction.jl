@@ -1,0 +1,131 @@
+@testitem "Test LowRankBlock creation" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=100)
+    m = [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+end
+
+@testitem "Test LowRankBlock creation from vectors" begin
+    using LinearAlgebra
+    k = 5
+    n = 128
+    m = 243
+    u0 = randn(ComplexF64, n, k)
+    v0 = randn(ComplexF64, k, m)
+    A = u0 * v0
+    @test size(A) == (n, m)
+    @test k == rank(A)
+    tol = 1E-8
+    aca_A = NonEquilibriumGreenFunction.LowRankBlock(A, 0.1 * tol, maxrank=10)
+    @test size(aca_A) == size(A)
+    @test NonEquilibriumGreenFunction.rank(aca_A) >= k
+    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) / norm(A) < tol
+    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) < tol
+end
+
+@testitem "Test LowRankBlock creation from KernelFunction" begin
+    # NOTE: ACA approximation of block-structured kernels may fail due to discontinuities at block boundaries.
+    # The kernel's piecewise structure violates smoothness assumptions underlying the adaptive cross approximation.
+    # Hence this test fail
+    using LinearAlgebra
+    import NonEquilibriumGreenFunction.LowRankBlock
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    m = [1 2; 1 1]
+    tol = 1E-12
+    kf = NonEquilibriumGreenFunction.KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
+    aca_block = NonEquilibriumGreenFunction.LowRankBlock(kf, 0.01 * tol, maxrank=120, rankstart=60)
+    full_block = zeros(eltype(aca_block), size(aca_block)...)
+    NonEquilibriumGreenFunction.fill_with_kernel!(full_block, kf)
+    @test eltype(full_block) == eltype(aca_block)
+    @test eltype(full_block) == eltype(kf)
+    #TODO fix ACA for non block-structured kernels.
+    @test_broken norm(full_block - full(aca_block)) < tol
+    @test_broken rank(full_block) == rank(full(aca_block))
+    @test_broken norm(full(LowRankBlock(full_block, 1E-2 * tol, maxrank=20, rankstart=12)) - full_block) < tol
+end
+
+@testitem "Test LowRankBlock x Dense Vector" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=100)
+    m = [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, size(block, 2))
+    y = block * x
+    y_full = NonEquilibriumGreenFunction.full(block) * x
+    @test norm(y - y_full) / norm(y_full) < 1E-8
+end
+
+@testitem "Test LowRankBlock x Dense Matrix" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=100)
+    m = [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, (size(block, 2), 4))
+    y = block * x
+    y_full = NonEquilibriumGreenFunction.full(block) * x
+    @test norm(y - y_full) / norm(y_full) < 1E-8
+end
+
+@testitem "Test Dense Vector x LowRankBlock" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=100)
+    m = [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, size(block, 1))
+    y = x' * block
+    y_full = x' * NonEquilibriumGreenFunction.full(block)
+    @test norm(y - y_full) / norm(y_full) < 1E-8
+end
+
+@testitem "Test Dense Matrix x LowRankBlock" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=100)
+    m = [1 2; 3 4]
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    block = NonEquilibriumGreenFunction.LowRankBlock(kf, 1e-6, maxrank=10)
+    x = randn(ComplexF32, (12, size(block, 1)))
+    y = x * block
+    y_full = x * NonEquilibriumGreenFunction.full(block)
+    @test norm(y - y_full) / norm(y_full) < 1E-8
+end
+
+
+@testitem "Test LowRankBlock x LowRankBlock" begin
+    using LinearAlgebra
+    n, k1, m, k2, l = 100, 12, 80, 10, 100
+    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, n, k1), randn(ComplexF64, m, k1))
+    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, m, k2), randn(ComplexF64, l, k2))
+    full_block1 = NonEquilibriumGreenFunction.full(block1)
+    full_block2 = NonEquilibriumGreenFunction.full(block2)
+    full_product = full_block1 * full_block2
+    block_product = block1 * block2
+    @test norm(full_product - NonEquilibriumGreenFunction.full(block_product)) / norm(full_product) < 1E-8
+end
+
+@testitem "Test Hodlr construction" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    m = ones(2, 2)
+    kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
+    holdr = build_hodlr(kf, HodlrContext(tol=1e-6, maxrank=60, rankstart=20, leafsize=size(kf, 1) ÷ 2))
+    @test size(holdr) == size(kf)
+end
+
+
+@testitem "Test Hodlr full" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    m = [1 1; 1 1]
+    const tol = 1E-9
+    kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
+    holdr = build_hodlr(kf, HodlrContext(tol=0.01 * tol, maxrank=120, rankstart=48, leafsize=64))
+    full_hodlr = full(holdr)
+    dense = zeros(eltype(holdr), size(holdr)...)
+    NonEquilibriumGreenFunction.fill_with_kernel!(dense, kf)
+    @test norm(dense - full_hodlr) / norm(dense) < tol
+    @test norm(dense - full_hodlr) < tol
+end
