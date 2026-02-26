@@ -1,7 +1,4 @@
-#TODO: get ride of Moshi dependencies, can produce subtile bugs
-using Moshi.Match: @match
-using Moshi.Data: @data
-using Moshi.Derive: @derive
+
 using StaticArrays
 using ACAFact
 
@@ -55,7 +52,6 @@ function full(A::LowRankBlock)
     return result
 end
 
-
 function (*)(A::LowRankBlock, B::AbstractArray)
     return A.u * (A.v' * B)
 end
@@ -64,36 +60,39 @@ function (*)(A::AbstractArray, B::LowRankBlock)
 end
 function (*)(A::LowRankBlock, B::LowRankBlock)
     #TODO: naive optimization, find a reference paper / implementation 
-    #OPTION: lazy optimization by just storting the sets of low ranks matrices
+    #OPTION: lazy optimization by just storing the sets of low rank matrices
     core = A.v' * B.u
     return LowRankBlock(A.u * core, B.v)
 end
 
-@data Holdr{M} begin
-    Leaf(M)
-    struct Node
-        A::Holdr{M}
-        B::Holdr{M}
-        upper_offdiag::LowRankBlock{M}
-        lower_offdiag::LowRankBlock{M}
-    end
-end
-@derive Holdr[Hash, Eq, Show]
+abstract type Holdr{M} end
 
-function isleaf(holdr::Holdr.Type)
-    @match holdr begin
-        Holdr.Leaf(_) => true
-        Holdr.Node(_, _, _, _) => false
-    end
+struct LeafHoldr{M} <: Holdr{M}
+    data::M
 end
-function isnode(holdr::Holdr.Type)
-    return !isleaf(holdr)
+
+struct NodeHoldr{M} <: Holdr{M}
+    A::Holdr{M}
+    B::Holdr{M}
+    upper_offdiag::LowRankBlock{M}
+    lower_offdiag::LowRankBlock{M}
 end
-function get_children(holdr::Holdr.Type)
-    @match holdr begin
-        Holdr.Leaf(M) => M
-        Holdr.Node(A, B, upper_offdiag, lower_offdiag) => (A, B, upper_offdiag, lower_offdiag)
-    end
+
+# Helper functions to replace @match patterns
+function isleaf(holdr::Holdr)
+    return isa(holdr, LeafHoldr)
+end
+
+function isnode(holdr::Holdr)
+    return isa(holdr, NodeHoldr)
+end
+
+function get_children(holdr::LeafHoldr)
+    return holdr.data
+end
+
+function get_children(holdr::NodeHoldr)
+    return (holdr.A, holdr.B, holdr.upper_offdiag, holdr.lower_offdiag)
 end
 
 function _convert_matrix_partition_to_domain(partition_row, partition_col, domain, bs)
@@ -107,7 +106,6 @@ function _convert_matrix_partition_to_domain(partition_row, partition_col, domai
 end
 
 function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
-
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(kf, row_partition, col_partition)
     else
@@ -124,7 +122,7 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         B = build_hodlr(kf, lower_row, right_cols, ctx)
         upper_offdiag = LowRankBlock(upper_offdiag_kernel, ctx)
         lower_offdiag = LowRankBlock(lower_offdiag_kernel, ctx)
-        return Holdr.Node(A, B, upper_offdiag, lower_offdiag)
+        return NodeHoldr(A, B, upper_offdiag, lower_offdiag)
     end
 end
 
@@ -138,16 +136,18 @@ function _construct_leaf(kf, row_partition, col_partition)
     restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, kf.blocksize))
     M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
     fill_with_kernel!(M, restricted_kf)
-    return Holdr.Leaf(M)
+    return LeafHoldr(M)
 end
 
-function size(holdr::Holdr.Type{M}) where M
-    @match holdr begin
-        Holdr.Leaf(M) => size(M)
-        Holdr.Node(A, B, _, _) => (size(A, 1) + size(B, 1), size(A, 2) + size(B, 2))
-    end
+function size(holdr::LeafHoldr{M}) where M
+    return size(holdr.data)
 end
-function size(holdr::Holdr.Type{M}, i) where M
+
+function size(holdr::NodeHoldr{M}) where M
+    return (size(holdr.A, 1) + size(holdr.B, 1), size(holdr.A, 2) + size(holdr.B, 2))
+end
+
+function size(holdr::Holdr{M}, i) where M
     s = size(holdr)
     if i < 1 || i > 2
         return 1
@@ -156,30 +156,33 @@ function size(holdr::Holdr.Type{M}, i) where M
     end
 end
 
-function eltype(::Holdr.Type{M}) where M
+function eltype(::Holdr{M}) where M
     return eltype(M)
 end
 
-function full(holdr::Holdr.Type{M}) where M
+function full(holdr::LeafHoldr{M}) where M
+    return holdr.data
+end
+
+function full(holdr::NodeHoldr{M}) where M
     dense_matrix = zeros(eltype(holdr), size(holdr)...)
     _full!(dense_matrix, holdr)
     return dense_matrix
 end
-function _full!(out, holdr::Holdr.Type)
-    if isleaf(holdr)
-        M = get_children(holdr)
-        out[:, :] .= M
-    else
-        A, B, upper_offdiag, lower_offdiag = get_children(holdr)
-        nA1, nA2 = size(A)
-        nB1, nB2 = size(B)
-        out_up = view(out, 1:nA1, 1:nA2)
-        out_down = view(out, nA1+1:nA1+nB1, nA2+1:nA2+nB2)
-        _full!(out_up, A)
-        _full!(out_down, B)
-        out[1:nA1, nA2+1:end] .= full(upper_offdiag)
-        out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
-    end
+
+function _full!(out, holdr::LeafHoldr)
+    M = holdr.data
+    out[:, :] .= M
 end
 
-
+function _full!(out, holdr::NodeHoldr)
+    A, B, upper_offdiag, lower_offdiag = holdr.A, holdr.B, holdr.upper_offdiag, holdr.lower_offdiag
+    nA1, nA2 = size(A)
+    nB1, nB2 = size(B)
+    out_up = view(out, 1:nA1, 1:nA2)
+    out_down = view(out, nA1+1:nA1+nB1, nA2+1:nA2+nB2)
+    _full!(out_up, A)
+    _full!(out_down, B)
+    out[1:nA1, nA2+1:end] .= full(upper_offdiag)
+    out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
+end
