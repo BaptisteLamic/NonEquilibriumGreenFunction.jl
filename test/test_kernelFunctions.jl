@@ -65,3 +65,18 @@ end
         @test matrix[:, i] == buf_col
     end
 end
+
+@testitem "Test KernelFunction call" begin
+    domain = KernelDomain((0.0, 1.0), n_steps=512)
+    modulation(x) = sin(x)
+    kf = KernelFunction(
+        (x, y) -> [modulation(x - pi * y) 2.0; -1.0 modulation(2x - y)],
+        domain
+    )
+    @test kf(0.5, 0.5) == [modulation(0.5 - pi * 0.5) 2.0; -1.0 modulation(2 * 0.5 - 0.5)]
+    ix, iy = 128, 128
+    x = xaxis(domain)[ix]
+    y = yaxis(domain)[iy]
+    @test kf(ix, iy, 1, 1) == modulation(x - pi * y)
+    @test kf(ix, iy, 2, 2) == modulation(2x - y)
+end

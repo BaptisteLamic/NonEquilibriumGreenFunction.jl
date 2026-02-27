@@ -109,3 +109,17 @@ function fill_with_kernel!(array, kf)
     return array
 end
 
+function eval_kernel(kf, ix, iy, i, j)
+    x = xaxis(kf.domain)[ix]
+    y = yaxis(kf.domain)[iy]
+    return kf.f(x, y)[i, j]
+end
+
+function (kf::KernelFunction)(x, y)
+    return kf.f(x, y)
+end
+function (kf::KernelFunction)(ix::Int, iy::Int, i::Int, j::Int)
+    return eval_kernel(kf, ix, iy, i, j)
+end
+
+export eval_kernel
