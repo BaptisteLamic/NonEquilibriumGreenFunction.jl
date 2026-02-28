@@ -48,9 +48,6 @@ struct KernelFunction{D,T,BlockSize}
 end
 
 
-function KernelFunction(T, blocksize::Int, block_getter, element_getter, domain::KernelDomain{D}) where D
-    return KernelFunction{D,T,blocksize}(block_getter, element_getter, domain)
-end
 function KernelFunction(block_getter, domain::KernelDomain{D}) where D
     f0 = block_getter(domain.x_min, domain.y_min)
     @assert size(f0, 1) == size(f0, 2) "Kernel function must return square matrices."
