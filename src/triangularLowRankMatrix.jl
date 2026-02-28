@@ -46,10 +46,10 @@ function _cmul(A::BlockTriangularLowRankMatrix{T}, x::AbstractArray{T,2}) where 
     return r
 end
 
-function _mul!(r, A, x) 
+function _mul!(r, A, x)
     return aux_mul!(r, A, x, A.causality)
 end
-function _cmul!(r, A, x) 
+function _cmul!(r, A, x)
     return aux_cmul!(r, A, x, A.causality)
 end
 

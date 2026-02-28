@@ -2,6 +2,7 @@
 using StaticArrays
 using LowRankApprox
 
+
 include("PartitionTrees.jl")
 
 export build_hodlr
@@ -10,8 +11,6 @@ export full
 
 @kwdef struct HodlrContext
     tol::Real
-    maxrank::Int
-    rankstart::Int
     leafsize::Int = 64
 end
 
@@ -21,10 +20,16 @@ struct LowRankBlock{M}
 end
 
 function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
-    LowRankBlock(kf, ctx.tol; maxrank=ctx.maxrank, rankstart=ctx.rankstart)
+    LowRankBlock(kf, ctx.tol)
 end
-function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real; maxrank::Int, rankstart::Int=div(maxrank, 4))
-    U, V = aca(kf, tol, maxrank=maxrank, rankstart=rankstart)
+function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
+    #TODO: use randomized SVD for large blocks, but for now we can just use a dense SVD since the blocks are small.
+    #TODO: improve data structure ? 
+    m = kf[:, :]
+    F = psvdfact(m, rtol=tol)
+    U = F[:U]
+    S = spdiagm(F[:S])
+    V = S * F[:Vt]
     LowRankBlock(U, V)
 end
 function rank(A::LowRankBlock)
@@ -34,7 +39,7 @@ function size(A::LowRankBlock, i)::Int
     if i == 1
         s = size(A.u, 1)
     elseif i == 2
-        s = size(A.v, 1)
+        s = size(A.v, 2)
     else
         s = 1
     end
@@ -48,20 +53,20 @@ function eltype(::LowRankBlock{M}) where M
 end
 
 function full(A::LowRankBlock)
-    result = A.u * A.v'
+    result = A.u * A.v
     return result
 end
 
 function (*)(A::LowRankBlock, B::AbstractArray)
-    return A.u * (A.v' * B)
+    return A.u * (A.v * B)
 end
 function (*)(A::AbstractArray, B::LowRankBlock)
-    return (A * B.u) * B.v'
+    return (A * B.u) * B.v
 end
 function (*)(A::LowRankBlock, B::LowRankBlock)
     #TODO: naive optimization, find a reference paper / implementation 
     #OPTION: lazy optimization by just storing the sets of low rank matrices
-    core = A.v' * B.u
+    core = A.v * B.u
     return LowRankBlock(A.u * core, B.v)
 end
 
@@ -114,9 +119,9 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         upper_rows, lower_row = split_partition(row_partition)
         left_cols, right_cols = split_partition(col_partition)
         upper_offdiag_kernel = restrict_domain(kf,
-            _convert_matrix_partition_to_domain(upper_rows, right_cols, kf.domain, kf.blocksize))
+            _convert_matrix_partition_to_domain(upper_rows, right_cols, kf.domain, blocksize(kf)))
         lower_offdiag_kernel = restrict_domain(kf,
-            _convert_matrix_partition_to_domain(lower_row, left_cols, kf.domain, kf.blocksize))
+            _convert_matrix_partition_to_domain(lower_row, left_cols, kf.domain, blocksize(kf)))
 
         A = build_hodlr(kf, upper_rows, left_cols, ctx)
         B = build_hodlr(kf, lower_row, right_cols, ctx)
@@ -133,7 +138,7 @@ function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
 end
 
 function _construct_leaf(kf, row_partition, col_partition)
-    restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, kf.blocksize))
+    restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, blocksize(kf)))
     M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
     fill_with_kernel!(M, restricted_kf)
     return LeafHoldr(M)
