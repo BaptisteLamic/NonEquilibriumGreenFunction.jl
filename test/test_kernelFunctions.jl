@@ -17,10 +17,10 @@ end
     modulation_22(x, y) = (atan(x) * sin(y) + 1)
     kf = KernelFunction((x, y) -> [modulation_11(x, y) 1.0; 0.0 modulation_22(x, y)], domain)
     buf = zeros(kf.eltype, size(kf, 1))
-    NonEquilibriumGreenFunction.ACAFact.col!(buf, kf, 1)
+    NonEquilibriumGreenFunction.col!(buf, kf, 1)
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(xaxis(domain), yaxis(domain)[1])) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
-    NonEquilibriumGreenFunction.ACAFact.row!(buf, kf, 1)
+    NonEquilibriumGreenFunction.row!(buf, kf, 1)
     @test norm(buf[1:kf.blocksize:end] - modulation_11.(xaxis(domain)[1], yaxis(domain))) < 1e-14
     @test norm(buf[1:kf.blocksize:end]) > 1
 end
@@ -34,8 +34,8 @@ end
     reduced_domain = KernelDomain((0.2, 0.8), n_steps=256)
     reduced_kf = NonEquilibriumGreenFunction.restrict_domain(kf, reduced_domain)
     buf_reduced_kernel = zeros(kf.eltype, size(reduced_kf, 2))
-    NonEquilibriumGreenFunction.ACAFact.row!(buf_full_kernel, kf, 1)
-    NonEquilibriumGreenFunction.ACAFact.row!(buf_reduced_kernel, reduced_kf, 1)
+    NonEquilibriumGreenFunction.row!(buf_full_kernel, kf, 1)
+    NonEquilibriumGreenFunction.row!(buf_reduced_kernel, reduced_kf, 1)
     @test reduced_kf.domain == reduced_domain
     @test buf_reduced_kernel[1:reduced_kf.blocksize:end] == modulation_11.(xaxis(reduced_domain)[1], yaxis(reduced_domain))
     @test norm(modulation_11.(xaxis(domain)[1], yaxis(domain))) > 1
@@ -53,7 +53,7 @@ end
     matrix = zeros(kf.eltype, size(kf))
     NonEquilibriumGreenFunction.fill_with_kernel!(matrix, kf)
     for i in axes(matrix, 1)
-        NonEquilibriumGreenFunction.ACAFact.row!(buf_row, kf, i)
+        NonEquilibriumGreenFunction.row!(buf_row, kf, i)
         @test matrix[i, :] == buf_row
     end
 
@@ -61,7 +61,7 @@ end
     matrix = zeros(kf.eltype, size(kf))
     NonEquilibriumGreenFunction.fill_with_kernel!(matrix, kf)
     for i in axes(matrix, 2)
-        NonEquilibriumGreenFunction.ACAFact.col!(buf_col, kf, i)
+        NonEquilibriumGreenFunction.col!(buf_col, kf, i)
         @test matrix[:, i] == buf_col
     end
 end

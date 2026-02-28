@@ -1,6 +1,6 @@
 
 using StaticArrays
-using ACAFact
+using LowRankApprox
 
 include("PartitionTrees.jl")
 

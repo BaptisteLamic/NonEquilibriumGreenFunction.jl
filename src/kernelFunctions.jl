@@ -4,8 +4,6 @@ export xaxis
 export yaxis
 export is_included
 
-using ACAFact
-
 struct KernelDomain{T}
     x_min::T
     x_max::T
@@ -66,7 +64,7 @@ function Base.eltype(kf::KernelFunction)
 end
 
 
-function ACAFact.col!(buf, kf::KernelFunction, j)
+function col!(buf, kf::KernelFunction, j)
     step_size = kf.blocksize
     block_number, inblock_index = blockindex(j, kf.blocksize)
     row_axis = xaxis(kf.domain)
@@ -77,7 +75,7 @@ function ACAFact.col!(buf, kf::KernelFunction, j)
     return buf
 end
 
-function ACAFact.row!(buf, kf::KernelFunction, j)
+function row!(buf, kf::KernelFunction, j)
     step_size = kf.blocksize
     block_number, inblock_index = blockindex(j, kf.blocksize)
     row_axis = xaxis(kf.domain)
