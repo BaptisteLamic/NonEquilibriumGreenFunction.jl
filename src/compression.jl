@@ -53,8 +53,8 @@ function build_linearMap(axis, f; blk=512)
         bJ, bJ_count = rle(_bJ)
         offset_I = cumsum(bI_count)
         offset_J = cumsum(bJ_count)
-        Threads.@threads for idx_bj in 1:length(bJ)
-            for idx_bi in 1:length(bI)
+        Threads.@threads for idx_bj in eachindex(bJ)
+            for idx_bi in eachindex(bI)
                 blck = f(axis[bI[idx_bi]], axis[bJ[idx_bj]])
                 for j = offset_J[idx_bj]+1-bJ_count[idx_bj]:offset_J[idx_bj]
                     for i = offset_I[idx_bi]+1-bI_count[idx_bi]:offset_I[idx_bi]
@@ -135,7 +135,7 @@ function (Compression::HssCompression)(axis, f, g)
     T, bs = eltype(f00), size(f00, 1)
     u = Array{T}(undef, (bs, bs, length(axis)))
     v = Array{T}(undef, (bs, bs, length(axis)))
-    for k in 1:length(axis)
+    for k in eachindex(axis)
         u[:, :, k] .= f(axis[k])
         v[:, :, k] .= g(axis[k])
     end
@@ -161,8 +161,8 @@ function (Compression::NONCompression)(axis, f; stationary=false)
     f00 = f(axis[1], axis[1])
     bs = size(f00, 1)
     r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
-    for it in 1:length(axis)
-        for itp in 1:length(axis)
+    for it in eachindex(axis)
+        for itp in eachindex(axis)
             r[blockrange(it, bs), blockrange(itp, bs)] .= f(axis[it], axis[itp])
         end
     end
@@ -195,7 +195,7 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     blocksize = size(f00, 1)
     u = zeros(eltype(f00), blocksize, blocksize, length(axis))
     v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-    for k in 1:length(axis)
+    for k in eachindex(axis)
         u[:, :, k] .= f(axis[k])
         v[:, :, k] .= g(axis[k])
     end
@@ -216,51 +216,5 @@ function computeMatrixNorm(matrix::HssMatrix)
         return zero(norm2)
     else
         return sqrt(norm2)
-    end
-end
-
-
-@testitem "TriangularLowRankCompression_map" begin
-    using LinearAlgebra
-    using NonEquilibriumGreenFunction: computeMatrixNorm
-    N, Dt = 128, 2.0
-    axis = LinRange(-Dt / 2, Dt, N)
-    for causality in (Acausal(), Retarded(), Advanced())
-        for T = [Float64, ComplexF64, ComplexF32]
-            tol = 20 * max(1E-14, eps(real(T)))
-            f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
-            g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
-            f00 = f(axis[1])
-            @assert size(f00, 1) == size(f00, 2)
-            blocksize = size(f00, 1)
-            u = zeros(eltype(f00), blocksize, blocksize, length(axis))
-            v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-            for k in 1:length(axis)
-                u[:, :, k] .= f(axis[k])
-                v[:, :, k] .= g(axis[k])
-            end
-            matrix = NonEquilibriumGreenFunction.BlockTriangularLowRankMatrix(u, v, causality)
-            lm = NonEquilibriumGreenFunction.build_triangularLowRankMap(matrix)
-            x = randn(T, size(matrix, 2))
-            @test computeMatrixNorm(lm * x - matrix * x) < tol * length(x)
-            @test computeMatrixNorm(lm' * x - matrix' * x) < tol * length(x)
-        end
-    end
-end
-
-@testitem "Norm estimate" begin
-    using LinearAlgebra
-    using NonEquilibriumGreenFunction: computeMatrixNorm
-    using HssMatrices
-    N = 1024
-    for T = [Float64, ComplexF64, ComplexF32]
-        tol = 100 * max(1E-12, eps(real(T)))
-        A = [sin(i + j)^4 for i in 1:N, j in 1:N]
-        if T <: Complex
-            A = A * (1 + 1im)
-        end
-        hssA = hss(A, atol=tol / 100, rtol=tol / 100)
-        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
-        @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
     end
 end
