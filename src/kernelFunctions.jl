@@ -176,11 +176,4 @@ function eval_kernel(kf, ix, iy, i, j)
     return kf.block_getter(x, y)[i, j]
 end
 
-function (kf::KernelFunction)(x, y)
-    return kf.block_getter(x, y)
-end
-function (kf::KernelFunction)(ix::Int, iy::Int, i::Int, j::Int)
-    return eval_kernel(kf, ix, iy, i, j)
-end
-
 export eval_kernel
