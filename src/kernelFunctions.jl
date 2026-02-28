@@ -47,8 +47,23 @@ struct KernelFunction{D,T,BlockSize}
     domain::KernelDomain{D}
 end
 
+
 function KernelFunction(T, blocksize::Int, block_getter, element_getter, domain::KernelDomain{D}) where D
     return KernelFunction{D,T,blocksize}(block_getter, element_getter, domain)
+end
+function KernelFunction(block_getter, domain::KernelDomain{D}) where D
+    f0 = block_getter(domain.x_min, domain.y_min)
+    @assert size(f0, 1) == size(f0, 2) "Kernel function must return square matrices."
+    blocksize = size(f0, 1)
+    T = eltype(f0)
+    element_getter = _build_default_element_getter(block_getter, blocksize)
+    return KernelFunction(T, blocksize, block_getter, element_getter, domain)
+end
+"""Build a kernel function using an element getter. The element getter must take as input the coordinates (x, y) and the in-block indices (i, j) and return the value of the kernel at that point."""
+function KernelFunction(element_getter, domain::KernelDomain{D}, blocksize::Int) where D
+    block_getter = _build_default_block_getter(element_getter, blocksize)
+    T = eltype(element_getter(domain.x_min, domain.y_min, 1, 1))
+    return KernelFunction(T, blocksize, block_getter, element_getter, domain)
 end
 function Base.size(kf::KernelFunction, dim)
     if dim in (1, 2)
@@ -110,22 +125,6 @@ function row!(buf, kf::KernelFunction, i)
         buf[j] = kf[i, j]
     end
     return buf
-end
-
-
-function KernelFunction(block_getter, domain::KernelDomain{D}) where D
-    f0 = block_getter(domain.x_min, domain.y_min)
-    @assert size(f0, 1) == size(f0, 2) "Kernel function must return square matrices."
-    blocksize = size(f0, 1)
-    T = eltype(f0)
-    element_getter = _build_default_element_getter(block_getter, blocksize)
-    return KernelFunction(T, blocksize, block_getter, element_getter, domain)
-end
-"""Build a kernel function using an element getter. The element getter must take as input the coordinates (x, y) and the in-block indices (i, j) and return the value of the kernel at that point."""
-function KernelFunction(element_getter, domain::KernelDomain{D}, blocksize::Int) where D
-    block_getter = _build_default_block_getter(element_getter, blocksize)
-    T = eltype(element_getter(domain.x_min, domain.y_min, 1, 1))
-    return KernelFunction(T, blocksize, block_getter, element_getter, domain)
 end
 
 function blocksize(::KernelFunction{D,T,BlockSize}) where {D,T,BlockSize}
