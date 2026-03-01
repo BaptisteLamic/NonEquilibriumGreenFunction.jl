@@ -194,7 +194,7 @@ end
 
 function (*)(holdr::Holdr, x::AbstractArray)
     if size(x, 1) != size(holdr, 2)
-        throw(DimensionMismatch("The length of the vector must match the number of rows of the Holdr."))
+        throw(DimensionMismatch("The number of rows of x must match the number of columns of the Holdr."))
     end
     out = zeros(eltype(holdr), size(holdr, 1), size(x, 2))
     _apply_right_mul!(out, holdr, x)
@@ -218,14 +218,11 @@ function _apply_right_mul!(out, holdr::NodeHoldr, x::AbstractArray)
     out_down[:, :] .+= lower_offdiag * x_up
 end
 
-
-using LinearAlgebra: Adjoint
 function (*)(x::AbstractArray, holdr::Holdr)
     if size(x, 2) != size(holdr, 1)
         throw(DimensionMismatch("The length of the vector must match the number of rows of the Holdr."))
     end
     out = zeros(eltype(holdr), size(x, 1), size(holdr, 2))
-    @show size(out)
     _apply_left_mul_vector_1D!(out, x, holdr)
     return out
 end
@@ -243,6 +240,6 @@ function _apply_left_mul_vector_1D!(out, x, holdr::NodeHoldr)
     out_down = view(out, :, nA2+1:nA2+nB2)
     _apply_left_mul_vector_1D!(out_up, x_up, A)
     _apply_left_mul_vector_1D!(out_down, x_down, B)
-    out_up[:, :] .+= x_down * full(lower_offdiag)
-    out_down[:, :] .+= x_up * full(upper_offdiag)
+    out_up[:, :] .+= x_down * lower_offdiag
+    out_down[:, :] .+= x_up * upper_offdiag
 end
