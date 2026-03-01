@@ -10,7 +10,7 @@ export HodlrContext
 export full
 
 @kwdef struct HodlrContext
-    tol::Real
+    tol::Real = 1e-6
     leafsize::Int = 64
 end
 
@@ -190,4 +190,59 @@ function _full!(out, holdr::NodeHoldr)
     _full!(out_down, B)
     out[1:nA1, nA2+1:end] .= full(upper_offdiag)
     out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
+end
+
+function (*)(holdr::Holdr, x::AbstractArray)
+    if size(x, 1) != size(holdr, 2)
+        throw(DimensionMismatch("The length of the vector must match the number of rows of the Holdr."))
+    end
+    out = zeros(eltype(holdr), size(holdr, 1), size(x, 2))
+    _apply_right_mul!(out, holdr, x)
+    return out
+end
+function _apply_right_mul!(out, holdr::LeafHoldr, x::AbstractArray)
+    M = holdr.data
+    out[:, :] .= M * x
+end
+function _apply_right_mul!(out, holdr::NodeHoldr, x::AbstractArray)
+    A, B, upper_offdiag, lower_offdiag = holdr.A, holdr.B, holdr.upper_offdiag, holdr.lower_offdiag
+    nA1, nA2 = size(A)
+    nB1, nB2 = size(B)
+    x_up = view(x, 1:nA2, :)
+    x_down = view(x, nA2+1:nA2+nB2, :)
+    out_up = view(out, 1:nA1, :)
+    out_down = view(out, nA1+1:nA1+nB1, :)
+    _apply_right_mul!(out_up, A, x_up)
+    _apply_right_mul!(out_down, B, x_down)
+    out_up[:, :] .+= upper_offdiag * x_down
+    out_down[:, :] .+= lower_offdiag * x_up
+end
+
+
+using LinearAlgebra: Adjoint
+function (*)(x::AbstractArray, holdr::Holdr)
+    if size(x, 2) != size(holdr, 1)
+        throw(DimensionMismatch("The length of the vector must match the number of rows of the Holdr."))
+    end
+    out = zeros(eltype(holdr), size(x, 1), size(holdr, 2))
+    @show size(out)
+    _apply_left_mul_vector_1D!(out, x, holdr)
+    return out
+end
+function _apply_left_mul_vector_1D!(out, x, holdr::LeafHoldr)
+    M = holdr.data
+    out[:, :] .= x * M
+end
+function _apply_left_mul_vector_1D!(out, x, holdr::NodeHoldr)
+    A, B, upper_offdiag, lower_offdiag = holdr.A, holdr.B, holdr.upper_offdiag, holdr.lower_offdiag
+    nA1, nA2 = size(A)
+    nB1, nB2 = size(B)
+    x_up = view(x, :, 1:nA1)
+    x_down = view(x, :, nA1+1:nA1+nB1)
+    out_up = view(out, :, 1:nA2)
+    out_down = view(out, :, nA2+1:nA2+nB2)
+    _apply_left_mul_vector_1D!(out_up, x_up, A)
+    _apply_left_mul_vector_1D!(out_down, x_down, B)
+    out_up[:, :] .+= x_down * full(lower_offdiag)
+    out_down[:, :] .+= x_up * full(upper_offdiag)
 end

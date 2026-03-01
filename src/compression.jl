@@ -17,14 +17,14 @@ function build_CirculantlinearMap(ax0, f)
 end
 
 function build_CirculantlinearMap(A::BlockCirculantMatrix)
-    my_mul!(y, _, x) = _mul!(y, A, x)
+    my_mul!(y, _, x) = _apply_right_mul!(y, A, x)
     my_cmul!(y, _, x) = _cmul!(y, A, x)
     my_getindex(I, J) = getindex(A, I, J)
     lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
     return lm
 end
 function build_triangularLowRankMap(A::BlockTriangularLowRankMatrix)
-    my_mul!(y, _, x) = _mul!(y, A, x)
+    my_mul!(y, _, x) = _apply_right_mul!(y, A, x)
     my_cmul!(y, _, x) = _cmul!(y, A, x)
     my_getindex(I, J) = getindex(A, I, J)
     lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)

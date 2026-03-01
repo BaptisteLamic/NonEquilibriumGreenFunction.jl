@@ -1,3 +1,5 @@
+
+
 @testitem "Test LowRankBlock creation" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=100)
@@ -106,6 +108,8 @@ end
     @test norm(full_product - NonEquilibriumGreenFunction.full(block_product)) / norm(full_product) < 1E-8
 end
 
+
+
 @testitem "Test Hodlr construction" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
@@ -119,7 +123,7 @@ end
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
-    m = [1 1; 1 1]
+    m = [1 2; 1 1]
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
     holdr = build_hodlr(kf, HodlrContext(tol=0.01 * tol, leafsize=64))
@@ -128,4 +132,37 @@ end
     NonEquilibriumGreenFunction.fill_with_kernel!(dense, kf)
     @test norm(dense - full_hodlr) / norm(dense) < tol
     @test norm(dense - full_hodlr) < tol
+end
+
+@testitem "Hodlr product with vector" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    m = [1 2; 1 1]
+    kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
+    ctx = HodlrContext()
+    holdr = build_hodlr(kf, ctx)
+    full_hodlr = full(holdr)
+    x = randn(eltype(holdr), size(holdr, 2))
+    y_hodlr = holdr * x
+    y_full = full_hodlr * x
+    @test norm(y_hodlr - y_full) / norm(y_full) < 10 * ctx.tol
+    y_full = x' * full_hodlr
+    @test norm(x' * holdr - y_full) / norm(y_full) < 10 * ctx.tol
+end
+
+@testitem "Hodlr product with array" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    m = [1 2; 1 1]
+    kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
+    ctx = HodlrContext()
+    holdr = build_hodlr(kf, ctx)
+    full_hodlr = full(holdr)
+    x = randn(eltype(holdr), size(holdr, 2), 12)
+    y_full = full_hodlr * x
+    y_hodlr = holdr * x
+    @test size(y_hodlr) == size(y_full)
+    @test norm(y_hodlr - y_full) / norm(y_full) < 10 * ctx.tol
+    y_full = x' * full_hodlr
+    @test norm(x' * holdr - y_full) / norm(y_full) < 10 * ctx.tol
 end
