@@ -14,8 +14,9 @@ export full
     leafsize::Int = 64
 end
 
-struct LowRankBlock{M}
+struct LowRankBlock{M,D}
     u::M
+    s::D
     v::M
 end
 
@@ -24,13 +25,16 @@ function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContex
 end
 function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
     #TODO: use randomized SVD for large blocks, but for now we can just use a dense SVD since the blocks are small.
-    #TODO: improve data structure ? 
-    m = kf[:, :]
+    u, s, vt = _compute_lowrank_factorization(kf, tol)
+    LowRankBlock(u, s, vt)
+end
+function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
+    m = kf[:, :] #TODO: not build the full matrix
     F = psvdfact(m, rtol=tol)
     U = F[:U]
-    S = spdiagm(F[:S])
-    V = S * F[:Vt]
-    LowRankBlock(U, V)
+    S = Diagonal(F[:S])
+    V = F[:Vt]
+    return U, S, V
 end
 function rank(A::LowRankBlock)
     return size(A.u, 2)
@@ -53,23 +57,25 @@ function eltype(::LowRankBlock{M}) where M
 end
 
 function full(A::LowRankBlock)
-    result = A.u * A.v
+    result = A.u * A.s * A.v
     return result
 end
 
 function (*)(A::LowRankBlock, B::AbstractArray)
-    return A.u * (A.v * B)
+    return A.u * (A.s * (A.v * B))
 end
 function (*)(A::AbstractArray, B::LowRankBlock)
-    return (A * B.u) * B.v
+    return (A * B.u) * B.s * B.v
 end
 function (*)(A::LowRankBlock, B::LowRankBlock)
     #TODO: naive optimization, find a reference paper / implementation 
     #OPTION: lazy optimization by just storing the sets of low rank matrices
-    core = A.v * B.u
-    return LowRankBlock(A.u * core, B.v)
+    core = (A.s * A.v) * (B.u * B.s)
+    u_core, s, vt_core = _compute_lowrank_factorization(core, 1e-12)
+    u = A.u * u_core
+    v = vt_core * B.v
+    return LowRankBlock(u, s, v)
 end
-
 abstract type Holdr{M} end
 
 struct LeafHoldr{M} <: Holdr{M}

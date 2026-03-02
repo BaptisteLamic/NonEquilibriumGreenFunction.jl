@@ -99,8 +99,8 @@ end
 @testitem "Test LowRankBlock x LowRankBlock" begin
     using LinearAlgebra
     n, k1, m, k2, l = 100, 12, 80, 10, 100
-    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, n, k1), randn(ComplexF64, k1, m))
-    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, m, k2), randn(ComplexF64, k2, l))
+    block1 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, n, k1), Diagonal(randn(Float64, k1)), randn(ComplexF64, k1, m))
+    block2 = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, m, k2), Diagonal(randn(Float64, k2)), randn(ComplexF64, k2, l))
     full_block1 = NonEquilibriumGreenFunction.full(block1)
     full_block2 = NonEquilibriumGreenFunction.full(block2)
     full_product = full_block1 * full_block2
