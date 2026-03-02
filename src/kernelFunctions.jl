@@ -8,7 +8,6 @@ export blocksize
 import Base: IndexStyle, axes, eltype, getindex, size
 
 
-
 struct KernelDomain{T}
     x_min::T
     x_max::T
@@ -170,10 +169,26 @@ function fill_with_kernel!(array, kf)
     return array
 end
 
-function eval_kernel(kf, ix, iy, i, j)
-    x = xaxis(kf.domain)[ix]
-    y = yaxis(kf.domain)[iy]
-    return kf.block_getter(x, y)[i, j]
-end
 
-export eval_kernel
+
+import LinearAlgebra: ishermitian, mul!, adjoint
+ishermitian(::KernelFunction) = false
+function mul!(y, kf::KernelFunction, x)
+    #TODO increase performance
+    buf = Vector{eltype(kf)}(undef, size(kf, 2))
+    for i in axes(kf, 2)
+        row!(buf, kf, i)
+        r = transpose(buf) * x
+        y[i, :] = r
+    end
+    return y
+end
+function adjoint(kf::KernelFunction{D,T,BlockSize}) where {D,T,BlockSize}
+    return KernelFunction{D,T,BlockSize}(
+        (x, y) -> adjoint(kf.block_getter(y, x)),
+        (x, y, i, j) -> conj(kf.element_getter(y, x, j, i)),
+        adjoint(kf.domain))
+end
+function adjoint(domain::KernelDomain)
+    return KernelDomain(domain.y_min, domain.y_max, domain.x_min, domain.x_max, domain.y_steps, domain.x_steps)
+end

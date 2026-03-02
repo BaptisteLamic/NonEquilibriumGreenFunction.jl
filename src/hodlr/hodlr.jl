@@ -12,6 +12,7 @@ export full
 @kwdef struct HodlrContext
     tol::Real = 1e-6
     leafsize::Int = 64
+    sampling_threshold::Int = 100^2
 end
 
 struct LowRankBlock{M,D}
@@ -21,16 +22,20 @@ struct LowRankBlock{M,D}
 end
 
 function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
-    LowRankBlock(kf, ctx.tol)
-end
-function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
-    #TODO: use randomized SVD for large blocks, but for now we can just use a dense SVD since the blocks are small.
-    u, s, vt = _compute_lowrank_factorization(kf, tol)
+    u, s, vt = _compute_lowrank_factorization(kf, ctx)
     LowRankBlock(u, s, vt)
 end
-function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
-    m = kf[:, :] #TODO: not build the full matrix
-    F = psvdfact(m, rtol=tol)
+function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
+    return LowRankBlock(kf, HodlrContext(tol=tol))
+end
+function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
+    m = LinearOperator(kf)
+    #TODO : tune the algorithm selection method. 
+    if prod(size(kf)) > ctx.sampling_threshold
+        F = psvdfact(m, rtol=ctx.tol, sketch=:sub)
+    else
+        F = psvdfact(m, rtol=ctx.tol)
+    end
     U = F[:U]
     S = Diagonal(F[:S])
     V = F[:Vt]
@@ -71,7 +76,8 @@ function (*)(A::LowRankBlock, B::LowRankBlock)
     #TODO: naive optimization, find a reference paper / implementation 
     #OPTION: lazy optimization by just storing the sets of low rank matrices
     core = (A.s * A.v) * (B.u * B.s)
-    u_core, s, vt_core = _compute_lowrank_factorization(core, 1e-12)
+    #TODO propagate error context here
+    u_core, s, vt_core = _compute_lowrank_factorization(core, HodlrContext())
     u = A.u * u_core
     v = vt_core * B.v
     return LowRankBlock(u, s, v)

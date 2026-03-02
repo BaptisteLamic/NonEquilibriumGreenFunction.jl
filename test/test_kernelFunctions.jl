@@ -65,3 +65,25 @@ end
         @test matrix[:, i] == buf_col
     end
 end
+
+@testitem "Test LinearOperator interface" begin
+    using LinearAlgebra
+    using LowRankApprox
+    domain = KernelDomain((0.0, 1.0), n_steps=512)
+    modulation(x) = sin(x)
+    kf = KernelFunction(
+        (x, y) -> [modulation(x - pi * y) 2.0; -1.0 modulation(2x - y)],
+        domain
+    )
+    operator = LinearOperator(kf)
+    @test size(kf) == size(operator)
+    v = randn(eltype(kf), size(kf, 2), 4)
+    matrix = kf[:, :]
+    y1 = operator * v
+    y2 = matrix * v
+    @test norm(y1 - y2) / norm(y2) < 1E-14
+    u = randn(eltype(kf), size(kf, 1), 4)
+    yt1 = operator' * v
+    yt2 = matrix' * v
+    @test norm(yt1 - yt2) / norm(yt2) < 1E-14
+end
