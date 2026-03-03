@@ -9,17 +9,33 @@ export build_hodlr
 export HodlrContext
 export full
 
+import Base: size, eltype, *, view
+
 @kwdef struct HodlrContext
     tol::Real = 1e-6
     leafsize::Int = 64
     sampling_threshold::Int = 100^2
 end
 
-struct LowRankBlock{M,D}
-    u::M
+struct LowRankBlock{L,D,R}
+    u::L
     s::D
-    v::M
+    v::R
 end
+
+abstract type Holdr{M} end
+
+struct LeafHoldr{M} <: Holdr{M}
+    data::M
+end
+
+struct NodeHoldr{M} <: Holdr{M}
+    A::Holdr{M}
+    B::Holdr{M}
+    upper_offdiag::LowRankBlock{M}
+    lower_offdiag::LowRankBlock{M}
+end
+
 
 function LowRankBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
     u, s, vt = _compute_lowrank_factorization(kf, ctx)
@@ -83,18 +99,15 @@ function (*)(A::LowRankBlock, B::LowRankBlock)
     v = vt_core * B.v
     return LowRankBlock(u, s, v)
 end
-abstract type Holdr{M} end
-
-struct LeafHoldr{M} <: Holdr{M}
-    data::M
+#TODO: encapsulate the lowRankBlock view ?
+function view(A::LowRankBlock{M,D}, i, j) where {M,D}
+    view_on_u = view(A.u, i, :)
+    if ndims(view_on_u) == 1
+        view_on_u = transpose(view_on_u)
+    end
+    return LowRankBlock(view_on_u, A.s, view(A.v, :, j))
 end
 
-struct NodeHoldr{M} <: Holdr{M}
-    A::Holdr{M}
-    B::Holdr{M}
-    upper_offdiag::LowRankBlock{M}
-    lower_offdiag::LowRankBlock{M}
-end
 
 # Helper functions to replace @match patterns
 function isleaf(holdr::Holdr)
@@ -149,6 +162,17 @@ function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
     col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
+
+#=
+function build_hodlr_from_lowrank(matrix::LowRankBlock, ctx::HodlrContext)
+    row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
+    col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
+    upper_rows, lower_row = split_partition(row_partition)
+    left_cols, right_cols = split_partition(col_partition) 
+    low_rank_A =   
+    A = build_hodlr_from_lowrank(matrix, upper_rows, left_cols, ctx)
+end
+=#
 
 function _construct_leaf(kf, row_partition, col_partition)
     restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, blocksize(kf)))
@@ -280,7 +304,6 @@ function _apply_mul_lowrank_holdr(left::LowRankBlock, right::Holdr)
     u = left.u * intermediate_u
     return LowRankBlock(u, s, v)
 end
-
 
 function _throw_error_if_incompatible_size(left, right)
     if size(left, 2) != size(right, 1)

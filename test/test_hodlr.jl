@@ -47,6 +47,17 @@ end
     @test norm(full(LowRankBlock(full_block, 1E-2 * tol)) - full_block) < tol
 end
 
+@testitem "LowRankBlock view" begin
+    using LinearAlgebra
+    n, k, m = 128, 5, 64
+    block = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    @test size(view(block, :, 1:2)) == (size(block, 1), 2)
+    @test size(view(block, 1, :)) == (1, size(block, 2))
+    @test size(view(block, :, 1)) == (size(block, 1), 1)
+    @test size(view(block, 1:2, :)) == (2, size(block, 2))
+    @test size(view(block, 1:2, 1:2)) == (2, 2)
+end
+
 @testitem "Test LowRankBlock x Dense Vector" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=100)
