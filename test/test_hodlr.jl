@@ -204,3 +204,11 @@ end
     @test size(holder_product) == size(full_product)
     @test norm(full_product - NonEquilibriumGreenFunction.full(holder_product)) / norm(full_product) < 10 * ctx.tol
 end
+@testitem "construct Hodlr from LowRankBlock" begin
+    using LinearAlgebra
+    n, k, m = 512, 12, 512
+    low_rank_block = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    holdr = build_hodlr(low_rank_block, HodlrContext(tol=1E-9, leafsize=64))
+    @test size(holdr) == size(low_rank_block)
+    @test norm(full(holdr) * full(low_rank_block) - full(holdr) * full(low_rank_block)) / norm(full(holdr) * full(low_rank_block)) < 10 * ctx.tol
+end

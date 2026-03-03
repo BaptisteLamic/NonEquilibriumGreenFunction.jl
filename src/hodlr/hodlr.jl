@@ -156,30 +156,40 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         return NodeHoldr(A, B, upper_offdiag, lower_offdiag)
     end
 end
-
-function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
-    row_partition = build_partition(1:size(kf, 1), ctx.leafsize)
-    col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
-    return build_hodlr(kf, row_partition, col_partition, ctx)
-end
-
-#=
-function build_hodlr_from_lowrank(matrix::LowRankBlock, ctx::HodlrContext)
-    row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
-    col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
-    upper_rows, lower_row = split_partition(row_partition)
-    left_cols, right_cols = split_partition(col_partition) 
-    low_rank_A =   
-    A = build_hodlr_from_lowrank(matrix, upper_rows, left_cols, ctx)
-end
-=#
-
 function _construct_leaf(kf, row_partition, col_partition)
     restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, blocksize(kf)))
     M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
     fill_with_kernel!(M, restricted_kf)
     return LeafHoldr(M)
 end
+function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
+    row_partition = build_partition(1:size(kf, 1), ctx.leafsize)
+    col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
+    return build_hodlr(kf, row_partition, col_partition, ctx)
+end
+
+function build_hodlr(matrix::LowRankBlock, ctx::HodlrContext)
+    row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
+    col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
+    return _build_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
+end
+
+function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_partition, ctx::HodlrContext)
+    if isleaf(row_partition) && isleaf(col_partition)
+        return _construct_leaf(matrix, row_partition, col_partition)
+    end
+    upper_rows, lower_row = split_partition(row_partition)
+    left_cols, right_cols = split_partition(col_partition)
+    A = _build_hodlr_from_lowrank(view(matrix, upper_rows, left_cols), upper_rows, left_cols, ctx)
+    B = _build_hodlr_from_lowrank(view(matrix, lower_row, right_cols), lower_row, right_cols, ctx)
+    upper_offdiag = view(matrix, upper_rows, right_cols)
+    lower_offdiag = view(matrix, lower_row, left_cols)
+    return NodeHoldr(A, B, upper_offdiag, lower_offdiag)
+end
+function _construct_leaf(matrix::LowRankBlock, row_partition, col_partition)
+    return full(matrix)
+end
+
 
 function size(holdr::LeafHoldr{M}) where M
     return size(holdr.data)
