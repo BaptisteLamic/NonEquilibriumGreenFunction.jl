@@ -166,3 +166,30 @@ end
     y_full = x' * full_hodlr
     @test norm(x' * holdr - y_full) / norm(y_full) < 10 * ctx.tol
 end
+
+@testitem "Hodlr product with LowRankBlock" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    ctx = HodlrContext()
+    holdr = build_hodlr(kf, ctx)
+    k, m = 12, 80
+    low_rank_block = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, size(holdr, 2), k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    holder_product = holdr * low_rank_block
+    full_product = full(holdr) * NonEquilibriumGreenFunction.full(low_rank_block)
+    @test size(holder_product) == size(full_product)
+    @test norm(full_product - NonEquilibriumGreenFunction.full(holder_product)) / norm(full_product) < 10 * ctx.tol
+end
+@testitem "LowRankBlock product with Hodlr" begin
+    using LinearAlgebra
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    ctx = HodlrContext()
+    holdr = build_hodlr(kf, ctx)
+    k, m = 12, 80
+    low_rank_block = NonEquilibriumGreenFunction.LowRankBlock(randn(ComplexF64, m, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, size(holdr, 1)))
+    holder_product = low_rank_block * holdr
+    full_product = NonEquilibriumGreenFunction.full(low_rank_block) * full(holdr)
+    @test size(holder_product) == size(full_product)
+    @test norm(full_product - NonEquilibriumGreenFunction.full(holder_product)) / norm(full_product) < 10 * ctx.tol
+end

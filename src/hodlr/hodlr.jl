@@ -32,7 +32,8 @@ function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}
     m = LinearOperator(kf)
     #TODO : tune the algorithm selection method. 
     if prod(size(kf)) > ctx.sampling_threshold
-        F = psvdfact(m, rtol=ctx.tol, sketch=:sub)
+        #TODO: try to use :sub
+        F = psvdfact(m, rtol=ctx.tol, sketch=:randn)
     else
         F = psvdfact(m, rtol=ctx.tol)
     end
@@ -205,9 +206,7 @@ function _full!(out, holdr::NodeHoldr)
 end
 
 function (*)(holdr::Holdr, x::AbstractArray)
-    if size(x, 1) != size(holdr, 2)
-        throw(DimensionMismatch("The number of rows of x must match the number of columns of the Holdr."))
-    end
+    _throw_error_if_incompatible_size(holdr, x)
     out = zeros(eltype(holdr), size(holdr, 1), size(x, 2))
     _apply_right_mul!(out, holdr, x)
     return out
@@ -232,7 +231,7 @@ end
 
 function (*)(x::AbstractArray, holdr::Holdr)
     if size(x, 2) != size(holdr, 1)
-        throw(DimensionMismatch("The length of the vector must match the number of rows of the Holdr."))
+
     end
     out = zeros(eltype(holdr), size(x, 1), size(holdr, 2))
     _apply_left_mul_vector_1D!(out, x, holdr)
@@ -254,4 +253,37 @@ function _apply_left_mul_vector_1D!(out, x, holdr::NodeHoldr)
     _apply_left_mul_vector_1D!(out_down, x_down, B)
     out_up[:, :] .+= x_down * lower_offdiag
     out_down[:, :] .+= x_up * upper_offdiag
+end
+
+function (*)(left::Holdr, right::LowRankBlock)
+    _throw_error_if_incompatible_size(left, right)
+    #TODO: add partition validation
+    return _apply_mul_hodlr_lowrank(left, right)
+end
+function _apply_mul_hodlr_lowrank(left::Holdr, right::LowRankBlock)
+    #TODO: progagate context here
+    ctx = HodlrContext()
+    u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, ctx)
+    v = intermediate_v * right.v
+    return LowRankBlock(u, s, v)
+end
+function (*)(left::LowRankBlock, right::Holdr)
+    _throw_error_if_incompatible_size(left, right)
+    #TODO: add partition validation
+    return _apply_mul_lowrank_holdr(left, right)
+end
+function _apply_mul_lowrank_holdr(left::LowRankBlock, right::Holdr)
+    #TODO: progagate context heres
+    ctx = HodlrContext()
+    applied_v = left.v * right
+    intermediate_u, s, v = _compute_lowrank_factorization(left.s * applied_v, ctx)
+    u = left.u * intermediate_u
+    return LowRankBlock(u, s, v)
+end
+
+
+function _throw_error_if_incompatible_size(left, right)
+    if size(left, 2) != size(right, 1)
+        throw(DimensionMismatch("Non compatible dimensions for multiplication : left has size $(size(left)) and right has size $(size(right))."))
+    end
 end
