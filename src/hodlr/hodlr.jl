@@ -16,26 +16,7 @@ import Base: size, eltype, *, view
     leafsize::Int = 64
     sampling_threshold::Int = 100^2
 end
-
-abstract type LowRankBlock{T} end
-function eltype(::Type{<:LowRankBlock{T}}) where T
-    return T
-end
-struct SvdBlock{T,L,D,R} <: LowRankBlock{T}
-    u::L
-    s::D
-    v::R
-end
-function SvdBlock(u::L, s::D, v::R) where {L,D,R}
-    if eltype(u) != eltype(v)
-        throw(ArgumentError("Incompatible element types, u has eltype $(eltype(s)) and v has eltype $(eltype(v))."))
-    end
-    if real(eltype(u)) != real(eltype(s))
-        throw(ArgumentError("Incompatible element types, u has eltype $(eltype(s)) and s has eltype $(eltype(s))."))
-    end
-    return SvdBlock{eltype(u),L,D,R}(u, s, v)
-end
-
+include("LowRankBlocks.jl")
 # T is the scalar type
 abstract type Holdr{T} end
 struct LeafHoldr{T} <: Holdr{T}
@@ -53,77 +34,6 @@ end
 function NodeHoldr(A::Holdr{T}, B::Holdr{T}, upper_offdiag::LowRankBlock{T}, lower_offdiag::LowRankBlock{T}) where T
     return NodeHoldr{T}(A, B, upper_offdiag, lower_offdiag)
 end
-function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
-    u, s, vt = _compute_lowrank_factorization(kf, ctx)
-    SvdBlock(u, s, vt)
-end
-function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
-    return SvdBlock(kf, HodlrContext(tol=tol))
-end
-function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
-    m = LinearOperator(kf)
-    #TODO : tune the algorithm selection method. 
-    if prod(size(kf)) > ctx.sampling_threshold
-        #TODO: try to use :sub
-        F = psvdfact(m, rtol=ctx.tol, sketch=:randn)
-    else
-        F = psvdfact(m, rtol=ctx.tol)
-    end
-    U = F[:U]
-    S = Diagonal(F[:S])
-    V = F[:Vt]
-    return U, S, V
-end
-function rank(A::SvdBlock)
-    return size(A.u, 2)
-end
-function size(A::SvdBlock, i)::Int
-    if i == 1
-        s = size(A.u, 1)
-    elseif i == 2
-        s = size(A.v, 2)
-    else
-        s = 1
-    end
-    return s
-end
-function size(A::SvdBlock)::Tuple{Int,Int}
-    return (size(A, 1), size(A, 2))
-end
-function eltype(::SvdBlock{T}) where T
-    return T
-end
-
-function full(A::SvdBlock)
-    result = A.u * A.s * A.v
-    return result
-end
-
-function (*)(A::SvdBlock, B::AbstractArray)
-    return A.u * (A.s * (A.v * B))
-end
-function (*)(A::AbstractArray, B::SvdBlock)
-    return (A * B.u) * B.s * B.v
-end
-function (*)(A::SvdBlock, B::SvdBlock)
-    #TODO: naive optimization, find a reference paper / implementation 
-    #OPTION: lazy optimization by just storing the sets of low rank matrices
-    core = (A.s * A.v) * (B.u * B.s)
-    #TODO propagate error context here
-    u_core, s, vt_core = _compute_lowrank_factorization(core, HodlrContext())
-    u = A.u * u_core
-    v = vt_core * B.v
-    return SvdBlock(u, s, v)
-end
-#TODO: encapsulate the lowRankBlock view ?
-function view(A::SvdBlock{M,D}, i, j) where {M,D}
-    view_on_u = view(A.u, i, :)
-    if ndims(view_on_u) == 1
-        view_on_u = transpose(view_on_u)
-    end
-    return SvdBlock(view_on_u, A.s, view(A.v, :, j))
-end
-
 
 # Helper functions to replace @match patterns
 function isleaf(holdr::Holdr)
@@ -184,13 +94,13 @@ function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
-function build_hodlr(matrix::SvdBlock, ctx::HodlrContext)
+function build_hodlr(matrix::LowRankBlock, ctx::HodlrContext)
     row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
     col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
     return _build_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
 end
 
-function _build_hodlr_from_lowrank(matrix::SvdBlock, row_partition, col_partition, ctx::HodlrContext)
+function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_partition, ctx::HodlrContext)
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(matrix, row_partition, col_partition)
     end
@@ -202,7 +112,7 @@ function _build_hodlr_from_lowrank(matrix::SvdBlock, row_partition, col_partitio
     lower_offdiag = view(matrix, get_range(lower_row), get_range(left_cols))
     return NodeHoldr(A, B, upper_offdiag, lower_offdiag)
 end
-function _construct_leaf(matrix::SvdBlock, row_partition::PartitionTree, col_partition::PartitionTree)
+function _construct_leaf(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree)
     sub_matrix = view(matrix, get_range(row_partition), get_range(col_partition))
     return LeafHoldr(full(sub_matrix))
 end
@@ -305,24 +215,24 @@ function _apply_left_mul_vector_1D!(out, x, holdr::NodeHoldr)
     out_down[:, :] .+= x_up * upper_offdiag
 end
 
-function (*)(left::Holdr, right::SvdBlock)
+function (*)(left::Holdr, right::LowRankBlock)
     _throw_error_if_incompatible_size(left, right)
     #TODO: add partition validation
     return _apply_mul_hodlr_lowrank(left, right)
 end
-function _apply_mul_hodlr_lowrank(left::Holdr, right::SvdBlock)
+function _apply_mul_hodlr_lowrank(left::Holdr, right::LowRankBlock)
     #TODO: progagate context here
     ctx = HodlrContext()
     u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, ctx)
     v = intermediate_v * right.v
     return SvdBlock(u, s, v)
 end
-function (*)(left::SvdBlock, right::Holdr)
+function (*)(left::LowRankBlock, right::Holdr)
     _throw_error_if_incompatible_size(left, right)
     #TODO: add partition validation
     return _apply_mul_lowrank_holdr(left, right)
 end
-function _apply_mul_lowrank_holdr(left::SvdBlock, right::Holdr)
+function _apply_mul_lowrank_holdr(left::LowRankBlock, right::Holdr)
     #TODO: progagate context heres
     ctx = HodlrContext()
     applied_v = left.v * right
