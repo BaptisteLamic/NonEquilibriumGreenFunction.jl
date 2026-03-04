@@ -5,11 +5,55 @@ end
 function size(A::LowRankBlock)::Tuple{Int,Int}
     return (size(A, 1), size(A, 2))
 end
+function (-)(A::LowRankBlock)
+    return -1 * A
+end
 #Subtypes are expectd to implement size(A, i) for i in 1:2
-#Subtypes are expectd to * operator for Array on both sides
 #Subtypes are expected to implement full(A)
 #Subtypes are expected to implement view(A, i, j)
+#Subtypes are expectd to * operator for Array on both sides
+#Subtypes are expectd to * operator for scalar on left
+#Subtypes are expectd to * operator for I operator on left and right
 
+struct SumBlock{T,L,R} <: LowRankBlock{T}
+    left::LowRankBlock{T}
+    right::LowRankBlock{T}
+end
+function SumBlock(left::L, right::R) where {L,R}
+    if eltype(left) != eltype(right)
+        throw(ArgumentError("Incompatible element types, left has eltype $(eltype(left)) and right has eltype $(eltype(right))."))
+    end
+    if size(left) != size(right)
+        throw(ArgumentError("Incompatible sizes, left has size $(size(left)) and right has size $(size(right))."))
+    end
+    return SumBlock{eltype(left),L,R}(left, right)
+end
+function (+)(A::LowRankBlock{T}, B::LowRankBlock{T}) where T
+    return SumBlock(A, B)
+end
+function size(A::SumBlock, i)::Int
+    return size(A.left, i)
+end
+function full(A::SumBlock)
+    return full(A.left) + full(A.right)
+end
+
+
+function view(A::SumBlock, i, j)
+    return SumBlock(view(A.left, i, j), view(A.right, i, j))
+end
+function (*)(A::SumBlock, B::AbstractArray)
+    return A.left * B + A.right * B
+end
+function (*)(A::AbstractArray, B::SumBlock)
+    return A * B.left + A * B.right
+end
+function (*)(A::SumBlock, B::SumBlock)
+    full(A.left) * full(B.left) + full(A.left) * full(B.right) + full(A.right) * full(B.left) + full(A.right) * full(B.right)
+end
+function (*)(a::Number, A::SumBlock)
+    return SumBlock(a * A.left, a * A.right)
+end
 struct SvdBlock{T,L,D,R} <: LowRankBlock{T}
     u::L
     s::D
@@ -47,11 +91,22 @@ function full(A::SvdBlock)
     return A.u * A.s * A.v
 end
 
-function (*)(A::SvdBlock, B::AbstractArray)
-    return A.u * (A.s * (A.v * B))
+function (*)(left::SvdBlock, right::AbstractArray)
+    applied_v = left.v * right
+    intermediate_u, s, v = _compute_lowrank_factorization(left.s * applied_v, HodlrContext())
+    u = left.u * intermediate_u
+    return SvdBlock(u, s, v)
 end
-function (*)(A::AbstractArray, B::SvdBlock)
-    return (A * B.u) * B.s * B.v
+function (*)(left::SvdBlock, right::AbstractVector)
+    return left.u * (left.s * (left.v * right))
+end
+function (*)(left::AbstractArray, right::SvdBlock)
+    u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, HodlrContext())
+    v = intermediate_v * right.v
+    return SvdBlock(u, s, v)
+end
+function (*)(left::AbstractVector, right::SvdBlock)
+    return ((left * right.u) * right.s) * right.v
 end
 function (*)(A::SvdBlock, B::SvdBlock)
     #TODO: naive optimization, find a reference paper / implementation 
@@ -62,6 +117,9 @@ function (*)(A::SvdBlock, B::SvdBlock)
     u = A.u * u_core
     v = vt_core * B.v
     return SvdBlock(u, s, v)
+end
+function (*)(a::Number, A::SvdBlock)
+    return SvdBlock(A.u, a * A.s, A.v)
 end
 function view(A::SvdBlock{M,D}, i, j) where {M,D}
     view_on_u = view(A.u, i, :)

@@ -18,7 +18,7 @@ import Base: size, eltype, *, view
 end
 include("LowRankBlocks.jl")
 # T is the scalar type
-abstract type Holdr{T} end
+abstract type Holdr{T} <: AbstractMatrix{T} end
 struct LeafHoldr{T} <: Holdr{T}
     data::Matrix{T}
 end
@@ -30,9 +30,6 @@ struct NodeHoldr{T} <: Holdr{T}
     B::Holdr{T}
     upper_offdiag::LowRankBlock{T}
     lower_offdiag::LowRankBlock{T}
-end
-function NodeHoldr(A::Holdr{T}, B::Holdr{T}, upper_offdiag::LowRankBlock{T}, lower_offdiag::LowRankBlock{T}) where T
-    return NodeHoldr{T}(A, B, upper_offdiag, lower_offdiag)
 end
 
 # Helper functions to replace @match patterns
@@ -185,8 +182,9 @@ function _apply_right_mul!(out, holdr::NodeHoldr, x::AbstractArray)
     out_down = view(out, nA1+1:nA1+nB1, :)
     _apply_right_mul!(out_up, A, x_up)
     _apply_right_mul!(out_down, B, x_down)
-    out_up[:, :] .+= upper_offdiag * x_down
-    out_down[:, :] .+= lower_offdiag * x_up
+    #TODO : optimize by avoiding forming the full matrix
+    out_up[:, :] .+= full(upper_offdiag * x_down)
+    out_down[:, :] .+= full(lower_offdiag * x_up)
 end
 
 function (*)(x::AbstractArray, holdr::Holdr)
@@ -211,34 +209,9 @@ function _apply_left_mul_vector_1D!(out, x, holdr::NodeHoldr)
     out_down = view(out, :, nA2+1:nA2+nB2)
     _apply_left_mul_vector_1D!(out_up, x_up, A)
     _apply_left_mul_vector_1D!(out_down, x_down, B)
-    out_up[:, :] .+= x_down * lower_offdiag
-    out_down[:, :] .+= x_up * upper_offdiag
-end
-
-function (*)(left::Holdr, right::LowRankBlock)
-    _throw_error_if_incompatible_size(left, right)
-    #TODO: add partition validation
-    return _apply_mul_hodlr_lowrank(left, right)
-end
-function _apply_mul_hodlr_lowrank(left::Holdr, right::LowRankBlock)
-    #TODO: progagate context here
-    ctx = HodlrContext()
-    u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, ctx)
-    v = intermediate_v * right.v
-    return SvdBlock(u, s, v)
-end
-function (*)(left::LowRankBlock, right::Holdr)
-    _throw_error_if_incompatible_size(left, right)
-    #TODO: add partition validation
-    return _apply_mul_lowrank_holdr(left, right)
-end
-function _apply_mul_lowrank_holdr(left::LowRankBlock, right::Holdr)
-    #TODO: progagate context heres
-    ctx = HodlrContext()
-    applied_v = left.v * right
-    intermediate_u, s, v = _compute_lowrank_factorization(left.s * applied_v, ctx)
-    u = left.u * intermediate_u
-    return SvdBlock(u, s, v)
+    #TODO : optimize by avoiding forming the full matrix
+    out_up[:, :] .+= full(x_down * lower_offdiag)
+    out_down[:, :] .+= full(x_up * upper_offdiag)
 end
 
 function _throw_error_if_incompatible_size(left, right)

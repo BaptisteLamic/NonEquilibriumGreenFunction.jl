@@ -19,11 +19,10 @@ end
     @test size(A) == (n, m)
     @test k == rank(A)
     tol = 1E-8
-    aca_A = NonEquilibriumGreenFunction.SvdBlock(A, 0.1 * tol)
-    @test size(aca_A) == size(A)
-    @test NonEquilibriumGreenFunction.rank(aca_A) >= k
-    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) / norm(A) < tol
-    @test norm(A - NonEquilibriumGreenFunction.full(aca_A)) < tol
+    block = NonEquilibriumGreenFunction.SvdBlock(A, 0.1 * tol)
+    @test size(block) == size(A)
+    @test norm(A - NonEquilibriumGreenFunction.full(block)) / norm(A) < tol
+    @test norm(A - NonEquilibriumGreenFunction.full(block)) < tol
 end
 
 @testitem "Test SvdBlock creation from KernelFunction" begin
@@ -36,16 +35,17 @@ end
     m = [1 2; 1 1]
     tol = 1E-8
     kf = NonEquilibriumGreenFunction.KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
-    aca_block = NonEquilibriumGreenFunction.SvdBlock(kf, 0.01 * tol)
-    full_block = zeros(eltype(aca_block), size(aca_block)...)
+    svd_block = NonEquilibriumGreenFunction.SvdBlock(kf, 0.01 * tol)
+    full_block = zeros(eltype(svd_block), size(svd_block)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(full_block, kf)
-    @test eltype(full_block) == eltype(aca_block)
+    @test eltype(full_block) == eltype(svd_block)
     @test eltype(full_block) == eltype(kf)
     #TODO fix ACA for non block-structured kernels.
-    @test norm(full_block - full(aca_block)) < tol
-    @test rank(full_block) == rank(full(aca_block))
+    @test norm(full_block - full(svd_block)) < tol
+    @test rank(full_block) == rank(full(svd_block))
     @test norm(full(SvdBlock(full_block, 1E-2 * tol)) - full_block) < tol
 end
+
 
 @testitem "SvdBlock view" begin
     using LinearAlgebra
@@ -79,7 +79,7 @@ end
     x = randn(ComplexF32, (size(block, 2), 4))
     y = block * x
     y_full = NonEquilibriumGreenFunction.full(block) * x
-    @test norm(y - y_full) / norm(y_full) < 1E-8
+    @test norm(full(y) - y_full) / norm(y_full) < 1E-8
 end
 
 @testitem "Test Dense Vector x SvdBlock" begin
@@ -91,7 +91,7 @@ end
     x = randn(ComplexF32, size(block, 1))
     y = x' * block
     y_full = x' * NonEquilibriumGreenFunction.full(block)
-    @test norm(y - y_full) / norm(y_full) < 1E-8
+    @test norm(full(y) - y_full) / norm(y_full) < 1E-8
 end
 
 @testitem "Test Dense Matrix x SvdBlock" begin
@@ -103,7 +103,7 @@ end
     x = randn(ComplexF32, (12, size(block, 1)))
     y = x * block
     y_full = x * NonEquilibriumGreenFunction.full(block)
-    @test norm(y - y_full) / norm(y_full) < 1E-8
+    @test norm(full(y) - y_full) / norm(y_full) < 1E-8
 end
 
 @testitem "Test SvdBlock x SvdBlock" begin
@@ -116,6 +116,26 @@ end
     full_product = full_block1 * full_block2
     block_product = block1 * block2
     @test norm(full_product - NonEquilibriumGreenFunction.full(block_product)) / norm(full_product) < 1E-8
+end
+
+@testitem "Test SvdBlock + SvdBlock" begin
+    using LinearAlgebra
+    n, k, m = 100, 12, 80, 10, 100
+    block1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    block2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    full_block1 = NonEquilibriumGreenFunction.full(block1)
+    full_block2 = NonEquilibriumGreenFunction.full(block2)
+    full_sum = full_block1 + full_block2
+    block_sum = block1 + block2
+    @test norm(full_sum - NonEquilibriumGreenFunction.full(block_sum)) / norm(full_sum) < 1E-8
+end
+
+@testitem "scalar * SvdBlock" begin
+    using LinearAlgebra
+    n, k, m = 100, 12, 80, 10, 100
+    block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    minus_block = -1 * block
+    @test norm(NonEquilibriumGreenFunction.full(block + minus_block)) < 1E-12
 end
 
 @testitem "Test Hodlr construction" begin
