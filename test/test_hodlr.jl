@@ -143,8 +143,8 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = ones(2, 2)
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol=1e-6, leafsize=size(kf, 1) ÷ 2))
-    @test size(holdr) == size(kf)
+    Hodlr = build_hodlr(kf, HodlrContext(tol=1e-6, leafsize=size(kf, 1) ÷ 2))
+    @test size(Hodlr) == size(kf)
 end
 
 
@@ -154,9 +154,9 @@ end
     m = [1 2; 1 1]
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
-    holdr = build_hodlr(kf, HodlrContext(tol=0.01 * tol, leafsize=64))
-    full_hodlr = full(holdr)
-    dense = zeros(eltype(holdr), size(holdr)...)
+    Hodlr = build_hodlr(kf, HodlrContext(tol=0.01 * tol, leafsize=64))
+    full_hodlr = full(Hodlr)
+    dense = zeros(eltype(Hodlr), size(Hodlr)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(dense, kf)
     @test norm(dense - full_hodlr) / norm(dense) < tol
     @test norm(dense - full_hodlr) < tol
@@ -168,14 +168,14 @@ end
     m = [1 2; 1 1]
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
     ctx = HodlrContext()
-    holdr = build_hodlr(kf, ctx)
-    full_hodlr = full(holdr)
-    x = randn(eltype(holdr), size(holdr, 2))
-    y_hodlr = holdr * x
+    Hodlr = build_hodlr(kf, ctx)
+    full_hodlr = full(Hodlr)
+    x = randn(eltype(Hodlr), size(Hodlr, 2))
+    y_hodlr = Hodlr * x
     y_full = full_hodlr * x
     @test norm(y_hodlr - y_full) / norm(y_full) < 10 * ctx.tol
     y_full = x' * full_hodlr
-    @test norm(x' * holdr - y_full) / norm(y_full) < 10 * ctx.tol
+    @test norm(x' * Hodlr - y_full) / norm(y_full) < 10 * ctx.tol
 end
 
 @testitem "Hodlr product with array" begin
@@ -184,15 +184,15 @@ end
     m = [1 2; 1 1]
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
     ctx = HodlrContext()
-    holdr = build_hodlr(kf, ctx)
-    full_hodlr = full(holdr)
-    x = randn(eltype(holdr), size(holdr, 2), 12)
+    Hodlr = build_hodlr(kf, ctx)
+    full_hodlr = full(Hodlr)
+    x = randn(eltype(Hodlr), size(Hodlr, 2), 12)
     y_full = full_hodlr * x
-    y_hodlr = holdr * x
+    y_hodlr = Hodlr * x
     @test size(y_hodlr) == size(y_full)
     @test norm(y_hodlr - y_full) / norm(y_full) < 10 * ctx.tol
     y_full = x' * full_hodlr
-    @test norm(x' * holdr - y_full) / norm(y_full) < 10 * ctx.tol
+    @test norm(x' * Hodlr - y_full) / norm(y_full) < 10 * ctx.tol
 end
 
 @testitem "Hodlr product with SvdBlock" begin
@@ -200,11 +200,11 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
     ctx = HodlrContext()
-    holdr = build_hodlr(kf, ctx)
+    Hodlr = build_hodlr(kf, ctx)
     k, m = 12, 80
-    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, size(holdr, 2), k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    holder_product = holdr * low_rank_block
-    full_product = full(holdr) * NonEquilibriumGreenFunction.full(low_rank_block)
+    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, size(Hodlr, 2), k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    holder_product = Hodlr * low_rank_block
+    full_product = full(Hodlr) * NonEquilibriumGreenFunction.full(low_rank_block)
     @test size(holder_product) == size(full_product)
     @test norm(full_product - NonEquilibriumGreenFunction.full(holder_product)) / norm(full_product) < 10 * ctx.tol
 end
@@ -213,11 +213,11 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
     ctx = HodlrContext()
-    holdr = build_hodlr(kf, ctx)
+    Hodlr = build_hodlr(kf, ctx)
     k, m = 12, 80
-    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, m, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, size(holdr, 1)))
-    holder_product = low_rank_block * holdr
-    full_product = NonEquilibriumGreenFunction.full(low_rank_block) * full(holdr)
+    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, m, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, size(Hodlr, 1)))
+    holder_product = low_rank_block * Hodlr
+    full_product = NonEquilibriumGreenFunction.full(low_rank_block) * full(Hodlr)
     @test size(holder_product) == size(full_product)
     @test norm(full_product - NonEquilibriumGreenFunction.full(holder_product)) / norm(full_product) < 10 * ctx.tol
 end
@@ -226,7 +226,7 @@ end
     n, k, m = 512, 12, 512
     ctx = HodlrContext(tol=1E-8, leafsize=64)
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    holdr = build_hodlr(low_rank_block, ctx)
-    @test size(holdr) == size(low_rank_block)
-    @test norm(full(holdr) * full(low_rank_block) - full(holdr) * full(low_rank_block)) / norm(full(holdr) * full(low_rank_block)) < 10 * ctx.tol
+    Hodlr = build_hodlr(low_rank_block, ctx)
+    @test size(Hodlr) == size(low_rank_block)
+    @test norm(full(Hodlr) * full(low_rank_block) - full(Hodlr) * full(low_rank_block)) / norm(full(Hodlr) * full(low_rank_block)) < 10 * ctx.tol
 end
