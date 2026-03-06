@@ -199,8 +199,44 @@ function _apply_left_mul_vector_1D!(out, x, Hodlr::NodeHodlr)
     out_down[:, :] .+= full(x_up * upper_offdiag)
 end
 
+function (*)(left::HodlrTree, right::HodlrTree)
+    _throw_error_if_incompatible_size(left, right)
+    return _multiply_hodlr(left, right)
+end
+function _multiply_hodlr(left::LeafHodlr, right::LeafHodlr)
+    return LeafHodlr(left.data * right.data)
+end
+function _multiply_hodlr(left::NodeHodlr, right::NodeHodlr)
+    new_A = left.A * right.A + left.upper_offdiag * right.lower_offdiag
+    new_upper_offdiag = left.A * right.upper_offdiag + left.upper_offdiag * right.B
+    new_B = left.lower_offdiag * right.upper_offdiag + left.B * right.B
+    new_lower_offdiag = left.lower_offdiag * right.A + left.B * right.lower_offdiag
+    return NodeHodlr(new_A, new_B, new_upper_offdiag, new_lower_offdiag)
+end
+
 function _throw_error_if_incompatible_size(left, right)
     if size(left, 2) != size(right, 1)
         throw(DimensionMismatch("Non compatible dimensions for multiplication : left has size $(size(left)) and right has size $(size(right))."))
     end
+end
+
+function (+)(A::LeafHodlr, B::LowRankBlock)
+    return LeafHodlr(full(A) + full(B))
+end
+function (+)(A::LowRankBlock, B::LeafHodlr)
+    return LeafHodlr(full(A) + full(B))
+end
+function (+)(A::NodeHodlr, B::LowRankBlock)
+    #TODO : to improve
+    return A + build_hodlr(B, HodlrContext())
+end
+function (+)(A::LowRankBlock, B::NodeHodlr)
+    return build_hodlr(A, HodlrContext()) + B
+end
+function (+)(left::NodeHodlr, right::NodeHodlr)
+    #TODO : to improve
+    return NodeHodlr(left.A + right.A, left.B + right.B, left.upper_offdiag + right.upper_offdiag, left.lower_offdiag + right.lower_offdiag)
+end
+function (+)(left::LeafHodlr, right::LeafHodlr)
+    return LeafHodlr(full(left) + full(right))
 end

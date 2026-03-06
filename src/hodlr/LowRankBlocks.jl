@@ -1,3 +1,5 @@
+import Base: view, size, eltype, *
+
 abstract type LowRankBlock{T} end
 function eltype(::Type{<:LowRankBlock{T}}) where T
     return T
@@ -93,30 +95,23 @@ end
 
 function (*)(left::SvdBlock, right::Union{AbstractMatrix,HodlrTree})
     applied_v = left.v * right
-    intermediate_u, s, v = _compute_lowrank_factorization(left.s * applied_v, HodlrContext())
-    u = left.u * intermediate_u
-    return SvdBlock(u, s, v)
+    #TODO: add reorthogonalization step
+    return SvdBlock(left.u, left.s, applied_v)
 end
 function (*)(left::SvdBlock, right::AbstractVector)
     return left.u * (left.s * (left.v * right))
 end
 function (*)(left::Union{AbstractMatrix,HodlrTree}, right::SvdBlock)
-    u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, HodlrContext())
-    v = intermediate_v * right.v
-    return SvdBlock(u, s, v)
+    #TODO: add reorthogonalization step
+    new_u = left * right.u
+    return SvdBlock(new_u, right.s, right.v)
 end
 function (*)(left::AbstractVector, right::SvdBlock)
     return ((left * right.u) * right.s) * right.v
 end
 function (*)(A::SvdBlock, B::SvdBlock)
-    #TODO: naive optimization, find a reference paper / implementation 
-    #OPTION: lazy optimization by just storing the sets of low rank matrices
-    core = (A.s * A.v) * (B.u * B.s)
-    #TODO propagate error context here
-    u_core, s, vt_core = _compute_lowrank_factorization(core, HodlrContext())
-    u = A.u * u_core
-    v = vt_core * B.v
-    return SvdBlock(u, s, v)
+    new_s = (A.s * A.v) * (B.u * B.s)
+    return SvdBlock(A.u, new_s, B.v)
 end
 function (*)(a::Number, A::SvdBlock)
     return SvdBlock(A.u, a * A.s, A.v)
