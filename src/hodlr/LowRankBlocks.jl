@@ -42,10 +42,10 @@ end
 function view(A::SumBlock, i, j)
     return SumBlock(view(A.left, i, j), view(A.right, i, j))
 end
-function (*)(A::SumBlock, B)
+function (*)(A::SumBlock, B::Union{AbstractMatrix,HodlrTree})
     return A.left * B + A.right * B
 end
-function (*)(A, B::SumBlock)
+function (*)(A::Union{AbstractMatrix,HodlrTree}, B::SumBlock)
     return A * B.left + A * B.right
 end
 function (*)(A::SumBlock, B::SumBlock)
@@ -91,7 +91,7 @@ function full(A::SvdBlock)
     return A.u * A.s * A.v
 end
 
-function (*)(left::SvdBlock, right)
+function (*)(left::SvdBlock, right::Union{AbstractMatrix,HodlrTree})
     applied_v = left.v * right
     intermediate_u, s, v = _compute_lowrank_factorization(left.s * applied_v, HodlrContext())
     u = left.u * intermediate_u
@@ -100,7 +100,7 @@ end
 function (*)(left::SvdBlock, right::AbstractVector)
     return left.u * (left.s * (left.v * right))
 end
-function (*)(left, right::SvdBlock)
+function (*)(left::Union{AbstractMatrix,HodlrTree}, right::SvdBlock)
     u, s, intermediate_v = _compute_lowrank_factorization(left * right.u * right.s, HodlrContext())
     v = intermediate_v * right.v
     return SvdBlock(u, s, v)

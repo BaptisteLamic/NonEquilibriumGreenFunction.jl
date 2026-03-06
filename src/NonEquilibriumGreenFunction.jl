@@ -9,7 +9,7 @@ using SpecialFunctions: polygamma
 using FFTW
 using TestItems
 
-import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: +, -, *, /, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
 import Base: ==
 import Base: getindex, step
@@ -21,7 +21,7 @@ import LinearAlgebra.norm
 
 include("utils.jl")
 include("kernelFunctions.jl")
-include("hodlr/hodlr.jl")
+include("hodlr/Hodlr.jl")
 include("causality.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
@@ -34,7 +34,7 @@ include("AdaptiveRichardson.jl")
 
 export axis, blocksize
 export getindex
-export build_linearMap,blockrange,blockindex, build_CirculantlinearMap
+export build_linearMap, blockrange, blockindex, build_CirculantlinearMap
 
 #new export 
 export TrapzDiscretisation, AbstractDiscretisation
