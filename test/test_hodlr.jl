@@ -276,5 +276,6 @@ end
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     hodlr_acausal = build_hodlr(low_rank_block, ctx)
     hodlr = NonEquilibriumGreenFunction.drop_lower_block_offdiagonal(hodlr_acausal)
-    inv(hodlr)
+    full_inv = inv(full(hodlr))
+    norm(full(inv(hodlr)) - full_inv) / norm(full_inv) < 10 * ctx.tol
 end

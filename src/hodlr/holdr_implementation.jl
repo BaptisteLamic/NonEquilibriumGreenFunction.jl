@@ -158,6 +158,9 @@ function _apply_right_mul!(out, Hodlr::LeafHodlr, x)
     M = Hodlr.data
     out[:, :] .= M * x
 end
+function full(x::Array)
+    return x
+end
 function _apply_right_mul!(out, Hodlr::NodeHodlr, x)
     A, B, upper_offdiag, lower_offdiag = Hodlr.A, Hodlr.B, Hodlr.upper_offdiag, Hodlr.lower_offdiag
     nA1, nA2 = size(A)
@@ -218,7 +221,12 @@ function _throw_error_if_incompatible_size(left, right)
         throw(DimensionMismatch("Non compatible dimensions for multiplication : left has size $(size(left)) and right has size $(size(right))."))
     end
 end
-
+function (-)(leaf::LeafHodlr)
+    return LeafHodlr(-leaf.data)
+end
+function (-)(tree::NodeHodlr)
+    return NodeHodlr(-tree.A,-tree.B, -tree.upper_offdiag, -tree.lower_offdiag)
+end
 function (+)(A::LeafHodlr, B::LowRankBlock)
     return LeafHodlr(full(A) + full(B))
 end
