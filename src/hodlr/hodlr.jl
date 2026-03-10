@@ -20,3 +20,13 @@ abstract type HodlrTree{T} end
 include("PartitionTrees.jl")
 include("LowRankBlocks.jl")
 include("holdr_implementation.jl")
+
+struct Hodlr{T} <: AbstractMatrix{T}
+    tree::HodlrTree
+end
+# AbstractArray interface
+size(A::Hodlr) = size(A.tree)
+size(A::Hodlr, i) = size(A.tree, i)
+getindex(A::Hodlr, I::Vararg{Int, 2}) = getindex(A.tree, I...
+# Interface for the solver
+full(A::Hodlr) = full(A.tree)
