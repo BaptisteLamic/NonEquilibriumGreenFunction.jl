@@ -1,5 +1,4 @@
-import Base: size, eltype, *, view
-
+import Base: size, eltype, *, view, inv
 export build_hodlr
 export full
 
@@ -239,4 +238,38 @@ function (+)(left::NodeHodlr, right::NodeHodlr)
 end
 function (+)(left::LeafHodlr, right::LeafHodlr)
     return LeafHodlr(full(left) + full(right))
+end
+function is_block_upper_triangular(::NodeHodlr)
+    return true
+end
+function is_block_upper_triangular(tree::HodlrTree)
+    return iszero(tree.lower_offdiag)
+end
+
+function inv(matrix::HodlrTree)
+    return inv_hodlr(matrix)
+end
+function inv_hodlr(tree::NodeHodlr)
+    if is_block_upper_triangular(tree)
+        inv_upper_triangular_holdr(tree)
+    else
+        throw(DomainError("Support only inversion of upper block triangular matrix"))
+    end
+end
+function inv_hodlr(leaf::LeafHodlr)
+    return LeafHodlr(inv(leaf.data))
+end
+function inv_upper_triangular_holdr(tree::HodlrTree)
+    Ainv = inv_hodlr(tree.A)
+    Binv = inv_hodlr(tree.B)
+    upper_off_block = -Ainv * tree.upper_offdiag * Binv
+    return NodeHodlr(Ainv, Binv, upper_off_block, ZeroBlock{eltype(tree)}(size(tree.lower_offdiag)))
+end
+function drop_lower_block_offdiagonal(tree::NodeHodlr)
+    return NodeHodlr(drop_lower_block_offdiagonal(tree.A), drop_lower_block_offdiagonal(tree.B), tree.upper_offdiag, ZeroBlock{eltype(tree)}(
+        size(tree.lower_offdiag)
+    ))
+end
+function drop_lower_block_offdiagonal(tree::LeafHodlr)
+    return tree
 end

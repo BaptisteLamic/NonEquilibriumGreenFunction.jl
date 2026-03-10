@@ -16,6 +16,7 @@ end
 #Subtypes are expectd to * operator for Array on both sides
 #Subtypes are expectd to * operator for scalar on left
 #Subtypes are expectd to * operator for I operator on left and right
+#Subtypes are expected to implement iszero 
 
 struct SumBlock{T,L,R} <: LowRankBlock{T}
     left::LowRankBlock{T}
@@ -29,6 +30,9 @@ function SumBlock(left::L, right::R) where {L,R}
         throw(ArgumentError("Incompatible sizes, left has size $(size(left)) and right has size $(size(right))."))
     end
     return SumBlock{eltype(left),L,R}(left, right)
+end
+function iszero(block::SumBlock)
+    return iszero(block.left) && iszero(block.right)
 end
 function (+)(A::LowRankBlock{T}, B::LowRankBlock{T}) where T
     return SumBlock(A, B)
@@ -78,7 +82,9 @@ end
 function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
     return SvdBlock(kf, HodlrContext(tol=tol))
 end
-
+function iszero(block::SvdBlock)
+    return iszero(block.s)
+end
 function size(A::SvdBlock, i)::Int
     if i == 1
         s = size(A.u, 1)
@@ -138,4 +144,37 @@ function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}
     S = Diagonal(F[:S])
     V = F[:Vt]
     return U, S, V
+end
+
+struct ZeroBlock{T} <: LowRankBlock{T}
+    size::Tuple{Int,Int}
+end
+function size(block::ZeroBlock,i)
+    return block.size[i]
+end
+#Subtypes are expected to implement full(A)
+#Subtypes are expected to implement view(A, i, j)
+#Subtypes are expectd to * operator for Array on both sides
+#Subtypes are expectd to * operator for scalar on left
+#Subtypes are expectd to * operator for I operator on left and right
+#Subtypes are expected to implement iszero 
+function iszero(block::ZeroBlock)
+    return true
+end
+function full(A::ZeroBlock)
+    return zeros(eltype(A), size(A))
+end
+function view(A::ZeroBlock, i, j)
+    return ZeroBlock{eltype(A)}((length(i), length(j)))
+end
+function (*)(A::ZeroBlock, B::Union{AbstractMatrix,HodlrTree,AbstractVector})
+    new_eltype = promote_type(eltype(A),eltype(B))
+    return zeros(new_eltype, size(A, 1), size(B, 2))
+end
+function (*)(A::Union{AbstractMatrix,HodlrTree,AbstractVector}, B::ZeroBlock)
+    new_eltype = promote_type(eltype(A),eltype(B))
+    return zeros(new_eltype, size(A, 1), size(B, 2))
+end
+function (*)(a::Number, A::ZeroBlock)
+    return A
 end

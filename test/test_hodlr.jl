@@ -268,3 +268,13 @@ end
     hodlr_product = full(hodlr_1 * hodlr_2)
     @test norm(full_product - hodlr_product) / norm(full_product) < 10 * ctx.tol
 end
+
+@testitem "inv(hodlr)" begin
+    using LinearAlgebra
+    n, k, m = 512, 12, 512
+    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    hodlr_acausal = build_hodlr(low_rank_block, ctx)
+    hodlr = NonEquilibriumGreenFunction.drop_lower_block_offdiagonal(hodlr_acausal)
+    inv(hodlr)
+end
