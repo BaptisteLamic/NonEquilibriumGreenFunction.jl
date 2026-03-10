@@ -1,7 +1,7 @@
 
 using StaticArrays
 using LowRankApprox
-
+import Base: inv
 export HodlrSettings
 
 @kwdef struct HodlrSettings
@@ -24,9 +24,33 @@ include("holdr_implementation.jl")
 struct Hodlr{T} <: AbstractMatrix{T}
     tree::HodlrTree
 end
+function Hodlr(tree::HodlrTree)
+    return Hodlr{eltype(tree)}(tree)
+end
+function Hodlr(kf::Union{KernelFunction,AbstractMatrix}, setting::HodlrSettings)
+    return Hodlr(build_hodlr(kf, setting))
+end
 # AbstractArray interface
 size(A::Hodlr) = size(A.tree)
 size(A::Hodlr, i) = size(A.tree, i)
-getindex(A::Hodlr, I::Vararg{Int, 2}) = getindex(A.tree, I...
+getindex(A::Hodlr, I::Vararg{Int, 2}) = getindex(A.tree, I...)
+
+(*)(A::Hodlr,B::Hodlr) = Hodlr(A.tree * B.tree)
+(*)(A::Hodlr, B::Array) = Hodlr(A.tree * B)
+(*)(A::Array, B::Hodlr) = Hodlr(A * B.tree)
+(*)(A::Number, B::Hodlr) = Hodlr(A * B.tree)
+
+(+)(A::Hodlr, B::Hodlr) = Hodlr(A.tree + B.tree)
+(+)(A::Hodlr, B::Array) = Hodlr(A.tree + B)
+(+)(A::Array, B::Hodlr) = Hodlr(A + B.tree)
+
+(-)(A::Hodlr, B::Hodlr) = Hodlr(A.tree - B.tree)
+(-)(A::Hodlr) = Hodlr(-A.tree)
+(-)(A::Hodlr, B::Array) = Hodlr(A.tree - B)
+(-)(A::Array, B::Hodlr) = Hodlr(A - B.tree)
+
+function inv(A::Hodlr)
+    return Hodlr(inv(A.tree))
+end
 # Interface for the solver
 full(A::Hodlr) = full(A.tree)
