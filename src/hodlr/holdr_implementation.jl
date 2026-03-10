@@ -5,15 +5,21 @@ export full
 # T is the scalar type
 struct LeafHodlr{T} <: HodlrTree{T}
     data::Matrix{T}
+    settings::HodlrSettings
 end
-function LeafHodlr(data)
-    return LeafHodlr{eltype(data)}(data)
+function LeafHodlr(data,settings)
+    return LeafHodlr{eltype(data)}(data,settings)
 end
 struct NodeHodlr{T} <: HodlrTree{T}
     A::HodlrTree{T}
     B::HodlrTree{T}
     upper_offdiag::LowRankBlock{T}
     lower_offdiag::LowRankBlock{T}
+    settings::HodlrSettings
+end
+function NodeHodlr(A::HodlrTree{T},B::HodlrTree{T},lower::LowRankBlock{T},upper::LowRankBlock{T}) where T
+    settings = combine_settings(A.settings, B.settings)
+    return NodeHodlr{T}(A,B,lower,upper,settings)
 end
 
 # Helper functions to replace @match patterns
@@ -45,9 +51,9 @@ function _convert_matrix_partition_to_domain(partition_row::PartitionTree, parti
     return KernelDomain((raw_domain_row[1], raw_domain_row[end]), (raw_domain_col[1], raw_domain_col[end]), x_steps=length(raw_domain_row), y_steps=length(raw_domain_col))
 end
 
-function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, ctx::HodlrContext)
+function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_partition::PartitionTree, settings::HodlrSettings)
     if isleaf(row_partition) && isleaf(col_partition)
-        return _construct_leaf(kf, row_partition, col_partition)
+        return _construct_leaf(kf, row_partition, col_partition, settings)
     else
         _xaxis = xaxis(kf.domain)
         _yaxis = yaxis(kf.domain)
@@ -58,46 +64,46 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         lower_offdiag_kernel = restrict_domain(kf,
             _convert_matrix_partition_to_domain(lower_row, left_cols, kf.domain, blocksize(kf)))
 
-        A = build_hodlr(kf, upper_rows, left_cols, ctx)
-        B = build_hodlr(kf, lower_row, right_cols, ctx)
-        upper_offdiag = SvdBlock(upper_offdiag_kernel, ctx)
-        lower_offdiag = SvdBlock(lower_offdiag_kernel, ctx)
-        return NodeHodlr(A, B, upper_offdiag, lower_offdiag)
+        A = build_hodlr(kf, upper_rows, left_cols, settings)
+        B = build_hodlr(kf, lower_row, right_cols, settings)
+        upper_offdiag = SvdBlock(upper_offdiag_kernel, settings)
+        lower_offdiag = SvdBlock(lower_offdiag_kernel, settings)
+        return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
     end
 end
-function _construct_leaf(kf, row_partition::PartitionTree, col_partition::PartitionTree)
+function _construct_leaf(kf, row_partition::PartitionTree, col_partition::PartitionTree, settings)
     restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, blocksize(kf)))
     M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
     fill_with_kernel!(M, restricted_kf)
-    return LeafHodlr(M)
+    return LeafHodlr(M,settings)
 end
-function build_hodlr(kf::KernelFunction, ctx::HodlrContext)
+function build_hodlr(kf::KernelFunction, ctx::HodlrSettings)
     row_partition = build_partition(1:size(kf, 1), ctx.leafsize)
     col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
-function build_hodlr(matrix::LowRankBlock, ctx::HodlrContext)
+function build_hodlr(matrix::LowRankBlock, ctx::HodlrSettings)
     row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
     col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
     return _build_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
 end
 
-function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_partition, ctx::HodlrContext)
+function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_partition, settings::HodlrSettings)
     if isleaf(row_partition) && isleaf(col_partition)
-        return _construct_leaf(matrix, row_partition, col_partition)
+        return _construct_leaf(matrix, row_partition, col_partition, settings)
     end
     upper_rows, lower_row = split_partition(row_partition)
     left_cols, right_cols = split_partition(col_partition)
-    A = _build_hodlr_from_lowrank(matrix, upper_rows, left_cols, ctx)
-    B = _build_hodlr_from_lowrank(matrix, lower_row, right_cols, ctx)
+    A = _build_hodlr_from_lowrank(matrix, upper_rows, left_cols, settings)
+    B = _build_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
     upper_offdiag = view(matrix, get_range(upper_rows), get_range(right_cols))
     lower_offdiag = view(matrix, get_range(lower_row), get_range(left_cols))
-    return NodeHodlr(A, B, upper_offdiag, lower_offdiag)
+    return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
 end
-function _construct_leaf(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree)
+function _construct_leaf(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree, settings)
     sub_matrix = view(matrix, get_range(row_partition), get_range(col_partition))
-    return LeafHodlr(full(sub_matrix))
+    return LeafHodlr(full(sub_matrix), settings)
 end
 
 function size(Hodlr::LeafHodlr{M}) where M
@@ -206,7 +212,7 @@ function (*)(left::HodlrTree, right::HodlrTree)
     return _multiply_hodlr(left, right)
 end
 function _multiply_hodlr(left::LeafHodlr, right::LeafHodlr)
-    return LeafHodlr(left.data * right.data)
+    return LeafHodlr(left.data * right.data,combine_settings(left.settings, right.settings))
 end
 function _multiply_hodlr(left::NodeHodlr, right::NodeHodlr)
     new_A = left.A * right.A + left.upper_offdiag * right.lower_offdiag
@@ -222,30 +228,31 @@ function _throw_error_if_incompatible_size(left, right)
     end
 end
 function (-)(leaf::LeafHodlr)
-    return LeafHodlr(-leaf.data)
+    return LeafHodlr(-leaf.data, leaf.settings)
 end
 function (-)(tree::NodeHodlr)
     return NodeHodlr(-tree.A,-tree.B, -tree.upper_offdiag, -tree.lower_offdiag)
 end
 function (+)(A::LeafHodlr, B::LowRankBlock)
-    return LeafHodlr(full(A) + full(B))
+    return LeafHodlr(full(A) + full(B),A.settings)
 end
 function (+)(A::LowRankBlock, B::LeafHodlr)
-    return LeafHodlr(full(A) + full(B))
+    return LeafHodlr(full(A) + full(B),B.settings)
 end
 function (+)(A::NodeHodlr, B::LowRankBlock)
     #TODO : to improve
-    return A + build_hodlr(B, HodlrContext())
+    return A + build_hodlr(B, A.settings)
 end
 function (+)(A::LowRankBlock, B::NodeHodlr)
-    return build_hodlr(A, HodlrContext()) + B
+    return build_hodlr(A, B.settings) + B
 end
 function (+)(left::NodeHodlr, right::NodeHodlr)
     #TODO : to improve
     return NodeHodlr(left.A + right.A, left.B + right.B, left.upper_offdiag + right.upper_offdiag, left.lower_offdiag + right.lower_offdiag)
 end
 function (+)(left::LeafHodlr, right::LeafHodlr)
-    return LeafHodlr(full(left) + full(right))
+    settings = combine_settings(left.settings, right.settings)
+    return LeafHodlr(full(left) + full(right),settings)
 end
 function is_block_upper_triangular(::NodeHodlr)
     return true
@@ -265,7 +272,7 @@ function inv_hodlr(tree::NodeHodlr)
     end
 end
 function inv_hodlr(leaf::LeafHodlr)
-    return LeafHodlr(inv(leaf.data))
+    return LeafHodlr(inv(leaf.data),leaf.settings)
 end
 function inv_upper_triangular_holdr(tree::HodlrTree)
     Ainv = inv_hodlr(tree.A)

@@ -143,7 +143,7 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = ones(2, 2)
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    Hodlr = build_hodlr(kf, HodlrContext(tol=1e-6, leafsize=size(kf, 1) ÷ 2))
+    Hodlr = build_hodlr(kf, HodlrSettings(tol=1e-6, leafsize=size(kf, 1) ÷ 2))
     @test size(Hodlr) == size(kf)
 end
 
@@ -154,7 +154,7 @@ end
     m = [1 2; 1 1]
     const tol = 1E-9
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
-    Hodlr = build_hodlr(kf, HodlrContext(tol=0.01 * tol, leafsize=64))
+    Hodlr = build_hodlr(kf, HodlrSettings(tol=0.01 * tol, leafsize=64))
     full_hodlr = full(Hodlr)
     dense = zeros(eltype(Hodlr), size(Hodlr)...)
     NonEquilibriumGreenFunction.fill_with_kernel!(dense, kf)
@@ -167,7 +167,7 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = [1 2; 1 1]
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
-    ctx = HodlrContext()
+    ctx = HodlrSettings()
     Hodlr = build_hodlr(kf, ctx)
     full_hodlr = full(Hodlr)
     x = randn(eltype(Hodlr), size(Hodlr, 2))
@@ -183,7 +183,7 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = [1 2; 1 1]
     kf = KernelFunction((x, y) -> m .* exp(1im * (x - y)), dom)
-    ctx = HodlrContext()
+    ctx = HodlrSettings()
     Hodlr = build_hodlr(kf, ctx)
     full_hodlr = full(Hodlr)
     x = randn(eltype(Hodlr), size(Hodlr, 2), 12)
@@ -199,7 +199,7 @@ end
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
-    ctx = HodlrContext()
+    ctx = HodlrSettings()
     Hodlr = build_hodlr(kf, ctx)
     k, m = 12, 80
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, size(Hodlr, 2), k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
@@ -212,7 +212,7 @@ end
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
-    ctx = HodlrContext()
+    ctx = HodlrSettings()
     Hodlr = build_hodlr(kf, ctx)
     k, m = 12, 80
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, m, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, size(Hodlr, 1)))
@@ -224,7 +224,7 @@ end
 @testitem "construct Hodlr from SvdBlock" begin
     using LinearAlgebra
     n, k, m = 512, 12, 512
-    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     Hodlr = build_hodlr(low_rank_block, ctx)
     @test size(Hodlr) == size(low_rank_block)
@@ -234,7 +234,7 @@ end
 @testitem "hodlr + LowRankBlock" begin
     using LinearAlgebra
     n, k, m = 512, 12, 512
-    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
     low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     hodlr_1 = build_hodlr(low_rank_block_1, ctx)
     low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
@@ -246,7 +246,7 @@ end
 @testitem "hodlr + hodlr" begin
     using LinearAlgebra
     n, k, m = 512, 12, 512
-    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
     low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     hodlr_1 = build_hodlr(low_rank_block_1, ctx)
     low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
@@ -259,7 +259,7 @@ end
 @testitem "hodlr x hodlr" begin
     using LinearAlgebra
     n, k, m = 512, 12, 512
-    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
     low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     hodlr_1 = build_hodlr(low_rank_block_1, ctx)
     low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
@@ -272,7 +272,7 @@ end
 @testitem "inv(hodlr)" begin
     using LinearAlgebra
     n, k, m = 512, 12, 512
-    ctx = HodlrContext(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
     low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
     hodlr_acausal = build_hodlr(low_rank_block, ctx)
     hodlr = NonEquilibriumGreenFunction.drop_lower_block_offdiagonal(hodlr_acausal)

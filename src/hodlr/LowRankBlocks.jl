@@ -75,12 +75,12 @@ function SvdBlock(u::L, s::D, v::R) where {L,D,R}
     return SvdBlock{eltype(u),L,D,R}(u, s, v)
 end
 
-function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
-    u, s, vt = _compute_lowrank_factorization(kf, ctx)
+function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, setting::HodlrSettings)
+    u, s, vt = _compute_lowrank_factorization(kf, setting)
     SvdBlock(u, s, vt)
 end
 function SvdBlock(kf::Union{KernelFunction,AbstractMatrix}, tol::Real)
-    return SvdBlock(kf, HodlrContext(tol=tol))
+    return SvdBlock(kf, HodlrSettings(tol=tol))
 end
 function iszero(block::SvdBlock)
     return iszero(block.s)
@@ -130,15 +130,15 @@ function view(A::SvdBlock{M,D}, i, j) where {M,D}
     return SvdBlock(view_on_u, A.s, view(A.v, :, j))
 end
 
-function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, ctx::HodlrContext)
+function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, settings::HodlrSettings)
     m = LinearOperator(kf)
     #TODO : tune the algorithm selection method. 
     #ISSUE: when using LinearOperator, LowRankApprox enforce to use sketch=:randn
     #TODO: we need to find a way around that to preserve complexity
-    if prod(size(kf)) > ctx.sampling_threshold
-        F = psvdfact(m, rtol=ctx.tol, sketch=:randn)
+    if prod(size(kf)) > settings.sampling_threshold
+        F = psvdfact(m, rtol=settings.tol, sketch=:randn)
     else
-        F = psvdfact(m, rtol=ctx.tol)
+        F = psvdfact(m, rtol=settings.tol)
     end
     U = F[:U]
     S = Diagonal(F[:S])
