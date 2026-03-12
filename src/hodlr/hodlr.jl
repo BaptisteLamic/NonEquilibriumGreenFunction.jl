@@ -1,7 +1,7 @@
 
 using StaticArrays
 using LowRankApprox
-import Base: inv
+import Base: inv, size, getindex, *, +, -, full
 export HodlrSettings
 export Hodlr
 export full
