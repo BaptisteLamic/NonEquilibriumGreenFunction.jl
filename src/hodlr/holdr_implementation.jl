@@ -76,19 +76,19 @@ function _construct_leaf(kf, row_partition::PartitionTree, col_partition::Partit
     fill_with_kernel!(M, restricted_kf)
     return LeafHodlr(M,settings)
 end
+
+
 function build_hodlr(kf::KernelFunction, ctx::HodlrSettings)
     row_partition = build_partition(1:size(kf, 1), ctx.leafsize)
     col_partition = build_partition(1:size(kf, 2), ctx.leafsize)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
-
 function build_hodlr(matrix::Union{LowRankBlock,AbstractMatrix}, ctx::HodlrSettings)
     row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
     col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
     return _build_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
 end
-
-function _build_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix}, row_partition, col_partition, settings::HodlrSettings)
+function _build_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix},row_partition, col_partition, settings::HodlrSettings)
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(matrix, row_partition, col_partition, settings)
     end
@@ -98,6 +98,23 @@ function _build_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix}, r
     B = _build_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
     upper_offdiag = _construct_offdiag_block(matrix, upper_rows, right_cols, settings)
     lower_offdiag = _construct_offdiag_block(matrix, lower_row, left_cols, settings)
+    return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
+end
+function build_upper_triangular_hodlr(matrix::Union{LowRankBlock,AbstractMatrix}, ctx::HodlrSettings)
+    row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
+    col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
+    return _build_upper_triangular_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
+end
+function _build_upper_triangular_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix},row_partition, col_partition, settings::HodlrSettings)
+    if isleaf(row_partition) && isleaf(col_partition)
+        return _construct_leaf(matrix, row_partition, col_partition, settings)
+    end
+    upper_rows, lower_row = split_partition(row_partition)
+    left_cols, right_cols = split_partition(col_partition)
+    A = _build_upper_triangular_hodlr_from_lowrank(matrix, upper_rows, left_cols, settings)
+    B = _build_upper_triangular_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
+    upper_offdiag = _construct_offdiag_block(matrix, upper_rows, right_cols, settings)
+    lower_offdiag = ZeroBlock{eltype(matrix)}(size(upper_offdiag))
     return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
 end
 function _construct_offdiag_block(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree, settings)

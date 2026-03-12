@@ -1,7 +1,7 @@
 
 using StaticArrays
 using LowRankApprox
-import Base: inv, size, getindex, *, +, -, full
+import Base: inv, size, getindex, *, +, -
 export HodlrSettings
 export Hodlr
 export full
@@ -29,7 +29,7 @@ end
 function Hodlr(tree::HodlrTree)
     return Hodlr{eltype(tree)}(tree)
 end
-function Hodlr(kf::Union{KernelFunction,AbstractMatrix}, setting::HodlrSettings)
+function Hodlr(kf::Union{KernelFunction,AbstractMatrix,SparseMatrixCSC}, setting::HodlrSettings)
     return Hodlr(build_hodlr(kf, setting))
 end
 # AbstractArray interface
