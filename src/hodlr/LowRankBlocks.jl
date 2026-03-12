@@ -1,4 +1,5 @@
-import Base: view, size, eltype, *
+import Base: view, size, eltype, *, iszero, +
+using SparseArrays
 
 abstract type LowRankBlock{T} end
 function eltype(::Type{<:LowRankBlock{T}}) where T
@@ -130,20 +131,39 @@ function view(A::SvdBlock{M,D}, i, j) where {M,D}
     return SvdBlock(view_on_u, A.s, view(A.v, :, j))
 end
 
-function _compute_lowrank_factorization(kf::Union{KernelFunction,AbstractMatrix}, settings::HodlrSettings)
-    m = LinearOperator(kf)
+function _compute_lowrank_factorization(kernel::Union{KernelFunction,AbstractMatrix}, settings::HodlrSettings)
+    if _is_nulloperator(kernel)
+        U = zeros(eltype(kernel), size(kernel, 1), 0)
+        S = Diagonal(zeros(eltype(kernel), 0))
+        V = zeros(eltype(kernel), 0, size(kernel, 2))
+        return U, S, V
+    end
     #TODO : tune the algorithm selection method. 
     #ISSUE: when using LinearOperator, LowRankApprox enforce to use sketch=:randn
     #TODO: we need to find a way around that to preserve complexity
-    if prod(size(kf)) > settings.sampling_threshold
-        F = psvdfact(m, rtol=settings.tol, sketch=:randn)
+    operator = LinearOperator(kernel)
+    if prod(size(kernel)) > settings.sampling_threshold
+        F = psvdfact(operator, rtol=settings.tol, sketch=:randn)
     else
-        F = psvdfact(m, rtol=settings.tol)
+        F = psvdfact(operator, rtol=settings.tol)
     end
     U = F[:U]
     S = Diagonal(F[:S])
     V = F[:Vt]
     return U, S, V
+end
+function _is_nulloperator(matrix::SparseMatrixCSC)
+    #This is mostly requested to bypass a bug in LowRankApprox where the SVD of a zero matrix result in out of bound access.
+    return nonzeros(matrix) == 0
+end
+function _is_nulloperator(matrix::AbstractMatrix)
+    #This is mostly requested to bypass a bug in LowRankApprox where the SVD of a zero matrix result in out of bound access.
+    return findfirst(!iszero, matrix) === nothing
+end
+function _is_nulloperator(::KernelFunction)
+    #For now we just assume that a kernelFunction is non zero ...
+    #TODO fix that
+    return false
 end
 
 struct ZeroBlock{T} <: LowRankBlock{T}

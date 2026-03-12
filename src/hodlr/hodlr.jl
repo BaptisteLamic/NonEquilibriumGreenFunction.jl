@@ -3,6 +3,8 @@ using StaticArrays
 using LowRankApprox
 import Base: inv
 export HodlrSettings
+export Hodlr
+export full
 
 @kwdef struct HodlrSettings
     tol::Real = 1e-6

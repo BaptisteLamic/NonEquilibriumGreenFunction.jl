@@ -46,6 +46,14 @@ end
     @test norm(full(SvdBlock(full_block, 1E-2 * tol)) - full_block) < tol
 end
 
+@testitem "Test SvdBlock creation from  sparse matrix" begin
+    using LinearAlgebra
+    using SparseArrays
+    tol = 1E-8
+    sparse_matrix = spdiagm(12 => randn(128))
+    svd_block = NonEquilibriumGreenFunction.SvdBlock(sparse_matrix, 0.01 * tol)
+    @show typeof(svd_block)
+end
 
 @testitem "SvdBlock view" begin
     using LinearAlgebra
@@ -138,14 +146,24 @@ end
     @test norm(NonEquilibriumGreenFunction.full(block + minus_block)) < 1E-12
 end
 
-@testitem "Test Hodlr construction" begin
+@testitem "Test Hodlr construction from kernel" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = ones(2, 2)
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    Hodlr = build_hodlr(kf, HodlrSettings(tol=1e-6, leafsize=size(kf, 1) ÷ 2))
+    Hodlr = build_hodlr(kf, HodlrSettings(tol=1e-6, leafsize=size(kf, 1) ÷ 4 ))
     @test size(Hodlr) == size(kf)
 end
+
+@testitem "Test Hodlr construction from sparse matrix" begin
+    using LinearAlgebra
+    using SparseArrays
+    sparse_matrix = spdiagm(12 => randn(128))
+    Hodlr = build_hodlr(sparse_matrix, HodlrSettings(tol=1e-6, leafsize=size(sparse_matrix, 1) ÷ 4))
+    @test size(Hodlr) == size(sparse_matrix)
+    @test norm(full(Hodlr) - Array(sparse_matrix)) < 1e-10
+end
+
 
 
 @testitem "Test Hodlr full" begin

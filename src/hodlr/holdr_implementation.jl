@@ -22,7 +22,6 @@ function NodeHodlr(A::HodlrTree{T},B::HodlrTree{T},lower::LowRankBlock{T},upper:
     return NodeHodlr{T}(A,B,lower,upper,settings)
 end
 
-# Helper functions to replace @match patterns
 function isleaf(matrix::HodlrTree)
     return isa(matrix, LeafHodlr)
 end
@@ -83,13 +82,13 @@ function build_hodlr(kf::KernelFunction, ctx::HodlrSettings)
     return build_hodlr(kf, row_partition, col_partition, ctx)
 end
 
-function build_hodlr(matrix::LowRankBlock, ctx::HodlrSettings)
+function build_hodlr(matrix::Union{LowRankBlock,AbstractMatrix}, ctx::HodlrSettings)
     row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
     col_partition = build_partition(1:size(matrix, 2), ctx.leafsize)
     return _build_hodlr_from_lowrank(matrix, row_partition, col_partition, ctx)
 end
 
-function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_partition, settings::HodlrSettings)
+function _build_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix}, row_partition, col_partition, settings::HodlrSettings)
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(matrix, row_partition, col_partition, settings)
     end
@@ -97,13 +96,24 @@ function _build_hodlr_from_lowrank(matrix::LowRankBlock, row_partition, col_part
     left_cols, right_cols = split_partition(col_partition)
     A = _build_hodlr_from_lowrank(matrix, upper_rows, left_cols, settings)
     B = _build_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
-    upper_offdiag = view(matrix, get_range(upper_rows), get_range(right_cols))
-    lower_offdiag = view(matrix, get_range(lower_row), get_range(left_cols))
+    upper_offdiag = _construct_offdiag_block(matrix, upper_rows, right_cols, settings)
+    lower_offdiag = _construct_offdiag_block(matrix, lower_row, left_cols, settings)
     return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
+end
+function _construct_offdiag_block(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree, settings)
+    return view(matrix, get_range(row_partition), get_range(col_partition))
+end
+function _construct_offdiag_block(matrix::AbstractMatrix, row_partition::PartitionTree, col_partition::PartitionTree, settings)
+    sub_matrix = view(matrix, get_range(row_partition), get_range(col_partition))
+    return SvdBlock(sub_matrix, settings)
 end
 function _construct_leaf(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree, settings)
     sub_matrix = view(matrix, get_range(row_partition), get_range(col_partition))
     return LeafHodlr(full(sub_matrix), settings)
+end
+function _construct_leaf(matrix::AbstractMatrix, row_partition::PartitionTree, col_partition::PartitionTree, settings)
+    sub_matrix = view(matrix, get_range(row_partition), get_range(col_partition))
+    return LeafHodlr(sub_matrix, settings)
 end
 
 function size(Hodlr::LeafHodlr{M}) where M
