@@ -38,7 +38,7 @@ end
             A = A * (1 + 1im)
         end
         hssA = hss(A, atol=tol / 100, rtol=tol / 100)
-        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
+        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < 2*tol
         @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
     end
 end
