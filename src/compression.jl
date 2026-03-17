@@ -120,6 +120,10 @@ end
 function HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
     HssCompression(atol, rtol, kest, leafsize)
 end
+struct HodlrCompression <: AbstractCompression
+    tol::Real
+    leafsize::Int
+end
 struct NONCompression <: AbstractCompression end
 
 
@@ -156,6 +160,39 @@ function (Compression::HssCompression)(axis, tab::BlockCirculantMatrix)
     cc = bisection_cluster(size(tab, 1), leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest)
 end
+
+function (compression::HodlrCompression)(axis, f; stationary=false)
+    domain = KernelDomain((axis[1], axis[end]), n_steps = length(axis))
+    kernel = KernelFunction(f,domain)
+    return Hodlr(kernel, _get_hodlr_settings(compression))
+end
+
+function (compression::HodlrCompression)(axis, f, g)
+    f00 = f(axis[1])
+    T, bs = eltype(f00), size(f00, 1)
+    u = Array{T}(undef, (bs, bs, length(axis)))
+    v = Array{T}(undef, (bs, bs, length(axis)))
+    for k in eachindex(axis)
+        u[:, :, k] .= f(axis[k])
+        v[:, :, k] .= g(axis[k])
+    end
+    n = length(axis) * bs
+    u = reshape(u, (n, bs))
+    v = reshape(u, (n, bs))
+    #TODO: that is not an SVD block 
+    return SvdBlock(u,diagm(ones(eltype(v),size(v,1))),adjoint(v))
+end
+function (compression::HodlrCompression)(tab::HodlrCompression)
+    #TODO: implement recompression for HODLR
+    return tab
+end
+function (compression::HodlrCompression)(tab::AbstractMatrix{T}) where {T<:Number}
+    return Hodlr(tab, _get_hodlr_settings(compression))
+end
+function _get_hodlr_settings(compression::HodlrCompression)
+    return HodlrSettings(tol=compression.tol, leafsize=compression.leafsize)
+end
+
 
 function (Compression::NONCompression)(axis, f; stationary=false)
     f00 = f(axis[1], axis[1])

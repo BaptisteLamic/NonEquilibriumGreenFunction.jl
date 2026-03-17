@@ -29,7 +29,7 @@ end
 function Hodlr(tree::HodlrTree)
     return Hodlr{eltype(tree)}(tree)
 end
-function Hodlr(kf::Union{KernelFunction,AbstractMatrix,SparseMatrixCSC}, setting::HodlrSettings)
+function Hodlr(kf::Union{KernelFunction,AbstractMatrix,SparseMatrixCSC,LowRankBlock}, setting::HodlrSettings)
     return Hodlr(build_hodlr(kf, setting))
 end
 # AbstractArray interface
