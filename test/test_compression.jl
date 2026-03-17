@@ -1,4 +1,4 @@
-@testitem "TriangularLowRankCompression_map" begin
+@testitem "_build_triangular_low_rank_matrix_map" begin
     using LinearAlgebra
     using NonEquilibriumGreenFunction: computeMatrixNorm
     N, Dt = 128, 2.0

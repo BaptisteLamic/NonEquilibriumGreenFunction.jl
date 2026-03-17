@@ -178,7 +178,7 @@ function (Compression::NONCompression)(axis, f, g)
     Compression(axis, (t, tp) -> f(t) * g(tp))
 end
 
-function triangularLowRankCompression(compression::AbstractCompression, causality, axis, f, g)
+function _build_triangular_low_rank_matrix(compression::AbstractCompression, causality, axis, f, g)
     f00 = f(axis[1])
     @assert size(f00, 1) == size(f00, 2)
     fg(t, tp) = f(t) * g(tp)
@@ -189,7 +189,7 @@ function triangularLowRankCompression(compression::AbstractCompression, causalit
     return compression(axis, fg_masked)
 end
 
-function triangularLowRankCompression(compression::HssCompression, causality, axis, f, g)
+function _build_triangular_low_rank_matrix(compression::HssCompression, causality, axis, f, g)
     f00 = f(axis[1])
     @assert size(f00, 1) == size(f00, 2)
     blocksize = size(f00, 1)

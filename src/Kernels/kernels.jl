@@ -33,7 +33,7 @@ function discretize_lowrank_kernel(::Type{D},::Type{C}, axis, f,g ;compression=H
     @assert size(f00,1) == size(f00,2)
     @assert size(f00) == size(g00)
     bs = size(f00,1)
-    matrix = triangularLowRankCompression(compression,C(), axis, f, g)
+    matrix = _build_triangular_low_rank_matrix(compression,C(), axis, f, g)
     discretization = TrapzDiscretisation(axis, matrix, bs, compression)
     return Kernel(discretization, C())
 end
