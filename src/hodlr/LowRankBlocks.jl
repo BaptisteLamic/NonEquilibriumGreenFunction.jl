@@ -38,6 +38,9 @@ end
 function (+)(A::LowRankBlock{T}, B::LowRankBlock{T}) where T
     return SumBlock(A, B)
 end
+function (-)(A::LowRankBlock{T}, B::LowRankBlock{T}) where T
+    return SumBlock(A, -B)
+end
 function size(A::SumBlock, i)::Int
     return size(A.left, i)
 end
@@ -160,10 +163,10 @@ function _is_nulloperator(matrix::AbstractMatrix)
     #This is mostly requested to bypass a bug in LowRankApprox where the SVD of a zero matrix result in out of bound access.
     return findfirst(!iszero, matrix) === nothing
 end
-function _is_nulloperator(::KernelFunction)
-    #For now we just assume that a kernelFunction is non zero ...
-    #TODO fix that
-    return false
+function _is_nulloperator(kf::KernelFunction)
+    #TODO improve that : Just get ride of the bug we are bypassing
+    I_s = rand(eachindex(kf), 10)
+    return norm(sum(kf[I_s])) < 1E-10
 end
 
 struct ZeroBlock{T} <: LowRankBlock{T}

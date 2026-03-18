@@ -87,3 +87,19 @@ end
     yt2 = matrix' * v
     @test norm(yt1 - yt2) / norm(yt2) < 1E-14
 end
+
+@testitem "Array interface" begin 
+    using LinearAlgebra
+    using LowRankApprox
+    domain = KernelDomain((0.0, 1.0), n_steps=512)
+    modulation(x) = sin(x)
+    kf = KernelFunction(
+        (x, y) -> [modulation(x - pi * y) 2.0; -1.0 modulation(2x - y)],
+        domain
+    )
+    I = eachindex(kf)
+    @test typeof(kf[I]) == Matrix{eltype(kf)}
+    @test size(kf[I]) == size(kf)
+    sub_I = rand(I, 4)
+    @test typeof(kf[sub_I]) == Vector{eltype(kf)}
+end

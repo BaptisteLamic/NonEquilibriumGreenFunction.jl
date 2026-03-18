@@ -307,3 +307,15 @@ end
     full_inv = inv(full(hodlr))
     norm(full(inv(hodlr)) - full_inv) / norm(full_inv) < 10 * ctx.tol
 end
+
+@testitem "holdr Arithmetics" begin
+    using LinearAlgebra
+    n, k, m = 512, 12, 512
+    ctx = HodlrSettings(tol=1E-8, leafsize=64)
+    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
+    hodlr_tree = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(low_rank_block, ctx)
+    hodlr = Hodlr(hodlr_tree)
+    norm(full(hodlr - hodlr)) < 1E-12 
+    norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
+    norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
+end

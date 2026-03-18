@@ -5,7 +5,7 @@ export yaxis
 export is_included
 export blocksize
 
-import Base: IndexStyle, axes, eltype, getindex, size
+import Base: IndexStyle, axes, eltype, getindex, size, eachindex
 
 
 struct KernelDomain{T}
@@ -40,7 +40,7 @@ function is_included(domain1::KernelDomain, domain2::KernelDomain)
 end
 
 
-struct KernelFunction{D,T,BlockSize}
+struct KernelFunction{D,T,BlockSize} <: AbstractMatrix{T}
     block_getter
     element_getter
     domain::KernelDomain{D}

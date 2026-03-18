@@ -55,7 +55,7 @@ export adjoint
 export norm
 
 export BlockCirculantMatrix
-export NONCompression, HssCompression
+export NONCompression, HssCompression, HodlrCompression
 export pauli
 export matrix
 export compression

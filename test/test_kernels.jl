@@ -20,7 +20,7 @@ end
 
 @testitem "Kernel creation and accessor" begin
     using LinearAlgebra
-    for compressionMethod in (NONCompression(), HssCompression())
+    for compressionMethod in (NONCompression(), HssCompression(), HodlrCompression())
         for T = [Float32, Float64, ComplexF64]
             bs, N, Dt = 2, 128, 2.0
             ax = LinRange(-Dt / 2, Dt, N)
@@ -53,7 +53,7 @@ end
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
         foo_st(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
         foo_st(x, y) = foo_st(x - y)
-        for cpr in (NONCompression(), HssCompression())
+        for cpr in (NONCompression(), HssCompression(),HodlrCompression())
             for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
                 GA = Kernel(ax, foo_st, compression=cpr, stationary=true)
                 compress!(GA)
@@ -78,10 +78,10 @@ end
             _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
             mask = _getMask(_causality)
             refMatrix = [f(x) * g(y) * mask(x, y) for x in ax, y in ax]
-            for cpr in (NONCompression(), HssCompression())
+            for cpr in (NONCompression(), HssCompression(), HodlrCompression())
                 GA = discretize_lowrank_kernel(TrapzDiscretisation, _causality, ax, f, g, compression=cpr)
                 compress!(GA)
-                @test matrix(GA) - refMatrix |> norm < tol * N^2
+                @test matrix(GA)[:,:] - refMatrix |> norm < tol * N^2
                 @test _causality() == causality(GA)
             end
         end
@@ -97,7 +97,7 @@ end
         foo(x, y) = T <: Complex ? T.(1im .* x + y) : T.(x + y)
         foo_st(x) = T <: Complex ? T.(1im * x) : T.(x)
         foo_st(x, y) = foo_st(x - y)
-        for cpr in (NONCompression(), HssCompression())
+        for cpr in (HodlrCompression(), NONCompression(), HssCompression())
             for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
                 GA = Kernel(ax, foo_st, compression=cpr, stationary=true)
                 compress!(GA)
@@ -164,7 +164,7 @@ end
 @testitem "kernel adjoint" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
-        for cpr in (HssCompression(), NONCompression())
+        for cpr in (HssCompression(), NONCompression(), HodlrCompression())
             for kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
                 bs, N, Dt = 2, 128, 2.0
                 ax = LinRange(-Dt / 2, Dt, N)
@@ -181,7 +181,7 @@ end
 @testitem "kernel scaling" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
-        for cpr in (HssCompression(), NONCompression())
+        for cpr in (HssCompression(), NONCompression(), HodlrCompression())
             for kernel_creator in (RetardedKernel, AdvancedKernel, AcausalKernel)
                 bs, N, Dt = 2, 128, 2.0
                 ax = LinRange(-Dt / 2, Dt, N)

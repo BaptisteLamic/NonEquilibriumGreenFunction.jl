@@ -1,4 +1,4 @@
-import Base: size, eltype, *, view, inv
+import Base: size, eltype, *, view, inv, get_index
 export build_hodlr
 export full
 
@@ -154,6 +154,22 @@ function eltype(::HodlrTree{M}) where M
     return eltype(M)
 end
 
+function getindex(Hodlr::LeafHodlr, i, j)
+    return Hodlr.data[i, j]
+end
+function getindex(Hodlr::NodeHodlr, i, j)
+    nA1, nA2 = size(Hodlr.A)
+    if i <= nA1 && j <= nA2
+        return getindex(Hodlr.A, i, j)
+    elseif i > nA1 && j > nA2
+        return getindex(Hodlr.B, i - nA1, j - nA2)
+    elseif i <= nA1 && j > nA2
+        return full(view(Hodlr.upper_offdiag, i, j - nA2))
+    else
+        return full(view(Hodlr.lower_offdiag, i - nA1, j))
+    end
+end
+
 function full(Hodlr::LeafHodlr{M}) where M
     return Hodlr.data
 end
@@ -249,6 +265,14 @@ function _multiply_hodlr(left::NodeHodlr, right::NodeHodlr)
     return NodeHodlr(new_A, new_B, new_upper_offdiag, new_lower_offdiag)
 end
 
+function (*)(left::Number, right::NodeHodlr)
+    return NodeHodlr(left*right.A, left*right.B, left*right.upper_offdiag, left*right.lower_offdiag,right.settings)
+end
+function (*)(left::Number, right::LeafHodlr)
+    return LeafHodlr(left*right.data, right.settings)
+end
+
+
 function _throw_error_if_incompatible_size(left, right)
     if size(left, 2) != size(right, 1)
         throw(DimensionMismatch("Non compatible dimensions for multiplication : left has size $(size(left)) and right has size $(size(right))."))
@@ -281,6 +305,29 @@ function (+)(left::LeafHodlr, right::LeafHodlr)
     settings = combine_settings(left.settings, right.settings)
     return LeafHodlr(full(left) + full(right),settings)
 end
+
+function (-)(A::LeafHodlr, B::LowRankBlock)
+    return LeafHodlr(full(A) - full(B),A.settings)
+end
+function (-)(A::LowRankBlock, B::LeafHodlr)
+    return LeafHodlr(full(A) - full(B),B.settings)
+end
+function (-)(A::NodeHodlr, B::LowRankBlock)
+    #TODO : to improve
+    return A - build_hodlr(B, A.settings)
+end
+function (-)(A::LowRankBlock, B::NodeHodlr)
+    return build_hodlr(A, B.settings) - B
+end
+function (-)(left::NodeHodlr, right::NodeHodlr)
+    #TODO : to improve
+    return NodeHodlr(left.A - right.A, left.B - right.B, left.upper_offdiag - right.upper_offdiag, left.lower_offdiag - right.lower_offdiag)
+end
+function (-)(left::LeafHodlr, right::LeafHodlr)
+    settings = combine_settings(left.settings, right.settings)
+    return LeafHodlr(full(left) + full(right),settings)
+end
+
 function is_block_upper_triangular(::NodeHodlr)
     return true
 end

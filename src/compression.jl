@@ -120,10 +120,11 @@ end
 function HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
     HssCompression(atol, rtol, kest, leafsize)
 end
-struct HodlrCompression <: AbstractCompression
-    tol::Real
-    leafsize::Int
+@kwdef struct HodlrCompression <: AbstractCompression
+    tol::Real=1E-4
+    leafsize::Int=32
 end
+
 struct NONCompression <: AbstractCompression end
 
 
