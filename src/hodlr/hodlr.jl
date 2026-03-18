@@ -41,6 +41,7 @@ getindex(A::Hodlr, I::Vararg{Int, 2}) = getindex(A.tree, I...)
 (*)(A::Hodlr, B::Array) = Hodlr(A.tree * B)
 (*)(A::Array, B::Hodlr) = Hodlr(A * B.tree)
 (*)(A::Number, B::Hodlr) = Hodlr(A * B.tree)
+(*)(A::Hodlr, B::Number) = Hodlr(B * A.tree)
 
 (+)(A::Hodlr, B::Hodlr) = Hodlr(A.tree + B.tree)
 (+)(A::Hodlr, B::Array) = Hodlr(A.tree + B)

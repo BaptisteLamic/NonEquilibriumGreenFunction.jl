@@ -318,4 +318,5 @@ end
     norm(full(hodlr - hodlr)) < 1E-12 
     norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
     norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
+    norm(full(4*hodlr*hodlr  - (2*hodlr)*(2*hodlr)) ) < 1E-12 
 end

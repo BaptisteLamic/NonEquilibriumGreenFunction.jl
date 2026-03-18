@@ -165,7 +165,7 @@ function _is_nulloperator(matrix::AbstractMatrix)
 end
 function _is_nulloperator(kf::KernelFunction)
     #TODO improve that : Just get ride of the bug we are bypassing
-    I_s = rand(eachindex(kf), 10)
+    I_s = rand(eachindex(kf), 40)
     return norm(sum(kf[I_s])) < 1E-10
 end
 
@@ -198,6 +198,28 @@ function (*)(A::Union{AbstractMatrix,HodlrTree,AbstractVector}, B::ZeroBlock)
     new_eltype = promote_type(eltype(A),eltype(B))
     return zeros(new_eltype, size(A, 1), size(B, 2))
 end
-function (*)(a::Number, A::ZeroBlock)
-    return A
+function (*)(::Number, right::ZeroBlock)
+    return right
+end
+function (*)(left::ZeroBlock, ::Number)
+    return left
+end
+function (*)(left::ZeroBlock, right::Union{AbstractMatrix,HodlrTree})
+    return _mul_zero_block(left,right)
+end
+function (*)(left::Union{AbstractMatrix,HodlrTree}, right::ZeroBlock)
+    return _mul_zero_block(left,right)
+end
+function (*)(left::ZeroBlock, right::ZeroBlock)
+    return _mul_zero_block(left,right)
+end
+function (*)(left::ZeroBlock, right::LowRankBlock)
+    return _mul_zero_block(left,right)
+end
+function (*)(left::LowRankBlock, right::ZeroBlock)
+    return _mul_zero_block(left,right)
+end
+function _mul_zero_block(left,right)
+    T = promote_type(eltype(left),eltype(right))
+    return ZeroBlock{T}((size(left,1), size(right,2)))
 end
