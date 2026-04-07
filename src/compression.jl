@@ -181,7 +181,7 @@ function (compression::HodlrCompression)(axis, f, g)
     u = reshape(u, (n, bs))
     v = reshape(u, (n, bs))
     #TODO: that is not an SVD block 
-    return SvdBlock(u,diagm(ones(eltype(v),size(v,1))),adjoint(v))
+    return Holdr(SvdBlock(u,diagm(ones(eltype(v),size(v,1))),transpose(v)))
 end
 function (compression::HodlrCompression)(tab::HodlrCompression)
     #TODO: implement recompression for HODLR
