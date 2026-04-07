@@ -164,8 +164,6 @@ end
     @test norm(full(Hodlr) - Array(sparse_matrix)) < 1e-10
 end
 
-
-
 @testitem "Test Hodlr full" begin
     using LinearAlgebra
     dom = KernelDomain((0.0, 1.0), n_steps=512)
@@ -251,24 +249,27 @@ end
 
 @testitem "hodlr + LowRankBlock" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_1 = build_hodlr(low_rank_block_1, ctx)
-    low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    full_sum = full(hodlr_1) + full(low_rank_block_2)
-    hodlr_sum = full(hodlr_1 + low_rank_block_2)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    ctx = HodlrSettings()
+    hodlr = build_hodlr(kf, ctx)
+    k = 12
+    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, size(hodlr, 1), k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, size(hodlr, 2)))
+    full_sum = full(hodlr) + full(low_rank_block)
+    hodlr_sum = full(hodlr + low_rank_block)
     @test norm(full_sum - hodlr_sum) / norm(full_sum) < 10 * ctx.tol
 end
 
 @testitem "hodlr + hodlr" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_1 = build_hodlr(low_rank_block_1, ctx)
-    low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_2 = build_hodlr(low_rank_block_2, ctx)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf_1 = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    kf_2 = KernelFunction((x, y) -> [1 2; 1 1] .* sin(1im * (x - y)), dom)
+    hodlr_1 = build_hodlr(kf_1, ctx)
+    hodlr_2 = build_hodlr(kf_2, ctx)
+
     full_sum = full(hodlr_1) + full(hodlr_2)
     hodlr_sum = full(hodlr_1 + hodlr_2)
     @test norm(full_sum - hodlr_sum) / norm(full_sum) < 10 * ctx.tol
@@ -276,12 +277,13 @@ end
 
 @testitem "hodlr x hodlr" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block_1 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_1 = build_hodlr(low_rank_block_1, ctx)
-    low_rank_block_2 = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_2 = build_hodlr(low_rank_block_2, ctx)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf_1 = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    kf_2 = KernelFunction((x, y) -> [1 2; 1 1] .* sin(1im * (x - y)), dom)
+    hodlr_1 = build_hodlr(kf_1, ctx)
+    hodlr_2 = build_hodlr(kf_2, ctx)
+
     full_product = full(hodlr_1) * full(hodlr_2)
     hodlr_product = full(hodlr_1 * hodlr_2)
     @test norm(full_product - hodlr_product) / norm(full_product) < 10 * ctx.tol
@@ -289,32 +291,32 @@ end
 
 @testitem "build upper triangular hodlr" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_acausal = build_hodlr(low_rank_block, ctx)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    hodlr_acausal = build_hodlr(kf, ctx)
     hodlr_masked = NonEquilibriumGreenFunction.drop_lower_block_offdiagonal(hodlr_acausal)
-    hodlr_causal = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(low_rank_block, ctx)
-     @test norm(full(hodlr_masked) - full(hodlr_causal)) / norm(full(hodlr_masked)) < 10 * ctx.tol
+    hodlr_causal = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)
+    @test norm(full(hodlr_masked) - full(hodlr_causal)) / norm(full(hodlr_masked)) < 10 * ctx.tol
 end
 
 @testitem "inv(hodlr)" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(low_rank_block, ctx)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    hodlr = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)
     full_inv = inv(full(hodlr))
     norm(full(inv(hodlr)) - full_inv) / norm(full_inv) < 10 * ctx.tol
 end
 
 @testitem "holdr Arithmetics" begin
     using LinearAlgebra
-    n, k, m = 512, 12, 512
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    low_rank_block = NonEquilibriumGreenFunction.SvdBlock(randn(ComplexF64, n, k), Diagonal(randn(Float64, k)), randn(ComplexF64, k, m))
-    hodlr_tree = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(low_rank_block, ctx)
-    hodlr = Hodlr(hodlr_tree)
+    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
+    hodlr = build_hodlr(kf, ctx)
+    hodlr = hodlr + 1/2 * hodlr*hodlr + 1/6 * hodlr*hodlr*hodlr 
     norm(full(hodlr - hodlr)) < 1E-12 
     norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
     norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
