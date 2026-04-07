@@ -316,6 +316,12 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
     hodlr = build_hodlr(kf, ctx)
+ 
+    norm(full(hodlr - hodlr)) < 1E-12 
+    norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
+    norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
+    norm(full(4*hodlr*hodlr  - (2*hodlr)*(2*hodlr)) ) < 1E-12 
+    #Ensure to have a non trivial low rank structure to test the algebraic properties of the low rank blocks
     hodlr = hodlr + 1/2 * hodlr*hodlr + 1/6 * hodlr*hodlr*hodlr 
     norm(full(hodlr - hodlr)) < 1E-12 
     norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
