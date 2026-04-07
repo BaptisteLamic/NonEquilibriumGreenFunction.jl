@@ -52,14 +52,14 @@ end
 function view(A::SumBlock, i, j)
     return SumBlock(view(A.left, i, j), view(A.right, i, j))
 end
-function (*)(A::SumBlock, B::Union{AbstractMatrix,HodlrTree})
+function (*)(A::SumBlock, B::Union{AbstractMatrix,HodlrTree, LowRankBlock})
     return A.left * B + A.right * B
 end
-function (*)(A::Union{AbstractMatrix,HodlrTree}, B::SumBlock)
+function (*)(A::Union{AbstractMatrix,HodlrTree,LowRankBlock}, B::SumBlock)
     return A * B.left + A * B.right
 end
 function (*)(A::SumBlock, B::SumBlock)
-    full(A.left) * full(B.left) + full(A.left) * full(B.right) + full(A.right) * full(B.left) + full(A.right) * full(B.right)
+    A.left * B.left + A.left * B.right + A.right * B.left + A.right * B.right
 end
 function (*)(a::Number, A::SumBlock)
     return SumBlock(a * A.left, a * A.right)
