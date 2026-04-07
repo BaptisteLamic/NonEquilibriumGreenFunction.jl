@@ -325,7 +325,7 @@ function (-)(left::NodeHodlr, right::NodeHodlr)
 end
 function (-)(left::LeafHodlr, right::LeafHodlr)
     settings = combine_settings(left.settings, right.settings)
-    return LeafHodlr(full(left) + full(right),settings)
+    return LeafHodlr(full(left) - full(right),settings)
 end
 
 function is_block_upper_triangular(::NodeHodlr)

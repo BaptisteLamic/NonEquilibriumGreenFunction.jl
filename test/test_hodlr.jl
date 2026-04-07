@@ -322,7 +322,7 @@ end
     @test norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
     @test norm(full(4*hodlr*hodlr  - (2*hodlr)*(2*hodlr)) ) < 1E-12 
     #Ensure to have a non trivial low rank structure to test the algebraic properties of the low rank blocks
-    #hodlr = hodlr + 1/2 * hodlr*hodlr + 1/6 * hodlr*hodlr*hodlr 
+    hodlr = hodlr + 1/2 * hodlr*hodlr + 1/6 * hodlr*hodlr*hodlr 
     @test norm(full(hodlr - hodlr)) < 1E-12 
     @test norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
     @test norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
