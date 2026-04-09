@@ -54,8 +54,6 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
     if isleaf(row_partition) && isleaf(col_partition)
         return _construct_leaf(kf, row_partition, col_partition, settings)
     else
-        _xaxis = xaxis(kf.domain)
-        _yaxis = yaxis(kf.domain)
         upper_rows, lower_row = split_partition(row_partition)
         left_cols, right_cols = split_partition(col_partition)
         upper_offdiag_kernel = restrict_domain(kf,
@@ -185,14 +183,20 @@ function _full!(out, Hodlr::LeafHodlr)
     out[:, :] .= M
 end
 
-function _full!(out, Hodlr::NodeHodlr)
-    A, B, upper_offdiag, lower_offdiag = Hodlr.A, Hodlr.B, Hodlr.upper_offdiag, Hodlr.lower_offdiag
+function _full!(out, hodlr::NodeHodlr)
+    A, B, upper_offdiag, lower_offdiag = hodlr.A, hodlr.B, hodlr.upper_offdiag, hodlr.lower_offdiag
     nA1, nA2 = size(A)
-    nB1, nB2 = size(B)
     out_up = view(out, 1:nA1, 1:nA2)
-    out_down = view(out, nA1+1:nA1+nB1, nA2+1:nA2+nB2)
+    n1,n2 = size(out)
+    out_down = view(out, nA1+1:n1, nA2+1:n2)
     _full!(out_up, A)
     _full!(out_down, B)
+    @show size(upper_offdiag)
+    @show size(out[1:nA1, nA2+1:end])
+    @show size(lower_offdiag)
+    @show size(out[nA1+1:end, 1:nA2])
+    @show size(out)
+    @show size(hodlr)
     out[1:nA1, nA2+1:end] .= full(upper_offdiag)
     out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
 end

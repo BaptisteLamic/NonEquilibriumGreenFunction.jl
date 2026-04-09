@@ -151,7 +151,7 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     m = ones(2, 2)
     kf = KernelFunction((x, y) -> m .* exp(-abs2(x - y)), dom)
-    Hodlr = build_hodlr(kf, HodlrSettings(tol=1e-6, leafsize=size(kf, 1) ÷ 4 ))
+    Hodlr = build_hodlr(kf, HodlrSettings(tol=1e-6, leafsize=size(kf, 1) ÷ 4))
     @test size(Hodlr) == size(kf)
 end
 
@@ -277,16 +277,20 @@ end
 
 @testitem "hodlr x hodlr" begin
     using LinearAlgebra
-    ctx = HodlrSettings(tol=1E-8, leafsize=64)
-    dom = KernelDomain((0.0, 1.0), n_steps=512)
-    kf_1 = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
-    kf_2 = KernelFunction((x, y) -> [1 2; 1 1] .* sin(1im * (x - y)), dom)
-    hodlr_1 = build_hodlr(kf_1, ctx)
-    hodlr_2 = build_hodlr(kf_2, ctx)
+    for leaf_size in (4, 64)
+        for n_steps in (24, 512)
+            ctx = HodlrSettings(tol=1E-8, leafsize=leaf_size)
+            dom = KernelDomain((0.0, 1.0), n_steps=n_steps)
+            kf_1 = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+            kf_2 = KernelFunction((x, y) -> [1 2; 1 1] .* sin(1im * (x - y)), dom)
+            hodlr_1 = build_hodlr(kf_1, ctx)
+            hodlr_2 = build_hodlr(kf_2, ctx)
 
-    full_product = full(hodlr_1) * full(hodlr_2)
-    hodlr_product = full(hodlr_1 * hodlr_2)
-    @test norm(full_product - hodlr_product) / norm(full_product) < 10 * ctx.tol
+            full_product = full(hodlr_1) * full(hodlr_2)
+            hodlr_product = full(hodlr_1 * hodlr_2)
+            @test norm(full_product - hodlr_product) / norm(full_product) < 10 * ctx.tol
+        end
+    end
 end
 
 @testitem "build upper triangular hodlr" begin
@@ -305,11 +309,12 @@ end
 
 @testitem "inv(hodlr)" begin
     using LinearAlgebra
-    ctx = HodlrSettings(tol=1E-8, leafsize=512)
-    dom = KernelDomain((0.0, 1.0), n_steps=512)
+    ctx = HodlrSettings(tol=1E-8, leafsize=2)
+    dom = KernelDomain((0.0, 1.0), n_steps=12)
     kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
     hodlr = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)
     full_inv = inv(full(hodlr))
+    @show rank(full(hodlr))
     @test norm(full(inv(hodlr)) - full_inv) / norm(full_inv) < 10 * ctx.tol
 end
 
@@ -319,15 +324,15 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
     hodlr = build_hodlr(kf, ctx)
- 
-    @test norm(full(hodlr - hodlr)) < 1E-12 
-    @test norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
-    @test norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
-    @test norm(full(4*hodlr*hodlr  - (2*hodlr)*(2*hodlr)) ) < 1E-12 
+
+    @test norm(full(hodlr - hodlr)) < 1E-12
+    @test norm(full(hodlr + hodlr - 2 * hodlr)) < 1E-12
+    @test norm(full(2 * hodlr - hodlr - hodlr)) < 1E-12
+    @test norm(full(4 * hodlr * hodlr - (2 * hodlr) * (2 * hodlr))) < 1E-12
     #Ensure to have a non trivial low rank structure to test the algebraic properties of the low rank blocks
-    hodlr = hodlr + 1/2 * hodlr*hodlr + 1/6 * hodlr*hodlr*hodlr 
-    @test norm(full(hodlr - hodlr)) < 1E-12 
-    @test norm(full(hodlr + hodlr - 2*hodlr) ) < 1E-12 
-    @test norm(full(2*hodlr  - hodlr - hodlr) ) < 1E-12 
-    @test norm(full(4*hodlr*hodlr  - (2*hodlr)*(2*hodlr)) ) < 1E-12 
+    hodlr = hodlr + 1 / 2 * hodlr * hodlr + 1 / 6 * hodlr * hodlr * hodlr
+    @test norm(full(hodlr - hodlr)) < 1E-12
+    @test norm(full(hodlr + hodlr - 2 * hodlr)) < 1E-12
+    @test norm(full(2 * hodlr - hodlr - hodlr)) < 1E-12
+    @test norm(full(4 * hodlr * hodlr - (2 * hodlr) * (2 * hodlr))) < 1E-12
 end

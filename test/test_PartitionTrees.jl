@@ -18,3 +18,14 @@ end
     @test NonEquilibriumGreenFunction.isleaf(build_partition(1, 1))
     @test !NonEquilibriumGreenFunction.isleaf(build_partition(1:2, 1))
 end
+
+@testitem "Test PartitionTree properly make a partition of the domain" begin
+    import NonEquilibriumGreenFunction: build_partition, PartitionTree, collect_leaf_data
+    for leaf_size in 1:12
+        for n in 1:12
+            partition_tree = build_partition(1:n, leaf_size)
+            all_indices = collect_leaf_data(partition_tree.tree)
+            @test all_indices == collect(1:n)
+        end
+    end
+end

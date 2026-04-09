@@ -19,6 +19,13 @@ function childrens(node::BinaryTree.Type)
     end
 end
 
+function collect_leaf_data(node::BinaryTree.Type)
+     @match node begin
+        BinaryTree.Leaf(data) => data
+        BinaryTree.Node(_, left, right) => [collect_leaf_data(left); collect_leaf_data(right)]
+    end
+end
+
 struct PartitionTree
     tree :: BinaryTree.Type{UnitRange{Int}}
 end
