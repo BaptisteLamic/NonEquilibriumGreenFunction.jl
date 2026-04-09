@@ -295,14 +295,17 @@ end
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
     hodlr_acausal = build_hodlr(kf, ctx)
+    @test !NonEquilibriumGreenFunction.is_block_upper_triangular(hodlr_acausal)
     hodlr_masked = NonEquilibriumGreenFunction.drop_lower_block_offdiagonal(hodlr_acausal)
+    @test NonEquilibriumGreenFunction.is_block_upper_triangular(hodlr_masked)
     hodlr_causal = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)
+    @test NonEquilibriumGreenFunction.is_block_upper_triangular(hodlr_causal)
     @test norm(full(hodlr_masked) - full(hodlr_causal)) / norm(full(hodlr_masked)) < 10 * ctx.tol
 end
 
 @testitem "inv(hodlr)" begin
     using LinearAlgebra
-    ctx = HodlrSettings(tol=1E-8, leafsize=64)
+    ctx = HodlrSettings(tol=1E-8, leafsize=512)
     dom = KernelDomain((0.0, 1.0), n_steps=512)
     kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
     hodlr = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)

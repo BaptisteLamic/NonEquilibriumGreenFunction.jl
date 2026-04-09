@@ -328,7 +328,7 @@ function (-)(left::LeafHodlr, right::LeafHodlr)
     return LeafHodlr(full(left) - full(right),settings)
 end
 
-function is_block_upper_triangular(::NodeHodlr)
+function is_block_upper_triangular(::LeafHodlr)
     return true
 end
 function is_block_upper_triangular(tree::HodlrTree)
@@ -340,7 +340,7 @@ function inv(matrix::HodlrTree)
 end
 function inv_hodlr(tree::NodeHodlr)
     if is_block_upper_triangular(tree)
-        return inv_upper_triangular_holdr(tree)
+        return inv_upper_triangular_hodlr(tree)
     else
         throw(DomainError("Support only inversion of upper block triangular matrix"))
     end
@@ -348,11 +348,11 @@ end
 function inv_hodlr(leaf::LeafHodlr)
     return LeafHodlr(inv(leaf.data),leaf.settings)
 end
-function inv_upper_triangular_hodlr(tree::HodlrTree)
+function inv_upper_triangular_hodlr(tree::NodeHodlr)
     Ainv = inv_hodlr(tree.A)
     Binv = inv_hodlr(tree.B)
     upper_off_block = -Ainv * tree.upper_offdiag * Binv
-    return NodeHodlr(Ainv, Binv, upper_off_block, ZeroBlock{eltype(tree)}(size(tree.lower_offdiag)))
+    return NodeHodlr(Ainv, Binv, upper_off_block, ZeroBlock{eltype(tree.lower_offdiag)}(size(tree.lower_offdiag)))
 end
 function drop_lower_block_offdiagonal(tree::NodeHodlr)
     return NodeHodlr(drop_lower_block_offdiagonal(tree.A), drop_lower_block_offdiagonal(tree.B), tree.upper_offdiag, ZeroBlock{eltype(tree)}(
