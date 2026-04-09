@@ -340,7 +340,7 @@ function inv(matrix::HodlrTree)
 end
 function inv_hodlr(tree::NodeHodlr)
     if is_block_upper_triangular(tree)
-        inv_upper_triangular_holdr(tree)
+        return inv_upper_triangular_holdr(tree)
     else
         throw(DomainError("Support only inversion of upper block triangular matrix"))
     end
@@ -348,7 +348,7 @@ end
 function inv_hodlr(leaf::LeafHodlr)
     return LeafHodlr(inv(leaf.data),leaf.settings)
 end
-function inv_upper_triangular_holdr(tree::HodlrTree)
+function inv_upper_triangular_hodlr(tree::HodlrTree)
     Ainv = inv_hodlr(tree.A)
     Binv = inv_hodlr(tree.B)
     upper_off_block = -Ainv * tree.upper_offdiag * Binv

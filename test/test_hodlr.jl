@@ -304,7 +304,7 @@ end
     using LinearAlgebra
     ctx = HodlrSettings(tol=1E-8, leafsize=64)
     dom = KernelDomain((0.0, 1.0), n_steps=512)
-    kf = KernelFunction((x, y) -> [1 2; 1 1] .* exp(1im * (x - y)), dom)
+    kf = KernelFunction((x, y) -> [1 2; 3 4] .* exp(1im * (x - y)), dom)
     hodlr = NonEquilibriumGreenFunction.build_upper_triangular_hodlr(kf, ctx)
     full_inv = inv(full(hodlr))
     @test norm(full(inv(hodlr)) - full_inv) / norm(full_inv) < 10 * ctx.tol
