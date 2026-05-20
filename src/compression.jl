@@ -143,7 +143,7 @@ function (Compression::HssCompression)(axis, f, g)
     end
     n = length(axis) * bs
     u = reshape(u, (n, bs))
-    v = reshape(u, (n, bs))
+    v = reshape(v, (n, bs))
     cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
     return lowrank2hss(u, v, cc, cc)
 end
@@ -214,7 +214,7 @@ end
 
 function computeMatrixNorm(matrix::HssMatrix)
     norm2 = real(tr(matrix' * matrix))
-    if norm2 <= 0 
+    if norm2 <= 0
         return zero(norm2)
     else
         return sqrt(norm2)
