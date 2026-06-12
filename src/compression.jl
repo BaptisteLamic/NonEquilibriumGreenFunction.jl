@@ -44,8 +44,6 @@ function build_linearMap(axis, f; blk=512)
     getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]), :)
     getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
     getindex(::Colon, ::Colon) = getindex(1:N, 1:N)
-    getindex(i, ::Colon) = getindex(i, 1:size(hssA, 2))
-    getindex(::Colon, j) = getindex(1:size(hssA, 1), j)
 
     function _getindex!(r, I, J)
         #Assume that indices are sorted
