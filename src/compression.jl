@@ -266,3 +266,33 @@ end
         @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
     end
 end
+
+@testitem "Low-rank kernel HSS compression correctness" begin
+    using LinearAlgebra
+    N, Dt, bs = 8, 1.0, 2
+    ax = LinRange(0, Dt, N)
+    for T in [Float64, ComplexF64, ComplexF32]
+        for causality in (Retarded, Advanced, Acausal)
+            tol = 100 * max(1E-12, eps(real(T)))
+            f(x) = T.([x 0; 0 x])
+            g(x) = T.([x^2 0; 0 x^2])
+            K = discretize_lowrank_kernel(
+                TrapzDiscretisation,
+                causality,
+                ax,
+                f,
+                g;
+                compression=HssCompression(atol=1e-12, rtol=1e-12)
+            )
+            _getMask(::Type{Acausal}) = (i, j) -> T(true)
+            _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
+            _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
+            mask = _getMask(causality)
+            K_ref = zeros(eltype(matrix(K)), N * bs, N * bs)
+            for i in 1:N, j in 1:N
+                K_ref[blockrange(i, bs), blockrange(j, bs)] .= f(ax[i]) * g(ax[j]) * mask(i, j)
+            end
+            @test norm(matrix(K) - K_ref) < tol
+        end
+    end
+end
