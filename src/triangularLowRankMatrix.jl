@@ -6,54 +6,100 @@ struct BlockTriangularLowRankMatrix{T} <: AbstractMatrix{T}
 end
 
 function BlockTriangularLowRankMatrix(u::AbstractArray{T,3}, v::AbstractArray{T,3}, causality) where {T}
-    @assert size(u, 1) == size(u, 2)
-    @assert size(u) == size(v)
-    BlockTriangularLowRankMatrix{T}(u, v, causality)
+    @assert size(u, 1) == size(u, 2) "U blocks must be square matrices"
+    @assert size(u) == size(v) "U and V must have the same dimensions"
+    return BlockTriangularLowRankMatrix{T}(u, v, causality)
 end
 
 mask(::Retarded, x, y) = x >= y ? 1 : 0
 mask(::Advanced, x, y) = x <= y ? 1 : 0
 mask(::Acausal, x, y) = 1
 
-function getNumberOfBlocks(A::BlockTriangularLowRankMatrix)
-    return size(A.u, 3)
-end
-function blocksize(A::BlockTriangularLowRankMatrix)
-    return size(A.u, 1)
-end
+"""
+    getNumberOfBlocks(A::BlockTriangularLowRankMatrix)
 
-function size(A::BlockTriangularLowRankMatrix)
+Returns the number of blocks in the matrix.
+"""
+@inline getNumberOfBlocks(A::BlockTriangularLowRankMatrix) = size(A.u, 3)
+
+"""
+    blocksize(A::BlockTriangularLowRankMatrix)
+
+Returns the size of each block.
+"""
+@inline blocksize(A::BlockTriangularLowRankMatrix) = size(A.u, 1)
+
+"""
+    size(A::BlockTriangularLowRankMatrix)
+
+Returns the size of the full matrix as a tuple (n, n).
+"""
+@inline function size(A::BlockTriangularLowRankMatrix)
     n = getNumberOfBlocks(A) * blocksize(A)
     return (n, n)
 end
-function getindex(A::BlockTriangularLowRankMatrix, I::Vararg{Int,2})
-    #TODO: optimize for multi entries requests
+
+"""
+    getindex(A::BlockTriangularLowRankMatrix, i, j)
+
+Returns the element at position (i, j) in the triangular low-rank matrix.
+
+# Note
+This could be optimized for multi-entry requests.
+"""
+@inline function getindex(A::BlockTriangularLowRankMatrix, I::Vararg{Int,2})
     blck_i, s_i = blockindex(I[1], blocksize(A))
     blck_j, s_j = blockindex(I[2], blocksize(A))
     @views block = A.u[:, :, blck_i] * A.v[:, :, blck_j]
     return mask(A.causality, blck_i, blck_j) .* block[s_i, s_j]
 end
 
+"""
+    _mul(A::BlockTriangularLowRankMatrix{T}, x::AbstractArray{T,2}) where {T}
+
+Matrix-vector multiplication for BlockTriangularLowRankMatrix.
+"""
 function _mul(A::BlockTriangularLowRankMatrix{T}, x::AbstractArray{T,2}) where {T}
     r = similar(x)
     _mul!(r, A, x)
     return r
 end
 
+"""
+    _cmul(A::BlockTriangularLowRankMatrix{T}, x::AbstractArray{T,2}) where {T}
+
+Adjoint matrix-vector multiplication for BlockTriangularLowRankMatrix.
+"""
 function _cmul(A::BlockTriangularLowRankMatrix{T}, x::AbstractArray{T,2}) where {T}
     r = similar(x)
     _cmul!(r, A, x)
     return r
 end
 
-function _mul!(r, A, x) 
+"""
+    _mul!(r, A::BlockTriangularLowRankMatrix, x)
+
+In-place matrix-vector multiplication. Dispatches to causality-specific implementation.
+"""
+@inline function _mul!(r, A, x) 
     return aux_mul!(r, A, x, A.causality)
 end
-function _cmul!(r, A, x) 
+
+"""
+    _cmul!(r, A::BlockTriangularLowRankMatrix, x)
+
+In-place adjoint matrix-vector multiplication. Dispatches to causality-specific implementation.
+"""
+@inline function _cmul!(r, A, x) 
     return aux_cmul!(r, A, x, A.causality)
 end
 
-function aux_mul!(r, A, x, ::Acausal)
+"""
+    aux_mul!(r, A::BlockTriangularLowRankMatrix, x, ::Acausal)
+
+Acausal matrix-vector multiplication: A * x = U * (sum(V_k * x_k)) for all blocks k.
+"""
+@inline function aux_mul!(r, A, x, ::Acausal)
     b = zeros(eltype(x), blocksize(A), size(x, 2))
     for k = 1:getNumberOfBlocks(A)
         @views b += A.v[:, :, k] * x[blockrange(k, blocksize(A)), :]
@@ -63,33 +109,49 @@ function aux_mul!(r, A, x, ::Acausal)
     end
     return r
 end
-function aux_mul!(r, A, x, ::Retarded)
-    b = zeros(eltype(x), blocksize(A), size(x, 2), getNumberOfBlocks(A))
-    b[:, :, 1] += A.v[:, :, 1] * x[blockrange(1, blocksize(A)), :]
+
+"""
+    aux_mul!(r, A::BlockTriangularLowRankMatrix, x, ::Retarded)
+
+Retarded matrix-vector multiplication: lower triangular, accumulates from top to bottom.
+"""
+@inline function aux_mul!(r, A, x, ::Retarded)
     nblocks = getNumberOfBlocks(A)
+    b = zeros(eltype(x), blocksize(A), size(x, 2), nblocks)
+    @views b[:, :, 1] = A.v[:, :, 1] * x[blockrange(1, blocksize(A)), :]
     for k = 2:nblocks
-        @views b[:, :, k] += b[:, :, k-1] + A.v[:, :, k] * x[blockrange(k, blocksize(A)), :]
+        @views b[:, :, k] = b[:, :, k-1] + A.v[:, :, k] * x[blockrange(k, blocksize(A)), :]
     end
-    for k = 1:getNumberOfBlocks(A)
+    for k = 1:nblocks
         @views r[blockrange(k, blocksize(A)), :] = A.u[:, :, k] * b[:, :, k]
     end
     return r
 end
 
-function aux_mul!(r, A, x, ::Advanced)
-    b = zeros(eltype(x), blocksize(A), size(x, 2), getNumberOfBlocks(A))
+"""
+    aux_mul!(r, A::BlockTriangularLowRankMatrix, x, ::Advanced)
+
+Advanced matrix-vector multiplication: upper triangular, accumulates from bottom to top.
+"""
+@inline function aux_mul!(r, A, x, ::Advanced)
     nblocks = getNumberOfBlocks(A)
-    b[:, :, end] += A.v[:, :, end] * x[blockrange(nblocks, blocksize(A)), :]
+    b = zeros(eltype(x), blocksize(A), size(x, 2), nblocks)
+    @views b[:, :, end] = A.v[:, :, end] * x[blockrange(nblocks, blocksize(A)), :]
     for k = nblocks-1:-1:1
-        @views b[:, :, k] += b[:, :, k+1] + A.v[:, :, k] * x[blockrange(k, blocksize(A)), :]
+        @views b[:, :, k] = b[:, :, k+1] + A.v[:, :, k] * x[blockrange(k, blocksize(A)), :]
     end
-    for k = 1:getNumberOfBlocks(A)
+    for k = 1:nblocks
         @views r[blockrange(k, blocksize(A)), :] = A.u[:, :, k] * b[:, :, k]
     end
     return r
 end
 
-function aux_cmul!(r, A, x, ::Acausal)
+"""
+    aux_cmul!(r, A::BlockTriangularLowRankMatrix, x, ::Acausal)
+
+Acausal adjoint multiplication: A' * x = V' * (sum(U_k' * x_k)) for all blocks k.
+"""
+@inline function aux_cmul!(r, A, x, ::Acausal)
     b = zeros(eltype(x), blocksize(A), size(x, 2))
     for k = 1:getNumberOfBlocks(A)
         @views b += A.u[:, :, k]' * x[blockrange(k, blocksize(A)), :]
@@ -99,26 +161,38 @@ function aux_cmul!(r, A, x, ::Acausal)
     end
     return r
 end
-function aux_cmul!(r, A, x, ::Retarded)
-    b = zeros(eltype(x), blocksize(A), size(x, 2), getNumberOfBlocks(A))
+
+"""
+    aux_cmul!(r, A::BlockTriangularLowRankMatrix, x, ::Retarded)
+
+Retarded adjoint multiplication: accumulates from bottom to top.
+"""
+@inline function aux_cmul!(r, A, x, ::Retarded)
     nblocks = getNumberOfBlocks(A)
-    b[:, :, end] += A.u[:, :, end]' * x[blockrange(nblocks, blocksize(A)), :]
+    b = zeros(eltype(x), blocksize(A), size(x, 2), nblocks)
+    @views b[:, :, end] = A.u[:, :, end]' * x[blockrange(nblocks, blocksize(A)), :]
     for k = nblocks-1:-1:1
-        @views b[:, :, k] += b[:, :, k+1] + A.u[:, :, k]' * x[blockrange(k, blocksize(A)), :]
+        @views b[:, :, k] = b[:, :, k+1] + A.u[:, :, k]' * x[blockrange(k, blocksize(A)), :]
     end
-    Threads.@threads for k = 1:getNumberOfBlocks(A)
+    Threads.@threads for k = 1:nblocks
         @views r[blockrange(k, blocksize(A)), :] = A.v[:, :, k]' * b[:, :, k]
     end
     return r
 end
-function aux_cmul!(r, A, x, ::Advanced)
-    b = zeros(eltype(x), blocksize(A), size(x, 2), getNumberOfBlocks(A))
-    b[:, :, 1] += A.u[:, :, 1]' * x[blockrange(1, blocksize(A)), :]
+
+"""
+    aux_cmul!(r, A::BlockTriangularLowRankMatrix, x, ::Advanced)
+
+Advanced adjoint multiplication: accumulates from top to bottom.
+"""
+@inline function aux_cmul!(r, A, x, ::Advanced)
     nblocks = getNumberOfBlocks(A)
+    b = zeros(eltype(x), blocksize(A), size(x, 2), nblocks)
+    @views b[:, :, 1] = A.u[:, :, 1]' * x[blockrange(1, blocksize(A)), :]
     for k = 2:nblocks
-        @views b[:, :, k] += b[:, :, k-1] + A.u[:, :, k]' * x[blockrange(k, blocksize(A)), :]
+        @views b[:, :, k] = b[:, :, k-1] + A.u[:, :, k]' * x[blockrange(k, blocksize(A)), :]
     end
-    Threads.@threads for k = 1:getNumberOfBlocks(A)
+    Threads.@threads for k = 1:nblocks
         @views r[blockrange(k, blocksize(A)), :] = A.v[:, :, k]' * b[:, :, k]
     end
     return r
