@@ -4,7 +4,7 @@ function build_CirculantlinearMap(ax0, f)
     T = eltype(f00)
     bs = size(f00, 1)
     N = length(ax0)
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     ax = (1-N:N-1) * step(ax0)
     #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
@@ -12,40 +12,35 @@ function build_CirculantlinearMap(ax0, f)
     Threads.@threads for i = 1:length(ax)
         m[:, :, i] .= f(ax[i], 0)
     end
-    A = BlockCirculantMatrix(m)
-    return build_CirculantlinearMap(A::BlockCirculantMatrix)
+    return build_linearMap(BlockCirculantMatrix(m))
 end
 
-function build_CirculantlinearMap(A::BlockCirculantMatrix)
+function build_linearMap(A::AbstractMatrix)
+    T = eltype(A)
     my_mul!(y, _, x) = _mul!(y, A, x)
     my_cmul!(y, _, x) = _cmul!(y, A, x)
     my_getindex(I, J) = getindex(A, I, J)
-    lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
-    return lm
+    return LinearMap{T}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
 end
-function build_triangularLowRankMap(A::BlockTriangularLowRankMatrix)
-    my_mul!(y, _, x) = _mul!(y, A, x)
-    my_cmul!(y, _, x) = _cmul!(y, A, x)
-    my_getindex(I, J) = getindex(A, I, J)
-    lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
-    return lm
-end
+
+build_CirculantlinearMap(A::BlockCirculantMatrix) = build_linearMap(A)
+build_triangularLowRankMap(A::BlockTriangularLowRankMatrix) = build_linearMap(A)
 
 function build_linearMap(axis, f; blk=512)
     f00 = f(axis[1], axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     T = eltype(f00)
     bs = size(f00, 1)
     N = length(axis) * bs
 
-    #borrowed from HssMatrices
-    getindex(i::Int, j::Int) = getindex([i], [j])[1]
-    getindex(i::Int, j::AbstractRange) = reshape(getindex([i], j), :)
-    getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]), :)
-    getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
-    getindex(::Colon, ::Colon) = getindex(1:N, 1:N)
+    # Type-stable getindex implementations (borrowed from HssMatrices)
+    @inline getindex(i::Int, j::Int) = getindex([i], [j])[1]
+    @inline getindex(i::Int, j::AbstractRange) = reshape(getindex([i], j), :)
+    @inline getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]), :)
+    @inline getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
+    @inline getindex(::Colon, ::Colon) = getindex(1:N, 1:N)
 
-    function _getindex!(r, I, J)
+    @inline function _getindex!(r, I, J)
         #Assume that indices are sorted
         _bI, sI = blockindex(I, bs)
         _bJ, sJ = blockindex(J, bs)
@@ -53,8 +48,8 @@ function build_linearMap(axis, f; blk=512)
         bJ, bJ_count = rle(_bJ)
         offset_I = cumsum(bI_count)
         offset_J = cumsum(bJ_count)
-        Threads.@threads for idx_bj in 1:length(bJ)
-            for idx_bi in 1:length(bI)
+        Threads.@threads for idx_bj in eachindex(bJ)
+            for idx_bi in eachindex(bI)
                 blck = f(axis[bI[idx_bi]], axis[bJ[idx_bj]])
                 for j = offset_J[idx_bj]+1-bJ_count[idx_bj]:offset_J[idx_bj]
                     for i = offset_I[idx_bi]+1-bI_count[idx_bi]:offset_I[idx_bi]
@@ -66,7 +61,7 @@ function build_linearMap(axis, f; blk=512)
         return r
     end
 
-    function getindex(I::Vector{Int}, J::Vector{Int})
+    @inline function getindex(I::Vector{Int}, J::Vector{Int})
         r = Matrix{T}(undef, length(I), length(J))
         Ip = sortperm(I)
         Jp = sortperm(J)
@@ -76,7 +71,7 @@ function build_linearMap(axis, f; blk=512)
         return _getindex!(r, I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 
-    function _mul!(y, _, x)
+    @inline function _mul!(y, _, x)
         op = Matrix{T}(undef, min(blk, N), N)
         for p = 1:div(N, blk)
             _getindex!(op, (p-1)*blk+1:p*blk, 1:N)
@@ -91,7 +86,7 @@ function build_linearMap(axis, f; blk=512)
         return y
     end
 
-    function _cmul!(y, _, x)
+    @inline function _cmul!(y, _, x)
         op = Matrix{T}(undef, N, min(blk, N))
         for p = 1:div(N, blk)
             _getindex!(op, 1:N, (p-1)*blk+1:p*blk)
@@ -124,8 +119,10 @@ struct NONCompression <: AbstractCompression end
 
 
 function (Compression::HssCompression)(axis, f; stationary=false)
+    f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     lm = stationary ? build_CirculantlinearMap(axis, f) : build_linearMap(axis, f)
-    bs = size(f(axis[1], axis[1]), 1)
+    bs = size(f00, 1)
     cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest, leafsize=Compression.leafsize)
     return r
@@ -145,6 +142,7 @@ end
 
 function (Compression::NONCompression)(axis, f; stationary=false)
     f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     bs = size(f00, 1)
     r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
     for it in 1:length(axis)
@@ -166,7 +164,7 @@ end
 
 function triangularLowRankCompression(compression::AbstractCompression, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
     fg(t, tp) = f(t) * g(tp)
     _mask(::Retarded) = (x, y) -> x >= y ? fg(x, y) : zero(f00)
     _mask(::Advanced) = (x, y) -> x <= y ? fg(x, y) : zero(f00)
@@ -177,7 +175,7 @@ end
 
 function triangularLowRankCompression(compression::HssCompression, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
     blocksize = size(f00, 1)
     u = zeros(eltype(f00), blocksize, blocksize, length(axis))
     v = zeros(eltype(f00), blocksize, blocksize, length(axis))
