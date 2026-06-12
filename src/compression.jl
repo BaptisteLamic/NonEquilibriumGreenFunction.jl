@@ -132,21 +132,7 @@ function (Compression::HssCompression)(axis, f; stationary=false)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest, leafsize=Compression.leafsize)
     return r
 end
-function (Compression::HssCompression)(axis, f, g)
-    f00 = f(axis[1])
-    T, bs = eltype(f00), size(f00, 1)
-    u = Array{T}(undef, (bs, bs, length(axis)))
-    v = Array{T}(undef, (bs, bs, length(axis)))
-    for k in 1:length(axis)
-        u[:, :, k] .= f(axis[k])
-        v[:, :, k] .= g(axis[k])
-    end
-    n = length(axis) * bs
-    u = reshape(u, (n, bs))
-    v = reshape(u, (n, bs))
-    cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
-    return lowrank2hss(u, v, cc, cc)
-end
+
 function (Compression::HssCompression)(tab::HssMatrix)
     return recompress!(tab, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
 end
@@ -214,7 +200,7 @@ end
 
 function computeMatrixNorm(matrix::HssMatrix)
     norm2 = real(tr(matrix' * matrix))
-    if norm2 <= 0 
+    if norm2 <= 0
         return zero(norm2)
     else
         return sqrt(norm2)
@@ -264,5 +250,35 @@ end
         hssA = hss(A, atol=tol / 100, rtol=tol / 100)
         @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
         @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
+    end
+end
+
+@testitem "Low-rank kernel HSS compression correctness" begin
+    using LinearAlgebra
+    N, Dt, bs = 8, 1.0, 2
+    ax = LinRange(0, Dt, N)
+    for T in [Float64, ComplexF64, ComplexF32]
+        for causality in (Retarded, Advanced, Acausal)
+            tol = 100 * max(1E-12, eps(real(T)))
+            f(x) = T.([x 0; 0 x])
+            g(x) = T.([x^2 0; 0 x^2])
+            K = discretize_lowrank_kernel(
+                TrapzDiscretisation,
+                causality,
+                ax,
+                f,
+                g;
+                compression=HssCompression(atol=1e-12, rtol=1e-12)
+            )
+            _getMask(::Type{Acausal}) = (i, j) -> T(true)
+            _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
+            _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
+            mask = _getMask(causality)
+            K_ref = zeros(eltype(matrix(K)), N * bs, N * bs)
+            for i in 1:N, j in 1:N
+                K_ref[blockrange(i, bs), blockrange(j, bs)] .= f(ax[i]) * g(ax[j]) * mask(i, j)
+            end
+            @test norm(matrix(K) - K_ref) < tol
+        end
     end
 end
