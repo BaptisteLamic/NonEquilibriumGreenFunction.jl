@@ -1,6 +1,6 @@
 module NonEquilibriumGreenFunction
 
-using NNlib: similar, batched_mul, batched_adjoint
+using NNlib: batched_mul, batched_adjoint
 using HssMatrices
 using SparseArrays
 using LinearAlgebra
@@ -13,7 +13,7 @@ import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
 import Base: sum
 import Base: ==
 import Base: getindex, step
-import Base: similar, zero
+import Base: zero
 import Base: convert, prod
 import LinearAlgebra.I
 import LinearAlgebra.diag
@@ -60,5 +60,6 @@ export matrix
 export compression
 export compress!
 export scalartype
+export make_similar
 
 end

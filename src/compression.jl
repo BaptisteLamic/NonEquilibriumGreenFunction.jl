@@ -9,7 +9,7 @@ function build_CirculantlinearMap(ax0, f)
     #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
     m = zeros(eltype(f00), bs, bs, length(ax))
-    Threads.@threads for i = 1:length(ax)
+    Threads.@threads for i in eachindex(ax)
         m[:, :, i] .= f(ax[i], 0)
     end
     return build_linearMap(BlockCirculantMatrix(m))
@@ -145,8 +145,8 @@ function (Compression::NONCompression)(axis, f; stationary=false)
     @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     bs = size(f00, 1)
     r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
-    for it in 1:length(axis)
-        for itp in 1:length(axis)
+    for it in eachindex(axis)
+        for itp in eachindex(axis)
             r[blockrange(it, bs), blockrange(itp, bs)] .= f(axis[it], axis[itp])
         end
     end

@@ -15,6 +15,19 @@ size(g::SimpleOperator) = g |> discretization |> size
 import Base: ==
 ==(A::SimpleOperator,B::SimpleOperator) = axis(A) == axis(B) && compression(A) == compression(B) && matrix(A) == matrix(B)
 
+# make_similar for SimpleOperator - creates a new operator with modified matrix
+function make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,UniformScaling})
+    new_dis = make_similar(discretization(op), new_matrix)
+    # Reconstruct the operator with the new discretization
+    # This works for SimpleOperator subtypes that have a similar constructor
+    return typeof(op)(new_dis)
+end
+
+function make_similar(op::SimpleOperator, new_compression::AbstractCompression)
+    new_dis = make_similar(discretization(op), matrix(op), compression = new_compression)
+    return typeof(op)(new_dis)
+end
+
 
 function compress!(discretization::AbstractDiscretisation)
     cpr = discretization |> compression
@@ -25,16 +38,14 @@ function compress!(op::SimpleOperator)
     op |> discretization |> compress!
     return op  
 end
-function similar(op::AbstractOperator, new_matrix_discretization::Union{AbstractMatrix,UniformScaling})
-    similar(op,similar(discretization(op),new_matrix_discretization))
-end
-function similar(op::AbstractOperator, compression::AbstractCompression)
-    similar(op,similar(discretization(op),matrix(op),compression = compression))
-end
+
+# make_similar for AbstractOperator - dispatch to type-specific implementations
+# These will be implemented for each concrete operator type (DiracOperator, Kernel, etc.)
+# No generic implementation here to avoid infinite recursion
 
 -(op::AbstractOperator) = -1 * op
 
-*(λ::Number, op::SimpleOperator) = similar(op, λ * matrix(op))
+*(λ::Number, op::SimpleOperator) = make_similar(op, λ * matrix(op))
 *(op::SimpleOperator, λ::Number) = λ * op
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
@@ -69,12 +80,12 @@ end
 discretization(op::DiracOperator) = op.discretization
 matrix(op::DiracOperator) = matrix(discretization(op))
 causality(::DiracOperator) = Instantaneous()
-function similar(::DiracOperator, new_discretization::AbstractDiscretisation)
+function make_similar(::DiracOperator, new_discretization::AbstractDiscretisation)
     DiracOperator(new_discretization)
 end
-*(left::DiracOperator, right::DiracOperator) = similar(left, matrix(left) * matrix(right))
-*(left::DiracOperator, right::SimpleOperator) = similar(right, matrix(left) * matrix(right))
-*(left::SimpleOperator, right::DiracOperator) = similar(left, matrix(left) * matrix(right))
+*(left::DiracOperator, right::DiracOperator) = make_similar(left, matrix(left) * matrix(right))
+*(left::DiracOperator, right::SimpleOperator) = make_similar(right, matrix(left) * matrix(right))
+*(left::SimpleOperator, right::DiracOperator) = make_similar(left, matrix(left) * matrix(right))
 adjoint(op::DiracOperator) = DiracOperator( discretization(op)' )
 
 struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
@@ -160,7 +171,7 @@ end
     cprA = HssCompression(atol = 1E-4,rtol = 1E-4)
     cprB = HssCompression(atol = 1E-6,rtol = 1E-6)
     kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=cprA)
-    kernelB = similar(kernelA, cprB)
+    kernelB = make_similar(kernelA, cprB)
     @test compression(kernelA) == cprA
     @test compression(kernelB) == cprB
     compress!(kernelB)

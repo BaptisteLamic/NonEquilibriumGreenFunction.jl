@@ -6,7 +6,7 @@
         A = randn(T, bs * N, bs * N)
         B = randn(T, bs * N, bs * N)
         dA = TrapzDiscretisation(ax, A, bs, NONCompression())
-        dB = similar(dA, B)
+        dB = make_similar(dA, B)
         @test matrix(dA) == A
         @test matrix(dB) == B
         @test axis(dA) == ax
