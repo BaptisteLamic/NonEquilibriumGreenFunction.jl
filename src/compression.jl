@@ -1,52 +1,56 @@
+"""
+    build_CirculantlinearMap(ax0, f)
 
+Build a circulant linear map from a function f evaluated on a shifted axis.
+"""
 function build_CirculantlinearMap(ax0, f)
     f00 = f(ax0[1], ax0[1])
-    T = eltype(f00)
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     bs = size(f00, 1)
-    N = length(ax0)
-    @assert size(f00, 1) == size(f00, 2)
-    ax = (1-N:N-1) * step(ax0)
-    #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
-
+    ax = (1-length(ax0):length(ax0)-1) * step(ax0)
     m = zeros(eltype(f00), bs, bs, length(ax))
     Threads.@threads for i in eachindex(ax)
         m[:, :, i] .= f(ax[i], 0)
     end
-    A = BlockCirculantMatrix(m)
-    return build_CirculantlinearMap(A::BlockCirculantMatrix)
+    return build_linearMap(BlockCirculantMatrix(m))
 end
 
-function build_CirculantlinearMap(A::BlockCirculantMatrix)
+"""
+    build_linearMap(A::AbstractMatrix)
+
+Build a LinearMap from an AbstractMatrix for use with HSS compression.
+"""
+function build_linearMap(A::AbstractMatrix)
+    T = eltype(A)
     my_mul!(y, _, x) = _mul!(y, A, x)
     my_cmul!(y, _, x) = _cmul!(y, A, x)
     my_getindex(I, J) = getindex(A, I, J)
-    lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
-    return lm
-end
-function build_triangularLowRankMap(A::BlockTriangularLowRankMatrix)
-    my_mul!(y, _, x) = _mul!(y, A, x)
-    my_cmul!(y, _, x) = _cmul!(y, A, x)
-    my_getindex(I, J) = getindex(A, I, J)
-    lm = LinearMap{eltype(A)}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
-    return lm
+    return LinearMap{T}(size(A, 1), size(A, 2), my_mul!, my_cmul!, my_getindex)
 end
 
+build_CirculantlinearMap(A::BlockCirculantMatrix) = build_linearMap(A)
+build_triangularLowRankMap(A::BlockTriangularLowRankMatrix) = build_linearMap(A)
+
+"""
+    build_linearMap(axis, f; blk=512)
+
+Build a LinearMap from a function f defined on an axis, suitable for HSS compression.
+"""
 function build_linearMap(axis, f; blk=512)
     f00 = f(axis[1], axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     T = eltype(f00)
     bs = size(f00, 1)
     N = length(axis) * bs
 
-    #borrowed from HssMatrices
-    getindex(i::Int, j::Int) = getindex([i], [j])[1]
-    getindex(i::Int, j::AbstractRange) = reshape(getindex([i], j), :)
-    getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]), :)
-    getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
-    getindex(::Colon, ::Colon) = getindex(1:N, 1:N)
+    # Type-stable getindex implementations (borrowed from HssMatrices)
+    @inline getindex(i::Int, j::Int) = getindex([i], [j])[1]
+    @inline getindex(i::Int, j::AbstractRange) = reshape(getindex([i], j), :)
+    @inline getindex(i::AbstractRange, j::Int) = reshape(getindex(i, [j]), :)
+    @inline getindex(i::AbstractRange, j::AbstractRange) = getindex(collect(i), collect(j))
+    @inline getindex(::Colon, ::Colon) = getindex(1:N, 1:N)
 
-    function _getindex!(r, I, J)
-        #Assume that indices are sorted
+    @inline function _getindex!(r, I, J)
         _bI, sI = blockindex(I, bs)
         _bJ, sJ = blockindex(J, bs)
         bI, bI_count = rle(_bI)
@@ -66,7 +70,7 @@ function build_linearMap(axis, f; blk=512)
         return r
     end
 
-    function getindex(I::Vector{Int}, J::Vector{Int})
+    @inline function getindex(I::Vector{Int}, J::Vector{Int})
         r = Matrix{T}(undef, length(I), length(J))
         Ip = sortperm(I)
         Jp = sortperm(J)
@@ -76,7 +80,7 @@ function build_linearMap(axis, f; blk=512)
         return _getindex!(r, I[Ip], J[Jp])[invperm(Ip), invperm(Jp)]
     end
 
-    function _mul!(y, _, x)
+    @inline function _mul!(y, _, x)
         op = Matrix{T}(undef, min(blk, N), N)
         for p = 1:div(N, blk)
             _getindex!(op, (p-1)*blk+1:p*blk, 1:N)
@@ -91,7 +95,7 @@ function build_linearMap(axis, f; blk=512)
         return y
     end
 
-    function _cmul!(y, _, x)
+    @inline function _cmul!(y, _, x)
         op = Matrix{T}(undef, N, min(blk, N))
         for p = 1:div(N, blk)
             _getindex!(op, 1:N, (p-1)*blk+1:p*blk)
@@ -118,23 +122,26 @@ struct HssCompression <: AbstractCompression
     leafsize::Int
 end
 function HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
-    HssCompression(atol, rtol, kest, leafsize)
+    return HssCompression(atol, rtol, kest, leafsize)
 end
+
 @kwdef struct HodlrCompression <: AbstractCompression
-    tol::Real=1E-8
-    leafsize::Int=32
+    tol::Real = 1E-8
+    leafsize::Int = 32
 end
 
 struct NONCompression <: AbstractCompression end
 
-
 function (Compression::HssCompression)(axis, f; stationary=false)
+    f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     lm = stationary ? build_CirculantlinearMap(axis, f) : build_linearMap(axis, f)
-    bs = size(f(axis[1], axis[1]), 1)
+    bs = size(f00, 1)
     cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest, leafsize=Compression.leafsize)
     return r
 end
+
 function (Compression::HssCompression)(axis, f, g)
     f00 = f(axis[1])
     T, bs = eltype(f00), size(f00, 1)
@@ -146,25 +153,29 @@ function (Compression::HssCompression)(axis, f, g)
     end
     n = length(axis) * bs
     u = reshape(u, (n, bs))
-    v = reshape(u, (n, bs))
+    v = reshape(v, (n, bs))
     cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
     return lowrank2hss(u, v, cc, cc)
 end
+
 function (Compression::HssCompression)(tab::HssMatrix)
     return recompress!(tab, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
 end
+
 function (Compression::HssCompression)(tab::AbstractMatrix{T}) where {T<:Number}
     return hss(tab, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
 end
+
 function (Compression::HssCompression)(axis, tab::BlockCirculantMatrix)
     lm = build_CirculantlinearMap(tab)
     cc = bisection_cluster(size(tab, 1), leafsize=Compression.leafsize)
     r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest)
+    return r
 end
 
 function (compression::HodlrCompression)(axis, f; stationary=false)
     domain = KernelDomain((axis[1], axis[end]), n_steps = length(axis))
-    kernel = KernelFunction(f,domain)
+    kernel = KernelFunction(f, domain)
     return Hodlr(kernel, _get_hodlr_settings(compression))
 end
 
@@ -179,24 +190,27 @@ function (compression::HodlrCompression)(axis, f, g)
     end
     n = length(axis) * bs
     u = reshape(u, (n, bs))
-    v = reshape(u, (n, bs))
-    #TODO: that is not an SVD block 
-    return Holdr(SvdBlock(u,diagm(ones(eltype(v),size(v,1))),transpose(v)))
+    v = reshape(v, (n, bs))
+    # TODO: that is not an SVD block
+    return Hodlr(SvdBlock(u, diagm(ones(eltype(v), size(v, 1))), transpose(v)))
 end
+
 function (compression::HodlrCompression)(tab::HodlrCompression)
-    #TODO: implement recompression for HODLR
+    # TODO: implement recompression for HODLR
     return tab
 end
+
 function (compression::HodlrCompression)(tab::AbstractMatrix{T}) where {T<:Number}
     return Hodlr(tab, _get_hodlr_settings(compression))
 end
-function _get_hodlr_settings(compression::HodlrCompression)
-    return HodlrSettings(tol=compression.tol, leafsize=compression.leafsize)
-end
 
+function _get_hodlr_settings(compression::HodlrCompression)
+    return HodlrSettings(tol = compression.tol, leafsize = compression.leafsize)
+end
 
 function (Compression::NONCompression)(axis, f; stationary=false)
     f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
     bs = size(f00, 1)
     r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
     for it in eachindex(axis)
@@ -206,19 +220,22 @@ function (Compression::NONCompression)(axis, f; stationary=false)
     end
     return r
 end
+
 function (Compression::NONCompression)(axis, tab::BlockCirculantMatrix)
     return tab[:, :]
 end
+
 function (Compression::NONCompression)(tab::AbstractMatrix{T}) where {T<:Number}
     return Matrix(tab)
 end
+
 function (Compression::NONCompression)(axis, f, g)
-    Compression(axis, (t, tp) -> f(t) * g(tp))
+    return Compression(axis, (t, tp) -> f(t) * g(tp))
 end
 
-function _build_triangular_low_rank_matrix(compression::AbstractCompression, causality, axis, f, g)
+function triangularLowRankCompression(compression::AbstractCompression, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
     fg(t, tp) = f(t) * g(tp)
     _mask(::Retarded) = (x, y) -> x >= y ? fg(x, y) : zero(f00)
     _mask(::Advanced) = (x, y) -> x <= y ? fg(x, y) : zero(f00)
@@ -227,9 +244,9 @@ function _build_triangular_low_rank_matrix(compression::AbstractCompression, cau
     return compression(axis, fg_masked)
 end
 
-function _build_triangular_low_rank_matrix(compression::HssCompression, causality, axis, f, g)
+function triangularLowRankCompression(compression::HssCompression, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2)
+    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
     blocksize = size(f00, 1)
     u = zeros(eltype(f00), blocksize, blocksize, length(axis))
     v = zeros(eltype(f00), blocksize, blocksize, length(axis))
@@ -254,5 +271,80 @@ function computeMatrixNorm(matrix::HssMatrix)
         return zero(norm2)
     else
         return sqrt(norm2)
+    end
+end
+
+@testitem "TriangularLowRankCompression_map" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction: computeMatrixNorm
+    N, Dt = 128, 2.0
+    axis = LinRange(-Dt / 2, Dt, N)
+    for causality in (Acausal(), Retarded(), Advanced())
+        for T = [Float64, ComplexF64, ComplexF32]
+            tol = 20 * max(1E-14, eps(real(T)))
+            f(x) = T <: Complex ? T(exp(-1im * x)) : T(cos(x))
+            g(x) = T <: Complex ? T(exp(-4im * x)) : T(sin(4x))
+            f00 = f(axis[1])
+            @assert size(f00, 1) == size(f00, 2)
+            blocksize = size(f00, 1)
+            u = zeros(eltype(f00), blocksize, blocksize, length(axis))
+            v = zeros(eltype(f00), blocksize, blocksize, length(axis))
+            for k in 1:length(axis)
+                u[:, :, k] .= f(axis[k])
+                v[:, :, k] .= g(axis[k])
+            end
+            matrix = NonEquilibriumGreenFunction.BlockTriangularLowRankMatrix(u, v, causality)
+            lm = NonEquilibriumGreenFunction.build_triangularLowRankMap(matrix)
+            x = randn(T, size(matrix, 2))
+            @test computeMatrixNorm(lm * x - matrix * x) < tol * length(x)
+            @test computeMatrixNorm(lm' * x - matrix' * x) < tol * length(x)
+        end
+    end
+end
+
+@testitem "Norm estimate" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction: computeMatrixNorm
+    using HssMatrices
+    N = 1024
+    for T = [Float64, ComplexF64, ComplexF32]
+        tol = 100 * max(1E-12, eps(real(T)))
+        A = [sin(i + j)^4 for i in 1:N, j in 1:N]
+        if T <: Complex
+            A = A * (1 + 1im)
+        end
+        hssA = hss(A, atol=tol / 100, rtol=tol / 100)
+        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
+        @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
+    end
+end
+
+@testitem "Low-rank kernel HSS compression correctness" begin
+    using LinearAlgebra
+    N, Dt, bs = 8, 1.0, 2
+    ax = LinRange(0, Dt, N)
+    for T in [Float64, ComplexF64, ComplexF32]
+        for causality in (Retarded, Advanced, Acausal)
+            tol = 100 * max(1E-12, eps(real(T)))
+            f(x) = T.([x 0; 0 x])
+            g(x) = T.([x^2 0; 0 x^2])
+            K = discretize_lowrank_kernel(
+                TrapzDiscretisation,
+                causality,
+                ax,
+                f,
+                g;
+                compression=HssCompression(atol=1e-12, rtol=1e-12)
+            )
+            _getMask(::Type{Acausal}) = (i, j) -> T(true)
+            _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
+            _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
+            mask = _getMask(causality)
+            K_ref = zeros(eltype(matrix(K)), N * bs, N * bs)
+            for i in 1:N, j in 1:N
+                K_ref[blockrange(i, bs), blockrange(j, bs)] .= f(ax[i]) * g(ax[j]) * mask(i, j)
+            end
+            @test norm(matrix(K) - K_ref) < tol
+        end
     end
 end

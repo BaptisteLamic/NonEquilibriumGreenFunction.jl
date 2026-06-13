@@ -9,8 +9,19 @@ isretarded(g::Kernel) = causality(g) == Retarded()
 isadvanced(g::Kernel) = causality(g) == Advanced()
 isacausal(g::Kernel) = causality(g) == Acausal()
 
-function similar(g::Kernel, new_discretization::AbstractDiscretisation )
+function make_similar(g::Kernel, new_discretization::AbstractDiscretisation )
     return Kernel(new_discretization, g |> causality)
+end
+
+# Add make_similar methods for Kernel to handle matrix and compression cases
+function make_similar(g::Kernel, new_matrix::Union{AbstractMatrix,UniformScaling})
+    new_dis = make_similar(discretization(g), new_matrix)
+    return Kernel(new_dis, causality(g))
+end
+
+function make_similar(g::Kernel, new_compression::AbstractCompression)
+    new_dis = make_similar(discretization(g), matrix(g), compression = new_compression)
+    return Kernel(new_dis, causality(g))
 end
 
 function discretize_kernel(::Type{D},::Type{C},axis, f; compression=HssCompression(), stationary=false) where {D<:AbstractDiscretisation, C<:AbstractCausality}
