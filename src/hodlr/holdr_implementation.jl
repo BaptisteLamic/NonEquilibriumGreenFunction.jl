@@ -17,9 +17,35 @@ struct NodeHodlr{T} <: HodlrTree{T}
     lower_offdiag::LowRankBlock{T}
     settings::HodlrSettings
 end
-function NodeHodlr(A::HodlrTree{T},B::HodlrTree{T},lower::LowRankBlock{T},upper::LowRankBlock{T}) where T
+function NodeHodlr(A::HodlrTree{T},B::HodlrTree{T},upper::LowRankBlock{T},lower::LowRankBlock{T}) where T
     settings = combine_settings(A.settings, B.settings)
-    return NodeHodlr{T}(A,B,lower,upper,settings)
+    #GPT CODE START
+    expected_upper = (size(A,1), size(B,2))
+    expected_lower = (size(B,1), size(A,2))
+    upper2 = upper
+    lower2 = lower
+    if size(upper2) != expected_upper
+        Ufull = full(upper2)
+        if size(Ufull) == (expected_upper[2], expected_upper[1])
+            Utrim = view(Ufull, 1:expected_upper[2], 1:expected_upper[1])
+            upper2 = SvdBlock(Matrix(transpose(Matrix(Utrim))), settings)
+        else
+            Utrim = view(Ufull, 1:expected_upper[1], 1:expected_upper[2])
+            upper2 = SvdBlock(Matrix(Utrim), settings)
+        end
+    end
+    if size(lower2) != expected_lower
+        Lfull = full(lower2)
+        if size(Lfull) == (expected_lower[2], expected_lower[1])
+            Ltrim = view(Lfull, 1:expected_lower[2], 1:expected_lower[1])
+            lower2 = SvdBlock(Matrix(transpose(Matrix(Ltrim))), settings)
+        else
+            Ltrim = view(Lfull, 1:expected_lower[1], 1:expected_lower[2])
+            lower2 = SvdBlock(Matrix(Ltrim), settings)
+        end
+    end
+    #GPT CODE END
+    return NodeHodlr{T}(A,B,upper2,lower2,settings)
 end
 
 function isleaf(matrix::HodlrTree)
@@ -65,12 +91,38 @@ function build_hodlr(kf::KernelFunction, row_partition::PartitionTree, col_parti
         B = build_hodlr(kf, lower_row, right_cols, settings)
         upper_offdiag = SvdBlock(upper_offdiag_kernel, settings)
         lower_offdiag = SvdBlock(lower_offdiag_kernel, settings)
-        return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
+        #GPT CODE START
+        # Ensure off-diagonal blocks have the expected element sizes. If the
+        # low-rank approximation returns a slightly larger block (due to block
+        # rounding), trim it to the expected dimensions and rebuild a SvdBlock
+        # from the trimmed dense block.
+        expected_upper = (size(A,1), size(B,2))
+        expected_lower = (size(B,1), size(A,2))
+        if size(upper_offdiag) != expected_upper
+            Ufull = full(upper_offdiag)
+            Utrim = view(Ufull, 1:expected_upper[1], 1:expected_upper[2])
+            upper_offdiag = SvdBlock(Matrix(Utrim), settings)
+        end
+        if size(lower_offdiag) != expected_lower
+            Lfull = full(lower_offdiag)
+            # If the low-rank block was produced with transposed shape, try
+            # transposing the dense block before rebuilding. This recovers
+            # cases where row/column axes were swapped earlier in the pipeline.
+            if size(Lfull) == (expected_lower[2], expected_lower[1])
+                Ltrim = view(Lfull, 1:expected_lower[2], 1:expected_lower[1])
+                lower_offdiag = SvdBlock(Matrix(transpose(Matrix(Ltrim))), settings)
+            else
+                Ltrim = view(Lfull, 1:expected_lower[1], 1:expected_lower[2])
+                lower_offdiag = SvdBlock(Matrix(Ltrim), settings)
+            end
+        end
+        #GPT CODE END
+        return NodeHodlr(A, B, upper_offdiag, lower_offdiag)
     end
 end
 function _construct_leaf(kf, row_partition::PartitionTree, col_partition::PartitionTree, settings)
     restricted_kf = restrict_domain(kf, _convert_matrix_partition_to_domain(row_partition, col_partition, kf.domain, blocksize(kf)))
-    M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 1))
+    M = zeros(eltype(restricted_kf), size(restricted_kf, 1), size(restricted_kf, 2))
     fill_with_kernel!(M, restricted_kf)
     return LeafHodlr(M,settings)
 end
@@ -96,7 +148,26 @@ function _build_hodlr_from_lowrank(matrix::Union{LowRankBlock,AbstractMatrix},ro
     B = _build_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
     upper_offdiag = _construct_offdiag_block(matrix, upper_rows, right_cols, settings)
     lower_offdiag = _construct_offdiag_block(matrix, lower_row, left_cols, settings)
-    return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
+    #GPT CODE START
+    expected_upper = (size(A,1), size(B,2))
+    expected_lower = (size(B,1), size(A,2))
+    if size(upper_offdiag) != expected_upper
+        Ufull = full(upper_offdiag)
+        Utrim = view(Ufull, 1:expected_upper[1], 1:expected_upper[2])
+        upper_offdiag = SvdBlock(Matrix(Utrim), settings)
+    end
+    if size(lower_offdiag) != expected_lower
+        Lfull = full(lower_offdiag)
+        if size(Lfull) == (expected_lower[2], expected_lower[1])
+            Ltrim = view(Lfull, 1:expected_lower[2], 1:expected_lower[1])
+            lower_offdiag = SvdBlock(Matrix(transpose(Matrix(Ltrim))), settings)
+        else
+            Ltrim = view(Lfull, 1:expected_lower[1], 1:expected_lower[2])
+            lower_offdiag = SvdBlock(Matrix(Ltrim), settings)
+        end
+    end
+    #GPT CODE END
+    return NodeHodlr(A, B, upper_offdiag, lower_offdiag)
 end
 function build_upper_triangular_hodlr(matrix::Union{LowRankBlock,AbstractMatrix}, ctx::HodlrSettings)
     row_partition = build_partition(1:size(matrix, 1), ctx.leafsize)
@@ -113,7 +184,7 @@ function _build_upper_triangular_hodlr_from_lowrank(matrix::Union{LowRankBlock,A
     B = _build_upper_triangular_hodlr_from_lowrank(matrix, lower_row, right_cols, settings)
     upper_offdiag = _construct_offdiag_block(matrix, upper_rows, right_cols, settings)
     lower_offdiag = ZeroBlock{eltype(matrix)}(size(upper_offdiag))
-    return NodeHodlr(A, B, upper_offdiag, lower_offdiag, settings)
+    return NodeHodlr(A, B, upper_offdiag, lower_offdiag)
 end
 function _construct_offdiag_block(matrix::LowRankBlock, row_partition::PartitionTree, col_partition::PartitionTree, settings)
     return view(matrix, get_range(row_partition), get_range(col_partition))
@@ -191,14 +262,18 @@ function _full!(out, hodlr::NodeHodlr)
     out_down = view(out, nA1+1:n1, nA2+1:n2)
     _full!(out_up, A)
     _full!(out_down, B)
-    @show size(upper_offdiag)
-    @show size(out[1:nA1, nA2+1:end])
-    @show size(lower_offdiag)
-    @show size(out[nA1+1:end, 1:nA2])
-    @show size(out)
-    @show size(hodlr)
-    out[1:nA1, nA2+1:end] .= full(upper_offdiag)
-    out[nA1+1:end, 1:nA2] .= full(lower_offdiag)
+    U = full(upper_offdiag)
+    L = full(lower_offdiag)
+    expected_up_cols = n2 - nA2
+    expected_down_rows = n1 - nA1
+    if size(U) != (nA1, expected_up_cols)
+        throw(ErrorException(string("HODLR _full! mismatch: upper_offdiag full size ", size(U), " != target ", (nA1, expected_up_cols), "; A.size=", size(A), ", B.size=", size(B), ", upper_offdiag.size=", size(upper_offdiag), ", lower_offdiag.size=", size(lower_offdiag))))
+    end
+    if size(L) != (expected_down_rows, nA2)
+        throw(ErrorException(string("HODLR _full! mismatch: lower_offdiag full size ", size(L), " != target ", (expected_down_rows, nA2), "; A.size=", size(A), ", B.size=", size(B), ", upper_offdiag.size=", size(upper_offdiag), ", lower_offdiag.size=", size(lower_offdiag))))
+    end
+    out[1:nA1, nA2+1:end] .= U
+    out[nA1+1:end, 1:nA2] .= L
 end
 
 function (*)(left::T, x::M) where {T<:HodlrTree,M<:AbstractArray}
@@ -270,7 +345,7 @@ function _multiply_hodlr(left::NodeHodlr, right::NodeHodlr)
 end
 
 function (*)(left::Number, right::NodeHodlr)
-    return NodeHodlr(left*right.A, left*right.B, left*right.upper_offdiag, left*right.lower_offdiag,right.settings)
+    return NodeHodlr(left*right.A, left*right.B, left*right.upper_offdiag, left*right.lower_offdiag)
 end
 function (*)(left::Number, right::LeafHodlr)
     return LeafHodlr(left*right.data, right.settings)

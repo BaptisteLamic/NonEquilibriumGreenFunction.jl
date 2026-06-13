@@ -21,7 +21,7 @@ end
     cprA = HssCompression(atol = 1E-4,rtol = 1E-4)
     cprB = HssCompression(atol = 1E-6,rtol = 1E-6)
     kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=cprA)
-    kernelB = similar(kernelA, cprB)
+    kernelB = make_similar(kernelA, cprB)
     @test compression(kernelA) == cprA
     @test compression(kernelB) == cprB
     compress!(kernelB)
