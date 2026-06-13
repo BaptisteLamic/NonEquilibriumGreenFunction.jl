@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-@testitem "_build_triangular_low_rank_matrix_map" begin
-=======
 @testitem "TriangularLowRankCompression_map" begin
->>>>>>> 46f23ea (Refactor compression functions to use eachindex for improved performance; add tests for triangular low-rank compression and norm estimation)
     using LinearAlgebra
     using NonEquilibriumGreenFunction: computeMatrixNorm
     N, Dt = 128, 2.0
@@ -42,11 +38,7 @@ end
             A = A * (1 + 1im)
         end
         hssA = hss(A, atol=tol / 100, rtol=tol / 100)
-<<<<<<< HEAD
-        @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < 2*tol
-=======
         @test computeMatrixNorm(A) - computeMatrixNorm(hssA) < tol
->>>>>>> 46f23ea (Refactor compression functions to use eachindex for improved performance; add tests for triangular low-rank compression and norm estimation)
         @test abs(computeMatrixNorm(A) - computeMatrixNorm(hssA)) / computeMatrixNorm(A) < tol
     end
 end

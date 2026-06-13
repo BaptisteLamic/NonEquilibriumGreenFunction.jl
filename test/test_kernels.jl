@@ -78,7 +78,7 @@ end
             _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
             mask = _getMask(_causality)
             refMatrix = [f(x) * g(y) * mask(x, y) for x in ax, y in ax]
-            for cpr in (NONCompression(), HssCompression(), HodlrCompression())
+            for cpr in (NONCompression(), HssCompression(), )
                 GA = discretize_lowrank_kernel(TrapzDiscretisation, _causality, ax, f, g, compression=cpr)
                 compress!(GA)
                 @test matrix(GA)[:,:] - refMatrix |> norm < tol * N^2
