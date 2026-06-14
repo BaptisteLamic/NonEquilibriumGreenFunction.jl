@@ -52,7 +52,7 @@ function discretize_dirac(axis, f; compression::AbstractCompression=HssCompressi
     T = eltype(f00)
     bs = size(f00, 1)
     δ = zeros(T, bs, bs, length(axis))
-    for i = 1:length(axis)
+    for i in eachindex(axis)
         δ[:, :, i] .= f(axis[i])
     end
     matrix = build_blockdiag(δ, compression=compression)
@@ -90,7 +90,7 @@ function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
     T =  scalartype(discretization)
     δ = zeros(T, bs, bs, length(ax))
     block_mat = diagm([T(I.λ) for k in 1:bs])
-    for i = 1:length(ax)
+    for i in eachindex(ax)
         δ[:, :, i] = block_mat
     end
     matrix = build_blockdiag(δ, compression=compression(discretization))

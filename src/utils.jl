@@ -4,10 +4,10 @@
     a, i = divrem(p - 1, bs)
     return (a + 1, i + 1)
 end
-function blockindex(tp, bs)
+@inline function blockindex(tp, bs)
     r_block = zeros(eltype(tp), length(tp))
     r_inblock = zeros(eltype(tp), length(tp))
-    for i = 1:length(tp)
+    for i in eachindex(tp)
         (r_block[i], r_inblock[i]) = blockindex(tp[i], bs)
     end
     return (r_block, r_inblock)
@@ -50,7 +50,7 @@ function build_blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCom
 end
 function build_blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compression=HssCompression()) where {T}
     _A = zeros(T, size(A[1])..., length(A))
-    for p = 1:length(A)
+    for p in eachindex(A)
         @assert size(A[p], 1) == size(A[p], 2)
         @assert size(A[p]) == size(A[1])
         @simd for j = 1:size(A[1], 2)

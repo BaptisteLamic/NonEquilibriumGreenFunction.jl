@@ -11,7 +11,8 @@
     foo(x,y) = foo(x-y)
     ax = 0:256
     bs = size(foo(0),1)
-    mA = hcat([vcat([foo(x,y) for x in ax]...) for y in ax]...)
+    cols = [vcat([foo(i,j) for i in ax]...) for j in ax]
+    mA = hcat(cols...)
     lm = NonEquilibriumGreenFunction.build_CirculantlinearMap(ax,foo)
     @test (lm[:,:]-mA |> norm) < tol
     

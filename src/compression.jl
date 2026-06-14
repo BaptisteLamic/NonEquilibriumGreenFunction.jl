@@ -9,7 +9,7 @@ function build_CirculantlinearMap(ax0, f)
     #(ax0[1]-(N-1)*step(ax0)):step(ax0):ax0[end]
 
     m = zeros(eltype(f00), bs, bs, length(ax))
-    Threads.@threads for i = 1:length(ax)
+    Threads.@threads for i in eachindex(ax)
         m[:, :, i] .= f(ax[i], 0)
     end
     A = BlockCirculantMatrix(m)
@@ -55,8 +55,8 @@ function build_linearMap(axis, f; blk=512)
         bJ, bJ_count = rle(_bJ)
         offset_I = cumsum(bI_count)
         offset_J = cumsum(bJ_count)
-        Threads.@threads for idx_bj in 1:length(bJ)
-            for idx_bi in 1:length(bI)
+        Threads.@threads for idx_bj in eachindex(bJ)
+            for idx_bi in eachindex(bI)
                 blck = f(axis[bI[idx_bi]], axis[bJ[idx_bj]])
                 for j = offset_J[idx_bj]+1-bJ_count[idx_bj]:offset_J[idx_bj]
                     for i = offset_I[idx_bi]+1-bI_count[idx_bi]:offset_I[idx_bi]
@@ -149,8 +149,8 @@ function (Compression::NONCompression)(axis, f; stationary=false)
     f00 = f(axis[1], axis[1])
     bs = size(f00, 1)
     r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
-    for it in 1:length(axis)
-        for itp in 1:length(axis)
+    for it in eachindex(axis)
+        for itp in eachindex(axis)
             r[blockrange(it, bs), blockrange(itp, bs)] .= f(axis[it], axis[itp])
         end
     end
@@ -183,7 +183,7 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     blocksize = size(f00, 1)
     u = zeros(eltype(f00), blocksize, blocksize, length(axis))
     v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-    for k in 1:length(axis)
+    for k in eachindex(axis)
         u[:, :, k] .= f(axis[k])
         v[:, :, k] .= g(axis[k])
     end
@@ -223,7 +223,7 @@ end
             blocksize = size(f00, 1)
             u = zeros(eltype(f00), blocksize, blocksize, length(axis))
             v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-            for k in 1:length(axis)
+            for k in eachindex(axis)
                 u[:, :, k] .= f(axis[k])
                 v[:, :, k] .= g(axis[k])
             end
