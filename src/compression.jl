@@ -419,7 +419,7 @@ function triangularLowRankCompression(compression::HssCompression, causality, ax
     blocksize = size(f00, 1)
     u = zeros(eltype(f00), blocksize, blocksize, length(axis))
     v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-    for k in 1:length(axis)
+    for k in eachindex(axis)
         u[:, :, k] .= f(axis[k])
         v[:, :, k] .= g(axis[k])
     end
@@ -484,7 +484,7 @@ end
             blocksize = size(f00, 1)
             u = zeros(eltype(f00), blocksize, blocksize, length(axis))
             v = zeros(eltype(f00), blocksize, blocksize, length(axis))
-            for k in 1:length(axis)
+            for k in eachindex(axis)
                 u[:, :, k] .= f(axis[k])
                 v[:, :, k] .= g(axis[k])
             end
