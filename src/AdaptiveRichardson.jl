@@ -77,7 +77,7 @@ function Base.show(io::IO, r::RichardsonResult)
 end
 
 """
-    adaptative_richardson(f, dt0; config=AdaptiveConfig(), normfun=default_norm)
+    adaptive_richardson(f, dt0; config=AdaptiveConfig(), normfun=default_norm)
 
 Advanced adaptive Richardson extrapolation with two-phase refinement.
 
