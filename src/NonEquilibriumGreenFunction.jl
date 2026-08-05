@@ -9,7 +9,7 @@ using SpecialFunctions: polygamma
 using FFTW
 using TestItems
 
-import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: +, -, *, /, \, adjoint, transpose, eltype, size, one
 import Base: sum
 import Base: ==
 import Base: getindex, step
@@ -50,7 +50,6 @@ export discretize_lowrank_kernel
 export causality
 export solve_dyson
 export adjoint
-#export simplify_kernel
 export norm
 
 export BlockCirculantMatrix

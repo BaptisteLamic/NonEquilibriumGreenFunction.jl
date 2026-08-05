@@ -1,14 +1,14 @@
-module AdaptativeRichardson
+module AdaptiveRichardson
 using LinearAlgebra
 using Statistics
 
-export AdaptativeConfig
-export observed_order, is_asymptotic, fit_polynomial, robust_extrapolate, adaptative_richardson
+export AdaptiveConfig
+export observed_order, is_asymptotic, fit_polynomial, robust_extrapolate, adaptive_richardson
 
 """
 Configuration for adaptive Richardson extrapolation.
 """
-Base.@kwdef struct AdaptativeConfig
+Base.@kwdef struct AdaptiveConfig
     # Refinement ratios
     r_large::Float64 = 2.0
     r_small::Float64 = sqrt(2.0)
@@ -91,7 +91,7 @@ Advanced adaptive Richardson extrapolation with two-phase refinement.
 # Returns
 - `RichardsonResult`: comprehensive results structure
 """
-function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
+function adaptive_richardson(f, dt0, cfg::AdaptiveConfig=AdaptiveConfig())
     t_start = time()
     function time_budget_ok()
         cfg.max_time === nothing && return true
@@ -114,7 +114,7 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
         return error_estimate
     end
 
-    function extrapolate(dt_list, u_list, phase_switch_index, cfg::AdaptativeConfig)
+    function extrapolate(dt_list, u_list, phase_switch_index, cfg::AdaptiveConfig)
         return robust_extrapolate(dt_list, u_list, phase_switch_index, cfg)
     end
 
@@ -172,7 +172,7 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
     if !isnothing(phase_switch_index)
         # Recompute the last estimations, taking into account that we are in the asymptotic regime. 
         for i in cfg.window-1:-1:0
-            results[end-i] = extrapolate(dt_list[1:end-i], u_list[1:end-i], phase_switch_index, cfg::AdaptativeConfig).coeffs[1]
+            results[end-i] = extrapolate(dt_list[1:end-i], u_list[1:end-i], phase_switch_index, cfg::AdaptiveConfig).coeffs[1]
         end
         #Phase B: refine the last point
         for i in 1:cfg.max_pointsB
@@ -190,12 +190,12 @@ function adaptative_richardson(f, dt0, cfg::AdaptativeConfig=AdaptativeConfig())
             end
         end
     end
-    cfg.verbose && @warn "Adaptative Richardson did not converge within the limits"
+    cfg.verbose && @warn "Adaptive Richardson did not converge within the limits"
     return build_result(robust_extrapolate(dt_list, u_list, phase_switch_index, cfg))
 end
 
 
-function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
+function is_asymptotic(order_history, cfg::AdaptiveConfig=AdaptiveConfig())
     if length(order_history) < cfg.window
         return false
     end
@@ -213,7 +213,7 @@ function is_asymptotic(order_history, cfg::AdaptativeConfig=AdaptativeConfig())
     end
 end
 
-function observed_order(u1::U, u2::U, u3::U, h1::T, h2::T, h3::T, cfg::AdaptativeConfig=AdaptativeConfig()) where {U,T}
+function observed_order(u1::U, u2::U, u3::U, h1::T, h2::T, h3::T, cfg::AdaptiveConfig=AdaptiveConfig()) where {U,T}
     u_ratio = (u2 - u1) / (u3 - u2)
     if u_ratio <= cfg.min_error_ratio
         cfg.verbose && @warn "Observed order is NaN due to small ratio u_ratio = $(u_ratio) at h1=$(h1), h2=$(h2), h3=$(h3)"
@@ -228,7 +228,7 @@ function observed_order(u1::U, u2::U, u3::U, h1::T, h2::T, h3::T, cfg::Adaptativ
 
 end
 
-function observed_order(h, u, cfg::AdaptativeConfig=AdaptativeConfig())
+function observed_order(h, u, cfg::AdaptiveConfig=AdaptiveConfig())
     if length(h) != length(u)
         throw(DomainError((h, u), "x and y must have the same length"))
     end
@@ -299,7 +299,7 @@ function fit_polynomial(dt_vals, u_vals, degree; weights=ones(length(dt_vals)))
         residual=residual, error_est=error_est, degree=degree)
 end
 
-function compute_weights(n::Int, switch_idx::Union{Int,Nothing}, cfg::AdaptativeConfig)
+function compute_weights(n::Int, switch_idx::Union{Int,Nothing}, cfg::AdaptiveConfig)
     w = [cfg.w_decay .^ (n .- i) for i in 1:n]
     # Penalty for pre-asymptotic points
     if !isnothing(switch_idx)
@@ -309,12 +309,12 @@ function compute_weights(n::Int, switch_idx::Union{Int,Nothing}, cfg::Adaptative
     w ./= sum(w)
     return w
 end
-end # module AdaptativeRichardson
+end # module AdaptiveRichardson
 
-@testitem "Adaptative Richardson Extrapolation" begin
-    using NonEquilibriumGreenFunction.AdaptativeRichardson
+@testitem "Adaptive Richardson Extrapolation" begin
+    using NonEquilibriumGreenFunction.AdaptiveRichardson
     using Statistics
-    # Test the Adaptative Richardson Extrapolation method
+    # Test the Adaptive Richardson Extrapolation method
     function generate_convergeance_order_test_function(order, dt, f0)
         nb_coefficients = 10
         coefficients = randn(order + nb_coefficients)
@@ -328,17 +328,17 @@ end # module AdaptativeRichardson
     end
     f = generate_convergeance_order_test_function(3, 1, 1.0)
     n = 20
-    cfg = AdaptativeConfig(max_pointsA=14, max_pointsB=n, rtol=1e-6, max_total_points=n, verbose=false)
-    result = adaptative_richardson(f, 2., cfg)
+    cfg = AdaptiveConfig(max_pointsA=14, max_pointsB=n, rtol=1e-6, max_total_points=n, verbose=false)
+    result = adaptive_richardson(f, 2., cfg)
     @test result.converged
     @test result.error < cfg.rtol
     @test abs(f(0) - result.u0_est) < result.error
 end
 
 @testitem "Observed Order" begin
-    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using NonEquilibriumGreenFunction.AdaptiveRichardson
     using Statistics
-    # Test the Adaptative Richardson Extrapolation method
+    # Test the Adaptive Richardson Extrapolation method
     function generate_convergeance_order_test_function(order, dt, f0)
         nb_coefficients = 10
         coefficients = randn(order + nb_coefficients)
@@ -360,7 +360,7 @@ end
 end
 
 @testitem "Polynomial Interpolation" begin
-    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using NonEquilibriumGreenFunction.AdaptiveRichardson
     # Test polynomial fitting with weights
     dt_vals = [0.1, 0.05, 0.025, 0.0125]
     u_vals = [1.0, 1.5, 2.0, 2.5]
@@ -374,7 +374,7 @@ end
 end
 
 @testitem "Polynomial fit" begin
-    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using NonEquilibriumGreenFunction.AdaptiveRichardson
     using LinearAlgebra
     import Random
     Random.seed!(1234)
@@ -395,7 +395,7 @@ end
 end
 
 @testitem "robust_extrapolate" begin
-    using NonEquilibriumGreenFunction.AdaptativeRichardson
+    using NonEquilibriumGreenFunction.AdaptiveRichardson
     using LinearAlgebra
     import Random
     Random.seed!(1234)
@@ -406,7 +406,7 @@ end
     f(x) = 1 - x^p
     # Simulate noisy observations
     u_vals = f.(dt_vals) .+ 1e-8 .* randn(n)
-    cfg = AdaptativeConfig(verbose=true)
+    cfg = AdaptiveConfig(verbose=true)
     result = robust_extrapolate(dt_vals, u_vals, nothing, cfg)
     @test result.degree >= p
     @test isapprox(result.u0[1], f(0), atol=1e-6)
