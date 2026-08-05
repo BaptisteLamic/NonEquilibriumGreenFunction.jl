@@ -136,6 +136,13 @@ Get a submatrix at block rows i and block column j.
 getindex(A::AbstractDiscretisation, i, j::Int) = reshape(getindex(A, i, [j]), :)
 
 """
+    getindex(A::AbstractDiscretisation, i::Int, ::Colon)
+
+Get a submatrix at block row i and all block columns.
+"""
+getindex(A::AbstractDiscretisation, i::Int, ::Colon) = getindex(A, [i], 1:size(A, 2))
+
+"""
     getindex(A::AbstractDiscretisation, ::Colon, ::Colon)
 
 Get the full matrix.
@@ -148,13 +155,6 @@ getindex(A::AbstractDiscretisation, ::Colon, ::Colon) = getindex(A, 1:size(A, 1)
 Get a submatrix at block rows i and all block columns.
 """
 getindex(A::AbstractDiscretisation, i, ::Colon) = getindex(A, i, 1:size(A, 2))
-
-"""
-    getindex(A::AbstractDiscretisation, i::Int, ::Colon)
-
-Get a submatrix at block row i and all block columns.
-"""
-getindex(A::AbstractDiscretisation, i::Int, ::Colon) = getindex(A, [i], 1:size(A, 2))
 
 """
     getindex(A::AbstractDiscretisation, ::Colon, j)
