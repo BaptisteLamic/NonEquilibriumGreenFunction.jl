@@ -10,7 +10,7 @@ TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 [compat]
 Aqua = "0.8"
 BenchmarkTools = "1"
-JET = "0.12"
+JET = "0.11, 0.12"
 Random = "1"
 Test = "1"
 TestItemRunner = "1"
