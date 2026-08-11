@@ -503,7 +503,7 @@ end
     using HssMatrices
     N = 1024
     for T = [Float64, ComplexF64, ComplexF32]
-        tol = 100 * max(1E-12, eps(real(T)))
+        tol = max(1E-9, 10 * eps(real(T)))
         A = [sin(i + j)^4 for i in 1:N, j in 1:N]
         if T <: Complex
             A = A * (1 + 1im)
