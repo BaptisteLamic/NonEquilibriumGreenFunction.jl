@@ -5,7 +5,7 @@ using Dates
 
 # Add the package to the path
 import Pkg
-Pkg.develop(path="..")
+Pkg.activate(joinpath(@__DIR__))
 
 # Load the benchmark module
 using NonEquilibriumGreenFunctionBenchmarks
@@ -33,19 +33,19 @@ println()
 try
     # Run benchmarks
     results = run_benchmarks(groups=groups, verbose=true)
-    
+
     # Save results
     timestamp = Dates.format(now(), "yyyy-mm-dd_HH-MM-SS")
     filename = "benchmark_results_$timestamp.json"
     save_benchmarks(results, filename)
-    
+
     println()
     println("="^80)
     println("Benchmarks completed successfully!")
     println("Results saved to: $filename")
     println("Completed at: ", now())
     println("="^80)
-    
+
 catch e
     println()
     println("="^80)
