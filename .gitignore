@@ -4,3 +4,8 @@
 dev.ipynb
 Manifest.toml
 /.vscode
+
+# Benchmark results
+benchmark_results_*.json
+/benchmark/results/
+/benchmark/tune.json
