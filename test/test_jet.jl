@@ -1,7 +1,6 @@
 @testitem "JET Static Analysis" begin
     using JET
     using NonEquilibriumGreenFunction  # Ensure module is loaded
-    VERSION >= v"1.11" || return  # JET 0.12+ requires Julia 1.11+
     if JET.JET_AVAILABLE
 
         # Use report_package for whole-package analysis
