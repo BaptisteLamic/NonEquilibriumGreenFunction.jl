@@ -2,5 +2,10 @@
 *.jl.cov
 *.jl.mem
 dev.ipynb
-/Manifest.toml
+Manifest.toml
 /.vscode
+
+# Benchmark results
+benchmark_results_*.json
+/benchmark/results/
+/benchmark/tune.json

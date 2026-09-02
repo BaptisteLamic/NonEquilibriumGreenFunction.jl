@@ -3,13 +3,13 @@ function +(left::Kernel, right::Kernel)
 end
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
-    similar(left, matrix(left) + matrix(right))
+    make_similar(left, matrix(left) + matrix(right))
 end
 function -(left::Kernel, right::Kernel)
     Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 function -(left::D, right::D) where {D<:AbstractDiscretisation}
-    similar(left, matrix(left) - matrix(right))
+    make_similar(left, matrix(left) - matrix(right))
 end
 
 function *(left::Kernel, right::Kernel)
@@ -41,23 +41,23 @@ function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::Abstra
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
     result = biased_result - compression(left)((1/4)*dl*dr)
     result = step(left)*result
-    return similar(left, result)
+    return make_similar(left, result)
 end
 function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dr = extract_blockdiag(matrix(right), blocksize(right))
     weighted_R = _dressing(right, dr)
     result = step(left)*matrix(left) * weighted_R
-    return similar(left, result)
+    return make_similar(left, result)
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dl = extract_blockdiag(matrix(left), blocksize(left))
     weighted_L = _dressing(left, dl) 
     result = step(left)*weighted_L * matrix(right)
-    return similar(left, result)
+    return make_similar(left, result)
 end
 function prod(::T, ::T, left::AbstractDiscretisation, right::AbstractDiscretisation) where T <: Union{Instantaneous,Acausal}
     result = step(left)*matrix(left) * matrix(right)
-    return similar(left, result)
+    return make_similar(left, result)
 end
 
 function adjoint(kernel::Kernel)

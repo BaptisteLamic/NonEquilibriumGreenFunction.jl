@@ -1,6 +1,6 @@
 module NonEquilibriumGreenFunction
 
-using NNlib: similar, batched_mul, batched_adjoint
+using NNlib: batched_mul, batched_adjoint
 using HssMatrices
 using SparseArrays
 using LinearAlgebra
@@ -9,11 +9,11 @@ using SpecialFunctions: polygamma
 using FFTW
 using TestItems
 
-import Base: +, -, *,/, \, adjoint, transpose, eltype, size, adjoint, one
+import Base: +, -, *, /, \, adjoint, transpose, eltype, size, one
 import Base: sum
 import Base: ==
 import Base: getindex, step
-import Base: similar, zero
+import Base: zero
 import Base: convert, prod
 import LinearAlgebra.I
 import LinearAlgebra.diag
@@ -50,7 +50,6 @@ export discretize_lowrank_kernel
 export causality
 export solve_dyson
 export adjoint
-#export simplify_kernel
 export norm
 
 export BlockCirculantMatrix
@@ -60,5 +59,6 @@ export matrix
 export compression
 export compress!
 export scalartype
+export make_similar
 
 end

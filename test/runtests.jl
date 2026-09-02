@@ -10,6 +10,15 @@ using TestItems
 
 #run the other tests.
 include("test_BlockCirculantMatrix.jl")
+
+# Benchmark validation smoke test.
+# Runs the lightweight quick suite (samples=1) to validate the benchmark
+# infrastructure executes, without measuring performance.
+@testitem "benchmarks_quick.jl" begin
+    include(joinpath(@__DIR__, "..", "benchmark", "quick_benchmarks.jl"))
+    @test_nowarn run_quick_benchmarks(verbose=false)
+end
+
 @testitem"utils.jl" begin
     using NonEquilibriumGreenFunction: build_blockdiag
     using SparseArrays
