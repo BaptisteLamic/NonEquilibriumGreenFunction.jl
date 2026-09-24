@@ -1,5 +1,17 @@
 
+"""
+    blockrange(i, bs)
+
+Returns the scalar indices spanned by the `i`-th block of size `bs`.
+"""
 @inline blockrange(i, bs) = (i-1)*bs+1:i*bs
+
+"""
+    blockindex(p, bs)
+
+Converts a scalar index `p` into the `(block, in-block)` pair for block size `bs`.
+For a vector of indices, returns the blocks and in-block positions as two vectors.
+"""
 @inline function blockindex(p::Number, bs)
     a, i = divrem(p - 1, bs)
     return (a + 1, i + 1)

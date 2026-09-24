@@ -16,6 +16,20 @@ This package solves the non-equilibrium Dyson equation in the time domain with q
 - Solves non-equilibrium Dyson equation in time domain
 - Quasi-linear time complexity 
 
+## Documentation
+
+The documentation is built with [Documenter.jl](https://documenter.juliadocs.org/stable/) and
+[Literate.jl](https://github.com/fredrikekre/Literate.jl) on every push. The two worked
+examples (Metal–QD–Metal and Superconductor–QD–Superconductor junctions) are executed at
+documentation build time, so the published docs always show runnable code.
+
+Build locally with:
+
+```bash
+julia --project=docs -e 'using Pkg; Pkg.develop(path=.); Pkg.instantiate()'
+julia --project=docs docs/make.jl
+```
+
 ## Examples
 
 ### Metal - Quantum Dot - Metal Junction
