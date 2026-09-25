@@ -7,7 +7,7 @@ import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, is
     Retarded, Acausal, Instantaneous, AbstractCausality, adjoint
 import Base: *
 
-include("physics.jl")
+include("Physics/physics.jl")
 
 """
     solve_keldysh(g, Σ_R, Σ_K; check=true)
