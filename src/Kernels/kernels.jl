@@ -8,6 +8,9 @@ causality(k::Kernel) = k.causality
 isretarded(g::Kernel) = causality(g) == Retarded()
 isadvanced(g::Kernel) = causality(g) == Advanced()
 isacausal(g::Kernel) = causality(g) == Acausal()
+isretarded(g) = causality(g) == Retarded()
+isadvanced(g) = causality(g) == Advanced()
+isacausal(g) = causality(g) == Acausal()
 
 function make_similar(g::Kernel, new_discretization::AbstractDiscretisation )
     return Kernel(new_discretization, g |> causality)
