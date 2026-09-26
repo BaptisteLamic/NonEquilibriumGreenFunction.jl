@@ -1,5 +1,6 @@
 module Physics
 
+using LinearAlgebra: diagm
 using ..NonEquilibriumGreenFunction: polygamma
 using ..NonEquilibriumGreenFunction: I
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,

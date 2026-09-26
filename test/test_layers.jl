@@ -60,3 +60,12 @@ end
     @test !isacausal(δ)
     @test causality(δ) == Instantaneous()
 end
+
+@testitem "theq_lesser_time_kernel callable from Physics layer" begin
+    using NonEquilibriumGreenFunction
+    f_δ, f_reg = theq_lesser_time_kernel(100, 2, 0.1)
+    @test f_δ(0.) == [-1.0 0.0; 0.0 -1.0]
+    @test size(f_reg(0.2, 0.1)) == (2, 2)
+    @test all(isfinite, f_reg(0.2, 0.1))
+    @test f_reg(0.1, 0.1) == f_reg(0.2, 0.2)
+end
