@@ -65,5 +65,6 @@ export scalartype
 export make_similar
 export thermal_kernel, theq_lesser_time_kernel
 export solve_keldysh, lead_current, current_signal
+export same_time, keldysh_trace
 
 end

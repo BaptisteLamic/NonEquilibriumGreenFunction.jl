@@ -472,6 +472,45 @@ Return the adjoint of a SumOperator: (left + right)' = left' + right'
 """
 adjoint(op::SumOperator) = SumOperator(op.left', op.right')
 
+"""
+    same_time(op)
+
+Equal-time blocks of an operator: one `bs×bs` matrix per time step,
+`same_time(op)[i] ≈ op(t_i, t_i)`. This is the representation-independent
+way to observe an operator; unlike `diag(matrix(op))` it is defined for
+`SumOperator`s and does not require knowing the storage layout.
+"""
+function same_time(op::SimpleOperator)
+    mat = matrix(op)
+    bs = blocksize(op)
+    return [copy(@view mat[blockrange(i, bs), blockrange(i, bs)]) for i in 1:div(size(mat, 1), bs)]
+end
+same_time(op::SumOperator) = same_time(op.left) .+ same_time(op.right)
+
+"""
+    keldysh_trace(op)
+
+Keldysh trace of an operator: the trace over the Keldysh indices of each
+equal-time block, one value per time step. For `bs == 1` this coincides
+with `diag(matrix(op))`.
+"""
+keldysh_trace(op::AbstractOperator) = tr.(same_time(op))
+@testitem "same_time and keldysh_trace" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction
+    ax = 0:0.1:1
+    k = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(t + tp); compression=NONCompression())
+    d = discretize_dirac(ax, t -> ComplexF64(2); compression=NONCompression())
+    s = k + d
+    st = same_time(s)
+    @test st isa Vector{Matrix{ComplexF64}}
+    @test length(st) == length(ax)
+    @test [st[i][1, 1] for i in eachindex(st)] ≈ [ComplexF64(2 * t + 2) for t in ax]
+    @test keldysh_trace(s) ≈ [ComplexF64(2 * t + 2) for t in ax]
+    @test keldysh_trace(k + d) == keldysh_trace(k) + keldysh_trace(d)
+    @test keldysh_trace(k) ≈ diag(matrix(k))
+end
+
 
 @testitem "Equality test" begin
     using LinearAlgebra

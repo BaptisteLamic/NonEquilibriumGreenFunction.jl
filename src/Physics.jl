@@ -1,9 +1,9 @@
 module Physics
 
-using LinearAlgebra: diagm, tr
-using ..NonEquilibriumGreenFunction: polygamma, blockrange
+using LinearAlgebra: diagm
+using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isacausal,
-    Instantaneous, adjoint, matrix, blocksize, SumOperator
+    Instantaneous, adjoint, keldysh_trace
 import Base: *
 
 include("Physics/physics.jl")
@@ -80,22 +80,14 @@ end
 """
     current_signal(op)
 
-Time-resolved signal of a block-diagonal current/observable operator: the
-trace over the Keldysh indices of each same-time block, one value per time
-step. For `bs == 1` this is `diag(matrix(op))`.
+Time-resolved signal of a current/observable operator: the trace over the
+Keldysh indices of each same-time block, one value per time step. For
+`bs == 1` this is `diag(matrix(op))`.
 
 `lead_current` returns an operator; use this function to extract the
 physical signal from it.
 """
-function current_signal(op)
-    mat = matrix(op)
-    bs = blocksize(op)
-    N = div(size(mat, 1), bs)
-    return [tr(@view mat[blockrange(i, bs), blockrange(i, bs)]) for i in 1:N]
-end
-function current_signal(op::SumOperator)
-    return current_signal(op.left) + current_signal(op.right)
-end
+current_signal(op) = keldysh_trace(op)
 
 
 export solve_keldysh, lead_current, current_signal
