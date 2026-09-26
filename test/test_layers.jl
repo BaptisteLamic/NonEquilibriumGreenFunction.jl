@@ -102,14 +102,14 @@ end
     ax = 0:0.25:1
     g = discretize_retardedkernel(ax, (t, tp) -> ComplexF64[1.0 2.0; 3.0 4.0] * (t - tp + 1.0); compression=NONCompression(), stationary=true)
     Σ_R = discretize_dirac(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
-    ρ = discretize_acausalkernel(ax, (t, tp) -> Matrix{ComplexF64}(I, 2, 2) * exp(-(t - tp)^2); stationary=true, compression=NONCompression())
+    ρ = discretize_acausalkernel(ax, (t, tp) -> ComplexF64[1 0; 0 1] * exp(-(t - tp)^2); stationary=true, compression=NONCompression())
     W = discretize_dirac(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
-    I = Physics.lead_current(G_R, G_K, Σ_R, Σ_K)
-    sig = Physics.current_signal(I)
-    mat = matrix(I)
+    Iop = Physics.lead_current(G_R, G_K, Σ_R, Σ_K)
+    sig = Physics.current_signal(Iop)
+    mat = matrix(Iop)
     manual = [tr(mat[2*i-1:2*i, 2*i-1:2*i]) for i in 1:div(size(mat, 1), 2)]
     @test length(sig) == length(ax)
     @test sig ≈ manual atol = 1e-12
