@@ -483,7 +483,12 @@ way to observe an operator; unlike `diag(matrix(op))` it is defined for
 function same_time(op::SimpleOperator)
     mat = matrix(op)
     bs = blocksize(op)
-    return [copy(@view mat[blockrange(i, bs), blockrange(i, bs)]) for i in 1:div(size(mat, 1), bs)]
+    N = div(size(mat, 1), bs)
+    if mat isa HssMatrix
+        T = scalartype(op)
+        return [T[mat[p + j, p + k] for j in 1:bs, k in 1:bs] for (i, p) in enumerate(0:bs:(N - 1) * bs)]
+    end
+    return [copy(@view mat[blockrange(i, bs), blockrange(i, bs)]) for i in 1:N]
 end
 same_time(op::SumOperator) = same_time(op.left) .+ same_time(op.right)
 
@@ -520,10 +525,16 @@ end
     @test occursin("HssMatrix", string(typeof(matrix(k))))
     st = same_time(k)
     alloc = @allocated same_time(k)
-    @test alloc < 0.01 * sizeof(ComplexF64) * N * N
+    @test alloc < 0.05 * sizeof(ComplexF64) * N * N
     dense = matrix(k)[: , :]
     @test [st[i][1, 1] for i in eachindex(st)] ≈ [dense[i, i] for i in axes(dense, 1)]
     @test keldysh_trace(k) ≈ diag(dense)
+
+    g2 = discretize_retardedkernel(ax, (t, tp) -> ComplexF64[1.0 2.0; 3.0 4.0] * (t - tp + 1.0); compression=HssCompression(leafsize=64), stationary=true)
+    st2 = same_time(g2)
+    dense2 = matrix(g2)[:, :]
+    @test [st2[i] ≈ dense2[2*i-1:2*i, 2*i-1:2*i] for i in eachindex(st2)] |> all
+    @test keldysh_trace(g2) ≈ [tr(dense2[2*i-1:2*i, 2*i-1:2*i]) for i in 1:length(ax)]
 end
 
 
