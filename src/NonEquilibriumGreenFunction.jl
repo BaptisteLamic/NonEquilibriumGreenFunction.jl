@@ -64,6 +64,6 @@ export compress!
 export scalartype
 export make_similar
 export thermal_kernel, theq_lesser_time_kernel
-export solve_keldysh, lead_current
+export solve_keldysh, lead_current, current_signal
 
 end
