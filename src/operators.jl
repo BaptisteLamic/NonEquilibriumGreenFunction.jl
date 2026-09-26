@@ -511,6 +511,21 @@ keldysh_trace(op::AbstractOperator) = tr.(same_time(op))
     @test keldysh_trace(k) ≈ diag(matrix(k))
 end
 
+@testitem "same_time does not materialize HSS storage" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction
+    N = 512
+    ax = 0:0.01:(N - 1) * 0.01
+    k = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(exp(-(t - tp)^2)); compression=HssCompression(leafsize=64), stationary=true)
+    @test occursin("HssMatrix", string(typeof(matrix(k))))
+    st = same_time(k)
+    alloc = @allocated same_time(k)
+    @test alloc < 0.01 * sizeof(ComplexF64) * N * N
+    dense = matrix(k)[: , :]
+    @test [st[i][1, 1] for i in eachindex(st)] ≈ [dense[i, i] for i in axes(dense, 1)]
+    @test keldysh_trace(k) ≈ diag(dense)
+end
+
 
 @testitem "Equality test" begin
     using LinearAlgebra
