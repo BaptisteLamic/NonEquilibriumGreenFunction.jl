@@ -2,6 +2,7 @@
 
 [![Build status (Github Actions)](https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl/workflows/CI/badge.svg)](https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl/actions)
 [![codecov](https://codecov.io/gh/BaptisteLamic/NonEquilibriumGreenFunction.jl/branch/main/graph/badge.svg?token=BHAETIA0KL)](https://codecov.io/gh/BaptisteLamic/NonEquilibriumGreenFunction.jl)
+[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://BaptisteLamic.github.io/NonEquilibriumGreenFunction.jl/)
 [![DOI](https://zenodo.org/badge/623330633.svg)](https://zenodo.org/badge/latestdoi/623330633)
 
 ## Overview
@@ -17,6 +18,9 @@ This package solves the non-equilibrium Dyson equation in the time domain with q
 - Quasi-linear time complexity 
 
 ## Documentation
+
+The full documentation, including the API reference and the two worked examples, is
+hosted at <https://BaptisteLamic.github.io/NonEquilibriumGreenFunction.jl/>.
 
 The documentation is built with [Documenter.jl](https://documenter.juliadocs.org/stable/) and
 [Literate.jl](https://github.com/fredrikekre/Literate.jl) on every push. The two worked
