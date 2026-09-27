@@ -1,0 +1,97 @@
+# User Guide
+
+## The typical workflow
+
+Every simulation with this package follows the same four steps. The two
+[examples](generated/mqdm.md) are concrete instances of this workflow.
+
+```julia
+using NonEquilibriumGreenFunction
+
+ax = 0:δt:T                                   # time axis
+
+# 1. discretize the building blocks
+g     = discretize_retardedkernel(ax, g_func; compression=cpr, stationary=...)
+Σ_R   = discretize_dirac(ax, Σ_R_func; compression=cpr) + ...
+ρ     = discretize_acausalkernel(ax, ρ_func; compression=cpr, stationary=...)
+
+# 2. solve the retarded Dyson equation
+G_R = solve_dyson(g, g * Σ_R)
+
+# 3. dress the kinetic branch
+Σ_K = -2im * coupling' * ρ * coupling
+G_K = G_R * Σ_K * G_R'
+
+# 4. extract observables
+I_avr = ... # products of G_R, G_K, Σ_R, Σ_K
+```
+
+## Kernels and causality
+
+A kernel function `f(t, t')` returns the **block matrix** of the operator at times
+`(t, t')`. The block size `bs` is inferred from `size(f(ax[1], ax[1]))` and is *global*:
+all kernels combined in one simulation must return blocks of the same size. A scalar
+function gives `bs = 1`; a function returning a 2×2 Nambu matrix gives `bs = 2`.
+
+Four causalities are supported and tracked automatically through algebra:
+
+| Causality | Meaning | Constructor |
+|---|---|---|
+| `Retarded` | zero for `t < t'` | `discretize_retardedkernel` |
+| `Advanced` | zero for `t > t'` | `discretize_advancedkernel` |
+| `Acausal` | no constraint (e.g. equilibrium occupations) | `discretize_acausalkernel` |
+| `Instantaneous` | proportional to `δ(t-t')` | `discretize_dirac` |
+
+Products and adjoints preserve causality (`Retarded × Retarded = Retarded`,
+`Retarded' = Advanced`, ...), and the discretizations use it: retarded kernels are
+compressed on their lower-triangular support only.
+
+## Discretization
+
+The time axis is discretized with the trapezoidal rule (`TrapzDiscretisation`). `N =
+length(ax)` time steps produce a `bs*N × bs*N` block matrix. Continuous kernels are
+integrated as
+
+```math
+\int^{t} g(t,t_1)\Sigma(t_1,t')\,dt_1 \;\to\; \delta t \sum_k g(t,t_k)\Sigma(t_k,t')
+```
+
+and products of kernels compose this quadrature automatically — the `*` operator on
+kernels *is* the time integral, so `g * Σ` is ready to be passed to `solve_dyson`.
+
+## Compression
+
+The matrix of a discretized kernel is compressed to make the algebra quasi-linear:
+
+- `HssCompression(atol, rtol, kest, leafsize)`: hierarchical semi-separable compression
+  of the kernel matrix. General kernels cost ``\mathcal O(N^2)`` to compress and
+  ``\mathcal O(N \log N)`` to multiply.
+- `NONCompression()`: no compression, dense matrices. Multiply costs
+  ``\mathcal O(N^3)`` — useful for testing and small systems.
+
+Two knobs matter in practice:
+
+- `stationary=true` (constructors only): the kernel depends only on `t-t'`, so the matrix
+  is block-circulant. It is built through an FFT-accelerated circulant operator:
+  ``\mathcal O(N \log N)`` construction and ``\mathcal O(N \log N)`` products.
+- `leafsize` (HSS only): size of the HSS tree leaves. The examples use `leafsize=32`
+  (bs=1) and `leafsize=64` (bs=2); adapt it to the rank structure of your kernel.
+
+## Observables
+
+Because the Keldysh trace is problem-dependent, observables are assembled by hand from
+the operators. The current through lead `l` reduces to a combination of products of
+`G_R`, `G_K`, `Σ_R_l` and `Σ_K_l` (see `compute_average_current` in either example);
+`diag(matrix(op))` (bs=1) or `diag(matrix(op))[1:2:end] .- diag(matrix(op))[2:2:end]`
+(bs=2, Keldysh trace) extracts the time-domain signal.
+
+## Performance notes
+
+- HSS compression does not benefit from multithreaded BLAS; large runs typically call
+  `BLAS.set_num_threads(1)` and rely on Julia threads instead.
+- Prefer `stationary=true` whenever the physics allows — the circulant path is the
+  fastest construction.
+- Kernel products allocate intermediate HSS matrices; long expression chains are faster
+  when intermediate results are named and reused.
+- Benchmarks and committed per-hardware baselines live in `benchmark/` (see
+  `benchmark/README.md`).

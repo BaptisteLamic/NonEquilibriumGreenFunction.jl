@@ -9,3 +9,8 @@ Manifest.toml
 benchmark_results_*.json
 /benchmark/results/
 /benchmark/tune.json
+
+# Generated documentation artifacts
+docs/build/
+docs/src/generated/
+docs/Manifest.toml
