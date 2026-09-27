@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Metal - QD - Metal junction · NonEquilibriumGreenFunction</title><meta name="title" content="Metal - QD - Metal junction · NonEquilibriumGreenFunction"/><meta property="og:title" content="Metal - QD - Metal junction · NonEquilibriumGreenFunction"/><meta property="twitter:title" content="Metal - QD - Metal junction · NonEquilibriumGreenFunction"/><meta name="description" content="Documentation for NonEquilibriumGreenFunction."/><meta property="og:description" content="Documentation for NonEquilibriumGreenFunction."/><meta property="twitter:description" content="Documentation for NonEquilibriumGreenFunction."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">NonEquilibriumGreenFunction</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../userguide/">User guide</a></li><li><span class="tocitem">Examples</span><ul><li class="is-active"><a class="tocitem" href>Metal - QD - Metal junction</a><ul class="internal"><li><a class="tocitem" href="#Parameters"><span>Parameters</span></a></li><li><a class="tocitem" href="#Equilibrium-simulation"><span>Equilibrium simulation</span></a></li><li><a class="tocitem" href="#Benchmarks"><span>Benchmarks</span></a></li><li class="toplevel"><a class="tocitem" href="#CI-and-interactive-runs-use-a-reduced-grid;-the-committed-figure"><span>CI and interactive runs use a reduced grid; the committed figure</span></a></li><li><a class="tocitem" href="#Voltage-biased-junction"><span>Voltage biased junction</span></a></li></ul></li><li><a class="tocitem" href="../sqds/">Superconductor - QD - Superconductor junction</a></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../internals/">Internals</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Metal - QD - Metal junction</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Metal - QD - Metal junction</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl/blob/main/docs/src/generated/mqdm.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Metal-Quantum-Dot-Metal-junction"><a class="docs-heading-anchor" href="#Metal-Quantum-Dot-Metal-junction">Metal - Quantum Dot - Metal junction</a><a id="Metal-Quantum-Dot-Metal-junction-1"></a><a class="docs-heading-anchor-permalink" href="#Metal-Quantum-Dot-Metal-junction" title="Permalink"></a></h1><p>We consider a junction formed by a quantum dot hosting a spin-degenerate state connected to two leads. The system Hamiltonian is</p><p class="math-container">\[H = H_L + H_D + H_T + \sum_l \mu_l N_l\]</p><p>with the leads Hamiltonian <span>$H_L$</span>, the tunnel coupling <span>$H_T$</span> between leads and dot, and the isolated dot <span>$H_D$</span>:</p><p class="math-container">\[\begin{aligned}
+H_L &amp;= \sum_{\alpha,l,s} \epsilon_{\alpha,l} n_{\alpha,l,s}, &amp;
+H_D &amp;= \varepsilon \sum_s d_s^\dagger d_s, &amp;
+H_T &amp;= \sum_{\alpha,l,s} \left\{ t_{\alpha,l} \psi_{\alpha,l,s}^\dagger d_s + \text{h.c.} \right\},
+\end{aligned}\]</p><p>The energy offset is removed with the unitary transform <span>$U(t) = \exp(-i \sum_l \hat N_l \int^t \mu_l(\tau) d\tau / \hbar)$</span>, which moves the bias into time-dependent tunneling phases <span>$\mathcal T_{\alpha,l}(t) = t_{\alpha,l} e^{i\sigma_z \phi_l(t)/2}$</span> with <span>$\phi_l(t) = 2e \int^t V_l(\tau) d\tau/\hbar$</span>.</p><p>Integrating out the leads yields the Dyson equation for the dot</p><p class="math-container">\[G = g + g \Sigma G, \qquad
+\Sigma_l = \mathcal T_l^\dagger g_l \mathcal T_l .\]</p><p>On the Keldysh contour, the rotated Green functions decompose into retarded, advanced and kinetic components satisfying</p><p class="math-container">\[\begin{align}
+G^R &amp;= g^R + g^R \Sigma^R G^R, &amp;
+G^A &amp;= (G^R)^\dagger, &amp;
+G^K &amp;= (1+G^R\Sigma^R) g^K (1+\Sigma^A G^A) + G^R \Sigma^K G^A .
+\end{align}\]</p><p>The bare dot Green function is <span>$g^R(t) = -2ie^{-i\varepsilon t/\hbar}$</span> (the factor 2 comes from the spin) and, in the wideband limit, the lead self-energies are</p><p class="math-container">\[\begin{align}
+\Sigma^R_l(t,t&#39;) &amp;= -i\Gamma_l \delta(t-t&#39;), &amp;
+\Sigma^K_l(t,t&#39;) &amp;= -2i\Gamma_l e^{i(\phi_l(t)-\phi_l(t&#39;))/2} \rho_\beta(t-t&#39;),
+\end{align}\]</p><p>where <span>$\tanh(E\beta/2) = \int \rho_\beta(t) e^{itE/\hbar}$</span>.</p><p>In the time domain, on <span>$N = T/\delta t$</span> steps, matrix compression reduces the cost of the Dyson resolution from <span>$\mathcal O(N^3)$</span> to <span>$\mathcal O(N\log N)$</span>.</p><p>The simulation parameters are gathered in a single structure. The time axis runs from 0 to T with step δt, and the self-energies are switched on at t = 0.</p><pre><code class="language-julia hljs">using NonEquilibriumGreenFunction
+using LinearAlgebra
+using CairoMakie
+using LaTeXStrings
+using QuadGK: quadgk
+using SpecialFunctions
+
+#HSS compression does not leverage efficiently the BLAS multithreading.
+BLAS.set_num_threads(1)</code></pre><h2 id="Parameters"><a class="docs-heading-anchor" href="#Parameters">Parameters</a><a id="Parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Parameters" title="Permalink"></a></h2><pre><code class="language-julia hljs">module Junction
+
+using NonEquilibriumGreenFunction
+using LinearAlgebra
+
+struct Parameters
+    δt::Float64
+    T::Float64
+    Γl::Float64
+    Γr::Float64
+    β::Float64
+    ϕl
+    ϕr
+end
+
+default_compression() = HssCompression(leafsize=32)
+
+function Parameters(; δt, T, Γl=1, Γr=1, β=1000, ϕl, ϕr)
+    return Parameters(δt, T, Γl, Γr, β, ϕl, ϕr)
+end
+
+axis(p::Parameters) = 0:p.δt:p.T
+
+function simulate_junction(p::Parameters; cpr=default_compression())
+    #retarded
+    Σ_R_right = discretize_dirac(axis(p), t -&gt; -1im * p.Γr, compression=cpr)
+    Σ_R_left = discretize_dirac(axis(p), t -&gt; -1im * p.Γl, compression=cpr)
+    Σ_R = Σ_R_left + Σ_R_right
+    g = discretize_retardedkernel(axis(p), (t, tp) -&gt; ComplexF64(-2im), compression=cpr, stationary=true)
+    G_R = solve_dyson(g, g * Σ_R)
+    #kinetic
+    ρ = discretize_acausalkernel(axis(p), (t, tp) -&gt; thermal_kernel(t - tp, p.β) .|&gt; ComplexF64,
+        stationary=true, compression=cpr)
+    coupling_left = discretize_dirac(axis(p), t -&gt; sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
+    coupling_right = discretize_dirac(axis(p), t -&gt; sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
+    Σ_K_left = -2im * coupling_left&#39; * ρ * coupling_left
+    Σ_K_right = -2im * coupling_right&#39; * ρ * coupling_right
+    Σ_K = Σ_K_left + Σ_K_right
+    G_K = G_R * Σ_K * G_R&#39;
+    return (; G_R, G_K, Σ_R_left, Σ_K_left, Σ_R_right, Σ_K_right)
+end
+
+function compute_average_current(results)
+    function f(G_R, G_K, Σ_R, Σ_K)
+        _Σ_R_time_G_R = Threads.@spawn Σ_R * G_R
+        _G_R_time_Σ_R = Threads.@spawn G_R * Σ_R
+        _G_R_time_Σ_K = Threads.@spawn G_R * Σ_K
+        _G_K_time_adjoint_Σ_R = Threads.@spawn G_K * adjoint(Σ_R)
+        _Σ_K_time_adjoint_G_R = Threads.@spawn Σ_K * adjoint(G_R)
+        _Σ_R_time_G_K = Threads.@spawn Σ_R * G_K
+        Σ_R_time_G_R = fetch(_Σ_R_time_G_R)
+        G_R_time_Σ_R = fetch(_G_R_time_Σ_R)
+        G_R_time_Σ_K = fetch(_G_R_time_Σ_K)
+        G_K_time_adjoint_Σ_R = fetch(_G_K_time_adjoint_Σ_R)
+        Σ_K_time_adjoint_G_R = fetch(_Σ_K_time_adjoint_G_R)
+        Σ_R_time_G_K = fetch(_Σ_R_time_G_K)
+        return -((1 // 2) * ((adjoint(Σ_R_time_G_R)) - Σ_R_time_G_R) + G_R_time_Σ_K +
+                 G_K_time_adjoint_Σ_R + -(Σ_K_time_adjoint_G_R + Σ_R_time_G_K) +
+                 (3 // 2) * (G_R_time_Σ_R - adjoint(G_R_time_Σ_R)))
+    end
+    I_avr_op = f(results[:G_R], results[:G_K], results[:Σ_R_left], results[:Σ_K_left])
+    diag(matrix(I_avr_op))
+end
+
+end</code></pre><pre><code class="nohighlight hljs">Main.var&quot;##142&quot;.Junction</code></pre><h2 id="Equilibrium-simulation"><a class="docs-heading-anchor" href="#Equilibrium-simulation">Equilibrium simulation</a><a id="Equilibrium-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Equilibrium-simulation" title="Permalink"></a></h2><div class="admonition is-success" id="env-7edf51a66b634d70"><header class="admonition-header">env<a class="admonition-anchor" href="#env-7edf51a66b634d70" title="Permalink"></a></header><div class="admonition-body"></div></div><p>The examples run in the <code>docs</code> environment. This script is executed at documentation-build time; the full source is <code>docs/lit/mqdm.jl</code>.</p><pre><code class="language-julia hljs">p = Junction.Parameters(δt=0.05, T=1, ϕl=t -&gt; 0, ϕr=t -&gt; 0);
+println(&quot;N = $(Junction.axis(p) |&gt; length)&quot;)
+results = Junction.simulate_junction(p, cpr=HssCompression());</code></pre><pre><code class="nohighlight hljs">N = 21
+</code></pre><p>The retarded Green function of the isolated dot decays as <span>$-2e^{-\Gamma t}$</span> with <span>$\Gamma = 2(\Gamma_l + \Gamma_r)$</span> (spin factor included).</p><pre><code class="language-julia hljs">function plot_plot_GR(p, results)
+    f = Figure()
+    Γ = 2 * (p.Γl + p.Γr)
+    f_ax = Axis(f[1, 1], ylabel=L&quot; \Im \left[ G^R(t&#39;)\right]&quot;, xlabel=L&quot;t&quot;)
+    G_R = matrix(results[:G_R])[:, 1]
+    ax = Junction.axis(p) |&gt; collect
+    im_G_R = imag.(G_R)
+    lines!(f_ax, ax, im_G_R, label=&quot;numerics&quot;)
+    lines!(f_ax, ax, -2 * exp.(-Γ .* ax), label=&quot;analytics&quot;)
+    axislegend(position=:rb)
+    f_ax = Axis(f[1, 2], ylabel=L&quot; \Re \left[ G^R(t&#39;)\right]&quot;, xlabel=L&quot;t&quot;)
+    re_G_R = real.(G_R)
+    lines!(f_ax, ax, re_G_R, label=&quot;numerics&quot;)
+    lines!(f_ax, ax, 0 .* ax, label=&quot;analytics&quot;)
+    axislegend(position=:rb)
+    f
+end
+
+plot_plot_GR(p, results)</code></pre><p><img src="../mqdm-11.png" alt/></p><p>The full maps <span>$G^R(t,t&#39;)$</span> and <span>$G^K(t,t&#39;)$</span>:</p><pre><code class="language-julia hljs">function plot_results_maps(results)
+    f = Figure()
+    f_ax = Axis(f[1, 1], title=L&quot; \Im \left[ G^R(t,t&#39;)\right]&quot;, xlabel=L&quot;t&quot;, ylabel=L&quot;t&#39;&quot;)
+    G_R = matrix(results[:G_R])
+    ax = Junction.axis(p) |&gt; collect
+    hm = heatmap!(f_ax, ax, ax, imag.(G_R))
+    Colorbar(f[1, 2], hm)
+    f_ax = Axis(f[1, 3], title=L&quot;\Re \left[ G^R(t,t&#39;)\right]&quot;, xlabel=L&quot;t&quot;, ylabel=L&quot;t&#39;&quot;)
+    hm = heatmap!(f_ax, ax, ax, real.(G_R))
+    Colorbar(f[1, 4], hm)
+    f_ax = Axis(f[2, 1], title=L&quot; \Im \left[ G^K(t,t&#39;)\right]&quot;, xlabel=L&quot;t&quot;, ylabel=L&quot;t&#39;&quot;)
+    G_K = matrix(results[:G_K])
+    hm = heatmap!(f_ax, ax, ax, imag.(G_K))
+    Colorbar(f[2, 2], hm)
+    f_ax = Axis(f[2, 3], title=L&quot;\Re \left[ G^K(t,t&#39;)\right]&quot;, xlabel=L&quot;t&quot;, ylabel=L&quot;t&#39;&quot;)
+    hm = heatmap!(f_ax, ax, ax, real.(G_K))
+    Colorbar(f[2, 4], hm)
+    f
+end
+
+plot_results_maps(results)</code></pre><p><img src="../mqdm-13.png" alt/></p><h2 id="Benchmarks"><a class="docs-heading-anchor" href="#Benchmarks">Benchmarks</a><a id="Benchmarks-1"></a><a class="docs-heading-anchor-permalink" href="#Benchmarks" title="Permalink"></a></h2><p>We benchmark the full resolution increasing simulation length, including the initial construction of the kernels. To get out of equilibrium, a small bias voltage is applied. The HSS-compressed resolution scales as <span>$T/\delta_t$</span> while the uncompressed one scales as <span>$(T/\delta_t)^3$</span>.</p><h1 id="CI-and-interactive-runs-use-a-reduced-grid;-the-committed-figure"><a class="docs-heading-anchor" href="#CI-and-interactive-runs-use-a-reduced-grid;-the-committed-figure">CI and interactive runs use a reduced grid; the committed figure</a><a id="CI-and-interactive-runs-use-a-reduced-grid;-the-committed-figure-1"></a><a class="docs-heading-anchor-permalink" href="#CI-and-interactive-runs-use-a-reduced-grid;-the-committed-figure" title="Permalink"></a></h1><p>(examples/QD_benchmark.svg) shows the full sweep.</p><pre><code class="language-julia hljs">if haskey(ENV, &quot;CI&quot;)
+    tab_T_hss = 0.1 .* [2^k for k in 6:9]
+    tab_T_full = 0.1 .* [2^k for k in 6:8]
+else
+    tab_T_hss = 0.1 .* [2^k for k in 6:14]
+    tab_T_full = 0.1 .* [2^k for k in 6:11]
+end
+
+function benchmark_hss(T)
+    param = Junction.Parameters(δt=0.1, T=T, ϕl=t -&gt; 0, ϕr=t -&gt; 0.1 * t);
+    ts = Float64[]
+    for _ in 1:3
+        push!(ts, @elapsed Junction.simulate_junction(param))
+    end
+    minimum(ts)
+end
+
+function benchmark_full(T)
+    param = Junction.Parameters(δt=0.1, T=T, ϕl=t -&gt; 0, ϕr=t -&gt; 0.1 * t);
+    ts = Float64[]
+    for _ in 1:3
+        push!(ts, @elapsed Junction.simulate_junction(param, cpr=NONCompression()))
+    end
+    minimum(ts)
+end
+
+benchmark_hss(tab_T_hss[1])
+benchmark_results_hss = benchmark_hss.(tab_T_hss)
+benchmark_full(tab_T_full[1])
+benchmark_results_full = benchmark_full.(tab_T_full)
+
+function plot_benchmark(tab_T_hss, results_hss, tab_T_full, results_full, δt)
+    f = Figure()
+    f_ax = Axis(f[1, 1], xscale=log10, yscale=log10,
+        title=&quot;Simulation of Metal-QD-Metal junction&quot;,
+        xlabel=L&quot;T/\delta_t&quot;,
+        ylabel=&quot;Elapsed time (s)&quot;)
+    scatter!(f_ax, tab_T_hss ./ δt, results_hss, label=&quot;HSS compression&quot;)
+    scatter!(f_ax, tab_T_full ./ δt, results_full, label=&quot;No compression&quot;)
+    lines!(f_ax, tab_T_hss ./ δt, tab_T_hss ./ tab_T_hss[1] .* results_hss[1],
+        label=L&quot;\propto T/\delta_t&quot;)
+    lines!(f_ax, tab_T_full ./ δt, tab_T_full .^ 3 ./ tab_T_full[3]^3 .* results_full[3],
+        label=L&quot;\propto (T/\delta_t)^3&quot;)
+    axislegend(position=:rb)
+    f
+end
+
+f = plot_benchmark(tab_T_hss, benchmark_results_hss, tab_T_full, benchmark_results_full, 0.1)
+save(joinpath(@__DIR__, &quot;mqdm_benchmark.svg&quot;), f)
+f</code></pre><p><img src="../mqdm-16.png" alt/></p><h2 id="Voltage-biased-junction"><a class="docs-heading-anchor" href="#Voltage-biased-junction">Voltage biased junction</a><a id="Voltage-biased-junction-1"></a><a class="docs-heading-anchor-permalink" href="#Voltage-biased-junction" title="Permalink"></a></h2><p>When a voltage biased is applied accross a junction, a current appears. The tunnel coupling phases evolve according to <span>$\frac{d\phi_l(t)}{dt} = \frac{2e}{\hbar}U_l(t)$</span> and the average current from lead <span>$l$</span> is</p><p class="math-container">\[\left\langle I_l(t) \right\rangle =
+\frac{e}{2\hbar} \mathrm{tr}^K \left\{ \tau_z \int
+G(t,\tau) \Sigma_l(\tau,t) - \Sigma_l(t,\tau)G(\tau,t) d\tau \right\}.\]</p><pre><code class="language-julia hljs">Tmax = 200
+Vmax = 75
+Ur(t) = 0
+Ul(t) = Vmax * (t / Tmax - 1 // 2)
+δt = 0.1 * 2π / Vmax
+p = Junction.Parameters(
+    δt=δt,
+    T=Tmax,
+    ϕl=t -&gt; quadgk(Ul, 0, t)[1],
+    ϕr=t -&gt; quadgk(Ur, 0, t)[1])
+println(&quot;N = $(Junction.axis(p) |&gt; length)&quot;)
+results = Junction.simulate_junction(p, cpr=HssCompression());
+iavr = Junction.compute_average_current(results)
+
+function plot_results(iavr, Ul, Ur)
+    f = Figure()
+    f_ax = Axis(f[1, 1], title=&quot;Average current through an M-QD-M junction&quot;,
+        xlabel=L&quot;t&#39;&quot;, ylabel=L&quot;\propto &lt;I_L&gt;(t)&quot;)
+    ax = Junction.axis(p) |&gt; collect
+    lines!(f_ax, ax, real.(iavr), label=&quot;numerics&quot;)
+    axislegend(position=:rb)
+    f_ax = Axis(f[2, 1], title=&quot;Bias voltages&quot;, xlabel=L&quot;t&#39;&quot;, ylabel=L&quot;\propto V(t)&quot;)
+    lines!(f_ax, ax, Ul.(ax), label=L&quot;V_l&quot;)
+    lines!(f_ax, ax, Ur.(ax), label=L&quot;V_r&quot;)
+    axislegend(position=:rb)
+    f
+end
+
+f = plot_results(iavr, Ul, Ur)
+save(joinpath(@__DIR__, &quot;average_current_QD.svg&quot;), f)
+f</code></pre><p><img src="../mqdm-18.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../userguide/">« User guide</a><a class="docs-footer-nextpage" href="../sqds/">Superconductor - QD - Superconductor junction »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Sunday 27 September 2026 16:41">Sunday 27 September 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
