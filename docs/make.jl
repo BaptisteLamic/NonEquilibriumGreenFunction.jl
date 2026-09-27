@@ -1,6 +1,7 @@
 using NonEquilibriumGreenFunction
 using Documenter
 using Literate
+using LinearAlgebra
 
 const EXAMPLES = ["mqdm", "sqds"]
 
