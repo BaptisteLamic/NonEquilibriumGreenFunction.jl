@@ -19,23 +19,27 @@ import LinearAlgebra.I
 import LinearAlgebra.diag
 import LinearAlgebra.norm
 
-
 include("causality.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
 include("utils.jl")
 include("discretizations.jl")
-include("operators.jl")
-include("Kernels/kernels.jl")
-include("physics.jl")
+
+include("Kernels.jl")
+using .Kernels
+
+include("Physics.jl")
+using .Physics
+
 include("AdaptiveRichardson.jl")
+
+export Kernels, Physics
 
 export axis, blocksize
 export getindex
-export build_linearMap,blockrange,blockindex, build_CirculantlinearMap
-
-#new export 
+export build_linearMap, blockrange, blockindex, build_CirculantlinearMap
+#new export
 export TrapzDiscretisation, AbstractDiscretisation
 export Retarded, Advanced, Acausal, Instantaneous
 export isretarded, isadvanced, isacausal
@@ -51,7 +55,6 @@ export causality
 export solve_dyson
 export adjoint
 export norm
-
 export BlockCirculantMatrix
 export NONCompression, HssCompression
 export pauli
@@ -60,5 +63,8 @@ export compression
 export compress!
 export scalartype
 export make_similar
+export thermal_kernel, theq_lesser_time_kernel
+export solve_keldysh, lead_current, current_signal
+export same_time, keldysh_trace
 
 end

@@ -76,7 +76,7 @@ causality_of_sum(::Instantaneous, right::AbstractCausality) = right
 
 The sum of two Instantaneous operators is Instantaneous.
 """
-causality_of_sum(::Instantaneous, ::Instantaneous) = Instantaneous
+causality_of_sum(::Instantaneous, ::Instantaneous) = Instantaneous()
 
 """
     causality_of_prod(::Retarded, ::Retarded)

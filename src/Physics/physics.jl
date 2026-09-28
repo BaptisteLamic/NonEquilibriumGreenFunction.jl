@@ -1,6 +1,6 @@
 export theq_lesser_time_kernel
 export thermal_kernel
-
+export pauli
 function theq_lesser_time_kernel(T,bs,τ; kb = 1., ħ = 1.)
     f_reg(t,tp) = diagm([ thermal_kernel(t-tp,T,τ, kb = kb, ħ = ħ) for i = 1:bs])
     f_δ(t) = diagm([-1. /ħ for i = 1:bs])

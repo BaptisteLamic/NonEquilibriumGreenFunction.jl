@@ -7,6 +7,10 @@ Modules = [NonEquilibriumGreenFunction]
 Public = false
 ```
 
+```@docs
+NonEquilibriumGreenFunction.Kernels._discretize_uniformScaling
+```
+
 ```@autodocs
 Modules = [NonEquilibriumGreenFunction.AdaptiveRichardson]
 ```
