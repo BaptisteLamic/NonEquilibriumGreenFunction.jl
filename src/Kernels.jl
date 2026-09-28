@@ -18,13 +18,14 @@ import Base: +, -, *, ==, adjoint, step, getindex, size, sum, prod
 import LinearAlgebra: norm, adjoint
 
 include("operators.jl")
+include("Kernels/kernel_maps.jl")
 include("Kernels/kernels.jl")
 
 export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, DiracOperator, SumOperator
-export RetardedKernel, AdvancedKernel, AcausalKernel
+export RetardedKernel, AdvancedKernel, AcausalKernel, InstantaneousKernel
+export AbstractKernelMap, Stationary, TwoTime, Separable
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace
-export discretize_dirac, discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_lowrank_kernel
 export solve_dyson
 export compress!, make_similar
 

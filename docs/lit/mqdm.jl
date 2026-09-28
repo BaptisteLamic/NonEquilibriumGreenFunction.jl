@@ -97,16 +97,16 @@ axis(p::Parameters) = 0:p.δt:p.T
 
 function simulate_junction(p::Parameters; cpr=default_compression())
     #retarded
-    Σ_R_right = discretize_dirac(axis(p), t -> -1im * p.Γr, compression=cpr)
-    Σ_R_left = discretize_dirac(axis(p), t -> -1im * p.Γl, compression=cpr)
+    Σ_R_right = InstantaneousKernel(axis(p), t -> -1im * p.Γr, compression=cpr)
+    Σ_R_left = InstantaneousKernel(axis(p), t -> -1im * p.Γl, compression=cpr)
     Σ_R = Σ_R_left + Σ_R_right
-    g = discretize_retardedkernel(axis(p), (t, tp) -> ComplexF64(-2im), compression=cpr, stationary=true)
+    g = RetardedKernel(axis(p), Stationary(τ -> ComplexF64(-2im)), compression=cpr)
     G_R = solve_dyson(g, g * Σ_R)
     #kinetic
-    ρ = discretize_acausalkernel(axis(p), (t, tp) -> thermal_kernel(t - tp, p.β) .|> ComplexF64,
-        stationary=true, compression=cpr)
-    coupling_left = discretize_dirac(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
-    coupling_right = discretize_dirac(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
+    ρ = AcausalKernel(axis(p), Stationary(τ -> thermal_kernel(τ, p.β) .|> ComplexF64),
+        compression=cpr)
+    coupling_left = InstantaneousKernel(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
+    coupling_right = InstantaneousKernel(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
     Σ_K_left = -2im * coupling_left' * ρ * coupling_left
     Σ_K_right = -2im * coupling_right' * ρ * coupling_right
     Σ_K = Σ_K_left + Σ_K_right

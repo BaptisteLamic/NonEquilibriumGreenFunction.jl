@@ -198,7 +198,7 @@ struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator
 end
 
 """
-    discretize_dirac(axis, f; compression=HssCompression())
+    InstantaneousKernel(axis, f; compression=HssCompression())
 
 Create a DiracOperator from a function f defined on an axis.
 
@@ -210,7 +210,7 @@ Create a DiracOperator from a function f defined on an axis.
 # Returns
 A DiracOperator representing the diagonal matrix with f(axis[i]) at each block.
 """
-function discretize_dirac(axis, f; compression::AbstractCompression=HssCompression())
+function InstantaneousKernel(axis, f; compression::AbstractCompression=HssCompression())
     f00 = f(axis[1])
     T = eltype(f00)
     bs = size(f00, 1)
@@ -504,8 +504,8 @@ keldysh_trace(op::AbstractOperator) = tr.(same_time(op))
     using LinearAlgebra
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
-    k = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(t + tp); compression=NONCompression())
-    d = discretize_dirac(ax, t -> ComplexF64(2); compression=NONCompression())
+    k = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t + tp)); compression=NONCompression())
+    d = InstantaneousKernel(ax, t -> ComplexF64(2); compression=NONCompression())
     s = k + d
     st = same_time(s)
     @test st isa Vector{Matrix{ComplexF64}}
@@ -521,7 +521,7 @@ end
     using NonEquilibriumGreenFunction
     N = 512
     ax = 0:0.01:(N - 1) * 0.01
-    k = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(exp(-(t - tp)^2)); compression=HssCompression(leafsize=64), stationary=true)
+    k = RetardedKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); compression=HssCompression(leafsize=64))
     @test occursin("HssMatrix", string(typeof(matrix(k))))
     st = same_time(k)
     alloc = @allocated same_time(k)
@@ -530,7 +530,7 @@ end
     @test [st[i][1, 1] for i in eachindex(st)] ≈ [dense[i, i] for i in axes(dense, 1)]
     @test keldysh_trace(k) ≈ diag(dense)
 
-    g2 = discretize_retardedkernel(ax, (t, tp) -> ComplexF64[1.0 2.0; 3.0 4.0] * (t - tp + 1.0); compression=HssCompression(leafsize=64), stationary=true)
+    g2 = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); compression=HssCompression(leafsize=64))
     st2 = same_time(g2)
     dense2 = matrix(g2)[:, :]
     @test [st2[i] ≈ dense2[2*i-1:2*i, 2*i-1:2*i] for i in eachindex(st2)] |> all
@@ -543,9 +543,9 @@ end
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     c = 100
-    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-    kernelB = discretize_advancedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-    kernelC = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+    kernelC = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
     @assert kernelA != kernelB
     @assert kernelA == deepcopy(kernelA)
     @assert kernelC == kernelA
@@ -559,7 +559,7 @@ end
     c = 100
     cprA = HssCompression(atol = 1E-4,rtol = 1E-4)
     cprB = HssCompression(atol = 1E-6,rtol = 1E-6)
-    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=cprA)
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=cprA)
     kernelB = make_similar(kernelA, cprB)
     @test compression(kernelA) == cprA
     @test compression(kernelB) == cprB
@@ -573,8 +573,8 @@ end
     ax = LinRange(-Dt / 2, Dt, N)
     for T in (Float64,)
         c = 100
-        kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-        kernelB = discretize_retardedkernel(ax, (x, y) -> sin(x - y), compression=NONCompression())
+        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), compression=NONCompression())
         @test typeof(I*kernelA) == typeof(kernelA) 
         @test matrix(2*I*kernelA) == 2*matrix(kernelA)
         @test typeof(kernelA*I) == typeof(kernelA) 
@@ -591,8 +591,8 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, x->1., compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, x->1., compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         @test norm(matrix(kernel * dirac - kernel)) / norm(matrix(kernel)) < tol
     end
 end
@@ -604,10 +604,10 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-        target_left = discretize_retardedkernel(ax, (x, y) -> sin(x) * cos(x - y), compression=NONCompression())
-        target_right = discretize_retardedkernel(ax, (x, y) -> cos(x - y) * sin(y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        target_left = RetardedKernel(ax, TwoTime((x, y) -> sin(x) * cos(x - y)), compression=NONCompression())
+        target_right = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y) * sin(y)), compression=NONCompression())
         @test norm(matrix(dirac * kernel - target_left)) / norm(matrix(target_left)) < tol
         @test norm(matrix(kernel * dirac - target_right)) / norm(matrix(target_right)) < tol
     end
@@ -618,8 +618,8 @@ end
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     c = 100
-    kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-    kernelB = discretize_advancedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
     @test matrix(adjoint(kernelA)) == adjoint(matrix(kernelA)) 
     @test matrix(adjoint(kernelB)) == adjoint(matrix(kernelB)) 
     @test causality(adjoint(kernelA)) == Advanced()
@@ -633,7 +633,7 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
         @test matrix(2I * dirac) == 2 * matrix(dirac)
     end
 end
@@ -645,7 +645,7 @@ end
         c = 100
         tol = c * max(1E-6, eps(real(T)))
         foo(x) = sin(x) + (T<:Complex ? 1im : 0)
-        dirac = discretize_dirac(ax, foo, compression=NONCompression())
+        dirac = InstantaneousKernel(ax, foo, compression=NONCompression())
         @test matrix(dirac') == matrix(dirac)'
     end
 end
@@ -658,8 +658,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        kernelA = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
-        kernelB = discretize_retardedkernel(ax, (x, y) -> sin(x - y), compression=NONCompression())
+        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), compression=NONCompression())
         sumOp = SumOperator(kernelA, kernelB)
         target_right = kernelA * kernelB + kernelB * kernelB
         @test typeof(sumOp * kernelB) == typeof(target_right)
@@ -677,8 +677,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         target_right = dirac * kernel + kernel * kernel
         target_left = kernel * dirac + kernel * kernel
@@ -697,8 +697,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         @test matrix((-sumOp).left) == -matrix(dirac)
         @test matrix((-sumOp).right) == -matrix(kernel)
@@ -714,8 +714,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         target = dirac*dirac + dirac*kernel + kernel*dirac + kernel*kernel
         @test typeof(sumOp * sumOp) == typeof(target)
@@ -730,8 +730,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = discretize_dirac(ax, sin, compression=NONCompression())
-        kernel = discretize_retardedkernel(ax, (x, y) -> cos(x - y), compression=NONCompression())
+        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         adjoint_sumOp = sumOp'
         @test matrix(sumOp.left') == matrix(dirac')

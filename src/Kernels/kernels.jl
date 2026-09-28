@@ -4,6 +4,7 @@
 A time-domain operator wrapping a discretization and a causality type.
 
 # Fields
+
 - `discretization::D`: the discretized matrix representation
 - `causality::C`: one of `Retarded`, `Advanced` or `Acausal`
 """
@@ -46,6 +47,7 @@ isadvanced(g::Kernel) = causality(g) == Advanced()
 Returns `true` if the operator is acausal.
 """
 isacausal(g::Kernel) = causality(g) == Acausal()
+
 isretarded(g) = causality(g) == Retarded()
 isadvanced(g) = causality(g) == Advanced()
 isacausal(g) = causality(g) == Acausal()
@@ -65,37 +67,43 @@ function make_similar(g::Kernel, new_compression::AbstractCompression)
     return Kernel(new_dis, causality(g))
 end
 
-function discretize_kernel(::Type{D},::Type{C},axis, f; compression=HssCompression(), stationary=false) where {D<:AbstractDiscretisation, C<:AbstractCausality}
-    causality = C()
-    f00 = f(axis[1],axis[1])
-    @assert size(f00,1) == size(f00,2)
-    bs = size(f00,1)
-    _mask(::Retarded) = (x, y) -> x >= y ? f(x, y) : zero(f00)
-    _mask(::Advanced) = (x, y) -> x <= y ? f(x, y) : zero(f00)
-    _mask(::Acausal) = (x, y) -> f(x, y) 
-    f_masked = _mask(causality)
-    matrix = compression(axis, f_masked, stationary=stationary)
-    discretization = D(axis, matrix, bs, compression)
-    return Kernel(discretization, causality)
+function masked(map::AbstractKernelMap, ::Retarded, f00)
+    return (t, tp) -> t >= tp ? map(t, tp) : zero(f00)
+end
+
+function masked(map::AbstractKernelMap, ::Advanced, f00)
+    return (t, tp) -> t <= tp ? map(t, tp) : zero(f00)
+end
+
+function masked(map::AbstractKernelMap, ::Acausal, f00)
+    return (t, tp) -> map(t, tp)
 end
 
 """
-    discretize_lowrank_kernel(D, C, axis, f, g; compression=HssCompression())
+    Kernel(::Type{C}, axis, map::AbstractKernelMap; compression=HssCompression()) where {C<:AbstractCausality}
 
-Discretize the separable kernel `f(t) * g(tp)` masked by the causality `C`
-(`Retarded`, `Advanced` or `Acausal`), using the discretization type `D`.
+Discretize the kernel described by `map` masked by the causality `C`
+(`Retarded`, `Advanced` or `Acausal`) on `axis`.
 
 Returns a `Kernel` with causality `C`.
 """
-function discretize_lowrank_kernel(::Type{D},::Type{C}, axis, f,g ;compression=HssCompression())  where {D<:AbstractDiscretisation, C<:AbstractCausality}
-    f00 = f(axis[1])
-    g00 = g(axis[1])
-    @assert size(f00,1) == size(f00,2)
-    @assert size(f00) == size(g00)
-    bs = size(f00,1)
-    matrix = triangularLowRankCompression(compression,C(), axis, f, g)
+function Kernel(::Type{C}, axis, map::AbstractKernelMap;
+    compression=HssCompression()) where {C<:AbstractCausality}
+    causality = C()
+    bs, _ = blocksize_and_eltype(map, axis)
+    f_masked = masked(map, causality, map(axis[1], axis[1]))
+    matrix = compression(axis, f_masked, stationary = map isa Stationary)
     discretization = TrapzDiscretisation(axis, matrix, bs, compression)
-    return Kernel(discretization, C())
+    return Kernel(discretization, causality)
+end
+
+function Kernel(::Type{C}, axis, sep::Separable;
+    compression=HssCompression()) where {C<:AbstractCausality}
+    causality = C()
+    bs, _ = blocksize_and_eltype(sep, axis)
+    matrix = triangularLowRankCompression(compression, causality, axis, sep.f, sep.g)
+    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
+    return Kernel(discretization, causality)
 end
 
 function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDiscretisation, C<:AbstractCausality}
@@ -105,58 +113,47 @@ function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDis
 end
 
 """
-    discretize_retardedkernel(axis, f; compression=HssCompression(), stationary=false)
+    RetardedKernel(axis, map::AbstractKernelMap; compression=HssCompression())
 
-Discretize a retarded kernel `f(t, t')` (zero for `t < t'`) on `axis`.
-
-The block size is inferred from `size(f(axis[1], axis[1]))`. With `stationary=true`
-the kernel is assumed to depend only on `t - t'` and a circulant structure is used.
+Discretize a retarded kernel (zero for `t < t'`) described by `map`
+(`Stationary`, `TwoTime` or `Separable`) on `axis`.
 
 Returns a `Kernel` with `Retarded` causality.
 """
-function discretize_retardedkernel(axis, f; compression=HssCompression(), stationary=false)
-    discretize_kernel(TrapzDiscretisation,Retarded,
-        axis, f;
-        compression=compression, stationary=stationary
-        )
-end
-function RetardedKernel(axis, matrix, blocksize, compression)
-    Kernel{TrapzDiscretisation,Retarded}(axis, matrix, blocksize, compression)
-end
-"""
-    discretize_advancedkernel(axis, f; compression=HssCompression(), stationary=false)
+RetardedKernel(axis, map::AbstractKernelMap; kwargs...) =
+    Kernel(Retarded, axis, map; kwargs...)
 
-Discretize an advanced kernel `f(t, t')` (zero for `t > t'`) on `axis`.
+RetardedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
+    Kernel{TrapzDiscretisation,Retarded}(axis, matrix, blocksize, compression)
+
+"""
+    AdvancedKernel(axis, map::AbstractKernelMap; compression=HssCompression())
+
+Discretize an advanced kernel (zero for `t > t'`) described by `map`
+(`Stationary`, `TwoTime` or `Separable`) on `axis`.
 
 Returns a `Kernel` with `Advanced` causality.
 """
-function discretize_advancedkernel(axis, f; compression=HssCompression(), stationary=false)
-    discretize_kernel(TrapzDiscretisation,Advanced,
-        axis, f;
-        compression=compression, stationary=stationary
-        )
-end
-function AdvancedKernel(axis, matrix, blocksize, compression)
-    Kernel{TrapzDiscretisation,Advanced}(axis, matrix, blocksize, compression)
-end
-"""
-    discretize_acausalkernel(axis, f; compression=HssCompression(), stationary=false)
+AdvancedKernel(axis, map::AbstractKernelMap; kwargs...) =
+    Kernel(Advanced, axis, map; kwargs...)
 
-Discretize an acausal kernel `f(t, t')` on `axis`, e.g. an equilibrium occupation.
+AdvancedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
+    Kernel{TrapzDiscretisation,Advanced}(axis, matrix, blocksize, compression)
+
+"""
+    AcausalKernel(axis, map::AbstractKernelMap; compression=HssCompression())
+
+Discretize an acausal kernel (no time-ordering constraint, e.g. an
+equilibrium occupation) described by `map` (`Stationary`, `TwoTime` or
+`Separable`) on `axis`.
 
 Returns a `Kernel` with `Acausal` causality.
 """
-function discretize_acausalkernel(axis, f; compression=HssCompression(), stationary=false)
-    discretize_kernel(TrapzDiscretisation,Acausal,
-        axis, f;
-        compression=compression, stationary=stationary
-        )
-end
+AcausalKernel(axis, map::AbstractKernelMap; kwargs...) =
+    Kernel(Acausal, axis, map; kwargs...)
 
-function AcausalKernel(axis, matrix, blocksize, compression)
+AcausalKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
     Kernel{TrapzDiscretisation,Acausal}(axis, matrix, blocksize, compression)
-end
-
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")

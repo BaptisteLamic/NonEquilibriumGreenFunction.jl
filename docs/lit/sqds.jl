@@ -69,13 +69,13 @@ axis(p::Parameters) = 0:p.δt:p.T
 # part and a smooth one. A generic matrix can be compressed in $O(N^2)$ operations and
 # $O(N)$ memory using stochastic algorithms. The cost reduces to $O(N)$ for
 # instantaneous operators and to $O(N\log N)$ in both time and space for stationary
-# operators — hence `stationary=true` below.
+# operators — hence the `Stationary` map below.
 
 function compute_retarded_lead_green_function(p::Parameters; cpr=default_compression())
-    g_R_lead_delta = discretize_dirac(axis(p), t -> -1im * σ0(), compression=cpr)
-    g_R_lead_continuous = discretize_retardedkernel(axis(p),
-        (t, tp) -> (p.Δ * besselj0(p.Δ * (t - tp)) * σx() + 1im * p.Δ * besselj1(p.Δ * (t - tp)) * σ0()),
-        compression=cpr, stationary=true)
+    g_R_lead_delta = InstantaneousKernel(axis(p), t -> -1im * σ0(), compression=cpr)
+    g_R_lead_continuous = RetardedKernel(axis(p),
+        Stationary(τ -> (p.Δ * besselj0(p.Δ * τ) * σx() + 1im * p.Δ * besselj1(p.Δ * τ) * σ0())),
+        compression=cpr)
     g_lead = g_R_lead_delta + g_R_lead_continuous
 end
 
@@ -84,16 +84,16 @@ end
 function compute_GR(p::Parameters; cpr=default_compression())
     g_R_lead = compute_retarded_lead_green_function(p; cpr=cpr)
     apodisation(t) = (1 - exp(-(t / 2)^2))
-    coupling_left = discretize_dirac(axis(p),
+    coupling_left = InstantaneousKernel(axis(p),
         t -> apodisation(t) * sqrt(p.Γl / 2) * exp(1im * σz() * p.ϕl(t) / 2) * σz(), compression=cpr)
-    coupling_right = discretize_dirac(axis(p),
+    coupling_right = InstantaneousKernel(axis(p),
         t -> apodisation(t) * sqrt(p.Γr / 2) * exp(1im * σz() * p.ϕr(t) / 2) * σz(), compression=cpr)
     Σ_R_left = coupling_left' * g_R_lead * coupling_left
     Σ_R_right = coupling_right' * g_R_lead * coupling_right
     Σ_R = Σ_R_left + Σ_R_right
-    g = discretize_retardedkernel(axis(p),
-        (t, tp) -> -1im * exp(-(p.η * (t - tp))) * σ0(),
-        compression=cpr, stationary=true)
+    g = RetardedKernel(axis(p),
+        Stationary(τ -> -1im * exp(-p.η * τ) * σ0()),
+        compression=cpr)
     G_R = solve_dyson(g, g * Σ_R)
     return (; g_R_lead, g, G_R, Σ_R_left, Σ_R, coupling_left, coupling_right)
 end
@@ -109,9 +109,9 @@ function simulate_junction(p::Parameters; cpr=default_compression())
     coupling_right = results_GR[:coupling_right]
     G_R = results_GR[:G_R]
 
-    ρ = discretize_acausalkernel(axis(p),
-        (t, tp) -> thermal_kernel(t - tp, p.β) * σ0() .|> ComplexF64,
-        stationary=true, compression=cpr)
+    ρ = AcausalKernel(axis(p),
+        Stationary(τ -> thermal_kernel(τ, p.β) * σ0() .|> ComplexF64),
+        compression=cpr)
     g_lead_kinetic = g_R_lead * ρ - ρ * g_R_lead'
     g = results_GR[:g]
     g_dot_kinetic = g * ρ - ρ * g'
