@@ -18,8 +18,8 @@ invariant kernel `K(t, t') = f(t - t')`. The single-argument signature
 structurally guarantees stationarity; the discretization exploits it
 with a circulant structure.
 """
-struct Stationary <: AbstractKernelMap
-    f
+struct Stationary{F} <: AbstractKernelMap
+    f::F
 end
 
 (s::Stationary)(t, tp) = s.f(t - tp)
@@ -29,8 +29,8 @@ end
 
 Wraps a general two-time function `f(t, t')`.
 """
-struct TwoTime <: AbstractKernelMap
-    f
+struct TwoTime{F} <: AbstractKernelMap
+    f::F
 end
 
 (tw::TwoTime)(t, tp) = tw.f(t, tp)
@@ -42,9 +42,9 @@ Wraps two one-argument functions describing the separable kernel
 `K(t, t') = f(t) * g(t')`. This structure is exploited by the
 low-rank compression path.
 """
-struct Separable <: AbstractKernelMap
-    f
-    g
+struct Separable{F,G} <: AbstractKernelMap
+    f::F
+    g::G
 end
 
 function (sep::Separable)(t, tp)
