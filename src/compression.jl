@@ -167,13 +167,6 @@ function build_linearMap(axis, f; blk=512)
 end
 
 """
-    AbstractCompression
-
-Abstract type for compression methods.
-"""
-abstract type AbstractCompression end
-
-"""
     HssCompression <: AbstractCompression
 
 HSS (Hierarchically Semi-Separable) matrix compression parameters.
@@ -252,7 +245,43 @@ Recompress an existing HssMatrix with the compression parameters.
 A recompressed HssMatrix.
 """
 function (Compression::HssCompression)(tab::HssMatrix)
-    return recompress!(tab, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
+    return recompress_inplace!(Compression, tab)
+end
+
+"""
+    recompress_inplace!(c::HssCompression, tab::HssMatrix)
+
+In-place recompression of an HssMatrix with the compression parameters.
+
+# Arguments
+- `c`: HssCompression parameters
+- `tab`: HssMatrix to recompress
+# Returns
+The recompressed HssMatrix (mutated in place).
+"""
+function NonEquilibriumGreenFunction.recompress_inplace!(c::HssCompression, tab::HssMatrix)
+    return HssMatrices.recompress!(tab, atol=c.atol, rtol=c.rtol, leafsize=c.leafsize)
+end
+
+"""
+    ldiv(left::HssMatrix, right::HssMatrix)
+
+Solve `left * X = right` using the in-place HSS solver.
+"""
+function NonEquilibriumGreenFunction.ldiv(left::HssMatrix, right::HssMatrix)
+    return ldiv!(left, right)
+end
+
+"""
+    same_time_blocks(m::HssMatrix, bs)
+
+Equal-time blocks of an HssMatrix, extracted without materializing the full
+HSS storage.
+"""
+function NonEquilibriumGreenFunction.same_time_blocks(m::HssMatrix, bs)
+    T = eltype(m)
+    N = div(size(m, 1), bs)
+    return [T[m[p + j, p + k] for j in 1:bs, k in 1:bs] for p in (0:bs:(N - 1) * bs)]
 end
 
 """

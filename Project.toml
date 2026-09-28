@@ -13,15 +13,24 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[weakdeps]
+JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
+
+[extensions]
+JLArraysExt = "JLArrays"
 
 [compat]
 FFTW = "1"
 HssMatrices = "0.1"
+JLArrays = "0.1"
 LinearAlgebra = "1"
 NNlib = "0.9"
 SparseArrays = "1"
 SpecialFunctions = "2"
 Statistics = "1"
 StatsBase = "0.34"
+Test = "1"
 TestItems = "1"
 julia = "1.10"

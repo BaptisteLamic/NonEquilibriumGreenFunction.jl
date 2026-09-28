@@ -48,7 +48,13 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
     return sparse(I, J, V, size(m)...)
 end
 function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0) where {T}
-    return sparse_extract_blockdiag(m, bs, d)
+    d != 0 && return sparse_extract_blockdiag(m, bs, d)
+    blocks = same_time_blocks(m, bs)
+    N = length(blocks)
+    I = [(t - 1) * bs + i for i in 1:bs, j in 1:bs, t in 1:N]
+    J = [(t - 1) * bs + j for i in 1:bs, j in 1:bs, t in 1:N]
+    V = [blocks[t][i, j] for i in 1:bs, j in 1:bs, t in 1:N]
+    return sparse(I[:], J[:], V[:], N * bs, N * bs)
 end
 function build_blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompression()) where {T}
     @assert size(A, 1) == size(A, 2) "Blocks must be square matrices"

@@ -8,6 +8,7 @@ using StatsBase
 using SpecialFunctions: polygamma
 using FFTW
 using TestItems
+using Test
 
 import Base: +, -, *, /, \, adjoint, transpose, eltype, size, one
 import Base: sum
@@ -20,6 +21,7 @@ import LinearAlgebra.diag
 import LinearAlgebra.norm
 
 include("causality.jl")
+include("matrixinterface.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
@@ -31,6 +33,7 @@ using .Kernels
 
 include("Physics.jl")
 using .Physics
+include("test_compression_interface.jl")
 
 include("AdaptiveRichardson.jl")
 
@@ -57,6 +60,8 @@ export adjoint
 export norm
 export BlockCirculantMatrix
 export NONCompression, HssCompression
+export AbstractCompression, ldiv, to_cpu, same_time_blocks, recompress_inplace!
+export test_compression_interface
 export pauli
 export matrix
 export compression
