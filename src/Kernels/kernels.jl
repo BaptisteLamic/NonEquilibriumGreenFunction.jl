@@ -48,9 +48,19 @@ Returns `true` if the operator is acausal.
 """
 isacausal(g::Kernel) = causality(g) == Acausal()
 
-isretarded(g) = causality(g) == Retarded()
-isadvanced(g) = causality(g) == Advanced()
-isacausal(g) = causality(g) == Acausal()
+# A Local contact term satisfies every support constraint, so it counts as
+# retarded, advanced and acausal at once.
+isretarded(g) = islocal(g) || causality(g) == Retarded()
+isadvanced(g) = islocal(g) || causality(g) == Advanced()
+isacausal(g) = islocal(g) || causality(g) == Acausal()
+
+"""
+    locality(::Kernel)
+
+Regular kernels are `Smooth`: they act between distinct time steps and are
+integrated by the quadrature rule.
+"""
+locality(::Kernel) = Smooth()
 
 function make_similar(g::Kernel, new_discretization::AbstractDiscretisation )
     return Kernel(new_discretization, g |> causality)

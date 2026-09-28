@@ -16,7 +16,7 @@ abstract type CompositeOperator <: AbstractOperator end
 """
     SimpleOperator <: AbstractOperator
 
-Abstract type for simple operators that wrap a single discretization (e.g., Kernel, DiracOperator).
+Abstract type for simple operators that wrap a single discretization (e.g., Kernel, LocalKernel).
 """
 abstract type SimpleOperator <: AbstractOperator end
 
@@ -151,7 +151,7 @@ function compress!(op::SimpleOperator)
 end
 
 # make_similar for AbstractOperator - dispatch to type-specific implementations
-# These will be implemented for each concrete operator type (DiracOperator, Kernel, etc.)
+# These will be implemented for each concrete operator type (LocalKernel, Kernel, etc.)
 # No generic implementation here to avoid infinite recursion
 
 -(op::AbstractOperator) = -1 * op
@@ -182,7 +182,7 @@ function norm(operator::AbstractOperator)
 end
 
 """
-    DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator
+    LocalKernel{D<:AbstractDiscretisation} <: SimpleOperator
 
 An operator representing a diagonal matrix (Dirac delta in time space).
 
@@ -190,17 +190,17 @@ An operator representing a diagonal matrix (Dirac delta in time space).
 - `discretization::D`: The underlying discretization
 
 # Note
-The matrix of a DiracOperator is block-diagonal with each block being the
+The matrix of a LocalKernel is block-diagonal with each block being the
 identity (or a specified function) at each time point.
 """
-struct DiracOperator{D<:AbstractDiscretisation} <: SimpleOperator
+struct LocalKernel{D<:AbstractDiscretisation} <: SimpleOperator
     discretization::D
 end
 
 """
-    InstantaneousKernel(axis, f; compression=HssCompression())
+    LocalKernel(axis, f; compression=HssCompression())
 
-Create a DiracOperator from a function f defined on an axis.
+Create a LocalKernel from a function f defined on an axis.
 
 # Arguments
 - `axis`: Time axis for discretization
@@ -208,9 +208,9 @@ Create a DiracOperator from a function f defined on an axis.
 - `compression`: Compression method to use (default: HssCompression)
 
 # Returns
-A DiracOperator representing the diagonal matrix with f(axis[i]) at each block.
+A LocalKernel representing the diagonal matrix with f(axis[i]) at each block.
 """
-function InstantaneousKernel(axis, f; compression::AbstractCompression=HssCompression())
+function LocalKernel(axis, f; compression::AbstractCompression=HssCompression())
     f00 = f(axis[1])
     T = eltype(f00)
     bs = size(f00, 1)
@@ -219,7 +219,7 @@ function InstantaneousKernel(axis, f; compression::AbstractCompression=HssCompre
         δ[:, :, i] .= f(axis[i])
     end
     matrix = build_blockdiag(δ, compression=compression)
-    return DiracOperator(
+    return LocalKernel(
         TrapzDiscretisation(
             axis,
             matrix,
@@ -230,68 +230,78 @@ function InstantaneousKernel(axis, f; compression::AbstractCompression=HssCompre
 end
 
 """
-    discretization(op::DiracOperator)
+    discretization(op::LocalKernel)
 
-Returns the discretization of a DiracOperator.
+Returns the discretization of a LocalKernel.
 """
-discretization(op::DiracOperator) = op.discretization
-
-"""
-    matrix(op::DiracOperator)
-
-Returns the underlying matrix of a DiracOperator.
-"""
-matrix(op::DiracOperator) = matrix(discretization(op))
+discretization(op::LocalKernel) = op.discretization
 
 """
-    causality(::DiracOperator)
+    matrix(op::LocalKernel)
 
-Returns the causality of a DiracOperator (always Instantaneous).
+Returns the underlying matrix of a LocalKernel.
 """
-causality(::DiracOperator) = Instantaneous()
+matrix(op::LocalKernel) = matrix(discretization(op))
 
 """
-    make_similar(::DiracOperator, new_discretization::AbstractDiscretisation)
+    causality(::LocalKernel)
 
-Create a new DiracOperator with a different discretization.
+Returns the causality of a LocalKernel. A contact term supported on the
+diagonal satisfies all support constraints simultaneously; its canonical
+causality is `Acausal`.
+"""
+causality(::LocalKernel) = Acausal()
+
+"""
+    locality(op::AbstractOperator)
+
+Returns the locality of an operator: `Local` for contact terms applied
+exactly (no quadrature), `Smooth` for regular kernels.
+"""
+locality(::LocalKernel) = Local()
+
+"""
+    make_similar(::LocalKernel, new_discretization::AbstractDiscretisation)
+
+Create a new LocalKernel with a different discretization.
 
 # Arguments
 - `new_discretization`: New discretization to use
 
 # Returns
-A new DiracOperator with the specified discretization.
+A new LocalKernel with the specified discretization.
 """
-function make_similar(::DiracOperator, new_discretization::AbstractDiscretisation)
-    return DiracOperator(new_discretization)
+function make_similar(::LocalKernel, new_discretization::AbstractDiscretisation)
+    return LocalKernel(new_discretization)
 end
 
 """
-    *(left::DiracOperator, right::DiracOperator)
+    *(left::LocalKernel, right::LocalKernel)
 
-Multiply two DiracOperators.
+Multiply two LocalKernels.
 """
-*(left::DiracOperator, right::DiracOperator) = make_similar(left, matrix(left) * matrix(right))
-
-"""
-    *(left::DiracOperator, right::SimpleOperator)
-
-Multiply a DiracOperator with a SimpleOperator.
-"""
-*(left::DiracOperator, right::SimpleOperator) = make_similar(right, matrix(left) * matrix(right))
+*(left::LocalKernel, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
 
 """
-    *(left::SimpleOperator, right::DiracOperator)
+    *(left::LocalKernel, right::SimpleOperator)
 
-Multiply a SimpleOperator with a DiracOperator.
+Multiply a LocalKernel with a SimpleOperator.
 """
-*(left::SimpleOperator, right::DiracOperator) = make_similar(left, matrix(left) * matrix(right))
+*(left::LocalKernel, right::SimpleOperator) = make_similar(right, matrix(left) * matrix(right))
 
 """
-    adjoint(op::DiracOperator)
+    *(left::SimpleOperator, right::LocalKernel)
 
-Return the adjoint of a DiracOperator.
+Multiply a SimpleOperator with a LocalKernel.
 """
-adjoint(op::DiracOperator) = DiracOperator(discretization(op)')
+*(left::SimpleOperator, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
+
+"""
+    adjoint(op::LocalKernel)
+
+Return the adjoint of a LocalKernel.
+"""
+adjoint(op::LocalKernel) = LocalKernel(discretization(op)')
 
 """
     SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
@@ -306,6 +316,13 @@ struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
 end
+
+"""
+    locality(op::SumOperator)
+
+Locality of a sum: `Local` only if both terms are `Local`.
+"""
+locality(op::SumOperator) = locality_of_sum(locality(op.left), locality(op.right))
 
 """
     ==(A::SumOperator, B::SumOperator)
@@ -351,7 +368,7 @@ Create a SumOperator from an AbstractOperator and a UniformScaling.
 """
 function SumOperator(left::AbstractOperator, right::UniformScaling)   
     uniformScaling_discretization = _discretize_uniformScaling(discretization(left), right)
-    return SumOperator(left, DiracOperator(uniformScaling_discretization))
+    return SumOperator(left, LocalKernel(uniformScaling_discretization))
 end
 
 """
@@ -361,7 +378,7 @@ Create a SumOperator from a UniformScaling and an AbstractOperator.
 """
 function SumOperator(left::UniformScaling, right::AbstractOperator)   
     uniformScaling_discretization = _discretize_uniformScaling(discretization(right), left)
-    return SumOperator(DiracOperator(uniformScaling_discretization), right)
+    return SumOperator(LocalKernel(uniformScaling_discretization), right)
 end
 
 """
@@ -498,7 +515,7 @@ keldysh_trace(op::AbstractOperator) = tr.(same_time(op))
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
     k = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t + tp)); compression=NONCompression())
-    d = InstantaneousKernel(ax, t -> ComplexF64(2); compression=NONCompression())
+    d = LocalKernel(ax, t -> ComplexF64(2); compression=NONCompression())
     s = k + d
     st = same_time(s)
     @test st isa Vector{Matrix{ComplexF64}}
@@ -584,7 +601,7 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, x->1., compression=NONCompression())
+        dirac = LocalKernel(ax, x->1., compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         @test norm(matrix(kernel * dirac - kernel)) / norm(matrix(kernel)) < tol
     end
@@ -597,7 +614,7 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         target_left = RetardedKernel(ax, TwoTime((x, y) -> sin(x) * cos(x - y)), compression=NONCompression())
         target_right = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y) * sin(y)), compression=NONCompression())
@@ -626,7 +643,7 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         @test matrix(2I * dirac) == 2 * matrix(dirac)
     end
 end
@@ -638,7 +655,7 @@ end
         c = 100
         tol = c * max(1E-6, eps(real(T)))
         foo(x) = sin(x) + (T<:Complex ? 1im : 0)
-        dirac = InstantaneousKernel(ax, foo, compression=NONCompression())
+        dirac = LocalKernel(ax, foo, compression=NONCompression())
         @test matrix(dirac') == matrix(dirac)'
     end
 end
@@ -670,7 +687,7 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         target_right = dirac * kernel + kernel * kernel
@@ -690,7 +707,7 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         @test matrix((-sumOp).left) == -matrix(dirac)
@@ -707,7 +724,7 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         target = dirac*dirac + dirac*kernel + kernel*dirac + kernel*kernel
@@ -723,7 +740,7 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = InstantaneousKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, compression=NONCompression())
         kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
         sumOp = dirac + kernel
         adjoint_sumOp = sumOp'

@@ -30,9 +30,9 @@ end
 
     ax = 0:0.1:2
     g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=HssCompression())
-    Σ_R = InstantaneousKernel(ax, t -> ComplexF64(-1im * 0.5); compression=HssCompression())
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); compression=HssCompression())
     ρ = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 100) .|> ComplexF64); compression=HssCompression())
-    W = InstantaneousKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=HssCompression())
+    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=HssCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -58,14 +58,14 @@ end
 
     ax = 0:0.1:1
     g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=NONCompression())
-    Σ_R = InstantaneousKernel(ax, t -> ComplexF64(-1im * 0.5); compression=NONCompression())
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); compression=NONCompression())
     ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(1.0)); compression=NONCompression())
-    W = InstantaneousKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=NONCompression())
+    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=NONCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
 
-    zero_dirac = InstantaneousKernel(ax, t -> ComplexF64(0); compression=NONCompression())
+    zero_dirac = LocalKernel(ax, t -> ComplexF64(0); compression=NONCompression())
     I_zero = Physics.lead_current(G_R, G_K, zero_dirac, zero_dirac)
     @test matrix(I_zero) ≈ zeros(ComplexF64, size(matrix(G_R))) atol = 1e-12
 
@@ -101,9 +101,9 @@ end
 
     ax = 0:0.25:1
     g = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); compression=NONCompression())
-    Σ_R = InstantaneousKernel(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
+    Σ_R = LocalKernel(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
     ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64[1 0; 0 1] * exp(-tau^2)); compression=NONCompression())
-    W = InstantaneousKernel(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
+    W = LocalKernel(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -115,18 +115,58 @@ end
     @test sig ≈ manual atol = 1e-12
     @test sig ≠ diag(mat)[1:2:end]
 
-    z = InstantaneousKernel(ax, t -> zeros(ComplexF64, 2, 2); compression=NONCompression())
+    z = LocalKernel(ax, t -> zeros(ComplexF64, 2, 2); compression=NONCompression())
     @test Physics.current_signal(Physics.lead_current(G_R, G_K, z, z)) ≈ zeros(ComplexF64, length(ax)) atol = 1e-12
 end
 
 @testitem "Causality predicates on all operators" begin
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
-    δ = InstantaneousKernel(ax, t -> ComplexF64(-1im); compression=HssCompression())
-    @test !isretarded(δ)
-    @test !isadvanced(δ)
-    @test !isacausal(δ)
-    @test causality(δ) == Instantaneous()
+    δ = LocalKernel(ax, t -> ComplexF64(-1im); compression=HssCompression())
+    # A Local contact term satisfies every support constraint: it is
+    # simultaneously retarded, advanced and acausal; the canonical
+    # representative is Acausal, and its locality is Local.
+    @test isretarded(δ)
+    @test isadvanced(δ)
+    @test isacausal(δ)
+    @test causality(δ) == Acausal()
+    @test locality(δ) == Local()
+    @test islocal(δ)
+end
+
+@testitem "Locality axis: Local is the algebra unit" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction
+
+    ax = 0:0.1:1
+    g = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t - tp + 1.0)); compression=NONCompression())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); compression=NONCompression())
+    δ1 = LocalKernel(ax, t -> ComplexF64(2); compression=NONCompression())
+    δ2 = LocalKernel(ax, t -> ComplexF64(3); compression=NONCompression())
+
+    # locality composition
+    @test locality(g) == Smooth()
+    @test locality(ρ) == Smooth()
+    @test locality(δ1) == Local()
+    @test locality(δ1 * δ2) == Local()
+    @test locality(δ1 * g) == Smooth()
+    @test locality(g * δ1) == Smooth()
+    @test locality(δ1 + δ2) == Local()
+    @test locality(g + δ1) == Smooth()
+    @test locality(g + ρ) == Smooth()
+
+    # causality is preserved when composing with Local (unit of the algebra)
+    @test causality(δ1 * g) == causality(g)
+    @test causality(g * δ1) == causality(g)
+    @test isretarded(δ1 * g)
+    @test isacausal(g * δ1 * ρ)
+
+    # Local operators are applied exactly: δ1 * δ2 is the pointwise product
+    @test matrix(δ1 * δ2) ≈ matrix(δ1) * matrix(δ2)
+    @test [m[1, 1] for m in same_time(δ1 * δ2)] ≈ 6 .* ones(length(ax))
+    # and δ acting on a smooth kernel never adds a quadrature weight
+    @test matrix(g * δ1) ≈ matrix(g) * matrix(δ1)
+    @test matrix(δ1 * g) ≈ matrix(δ1) * matrix(g)
 end
 
 @testitem "theq_lesser_time_kernel callable from Physics layer" begin

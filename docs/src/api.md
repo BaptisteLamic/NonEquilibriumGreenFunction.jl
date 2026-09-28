@@ -8,7 +8,7 @@ TrapzDiscretisation
 RetardedKernel
 AdvancedKernel
 AcausalKernel
-InstantaneousKernel
+LocalKernel
 AbstractKernelMap
 Stationary
 TwoTime
@@ -26,7 +26,7 @@ solve_keldysh
 
 ```@docs
 Kernel
-DiracOperator
+LocalKernel
 SumOperator
 SimpleOperator
 CompositeOperator
@@ -73,9 +73,9 @@ NonEquilibriumGreenFunction.Kernels.AbstractOperator
 -(::NonEquilibriumGreenFunction.Kernels.AbstractOperator, ::NonEquilibriumGreenFunction.Kernels.AbstractOperator)
 -(::NonEquilibriumGreenFunction.Kernels.AbstractOperator, ::UniformScaling)
 -(::UniformScaling, ::NonEquilibriumGreenFunction.Kernels.AbstractOperator)
-*(::DiracOperator, ::DiracOperator)
-*(::DiracOperator, ::SimpleOperator)
-*(::SimpleOperator, ::DiracOperator)
+*(::LocalKernel, ::LocalKernel)
+*(::LocalKernel, ::SimpleOperator)
+*(::SimpleOperator, ::LocalKernel)
 *(::SumOperator, ::SumOperator)
 *(::SumOperator, ::Union{Number, UniformScaling, NonEquilibriumGreenFunction.Kernels.AbstractOperator})
 *(::Union{Number, UniformScaling, NonEquilibriumGreenFunction.Kernels.AbstractOperator}, ::SumOperator)

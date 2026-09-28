@@ -3,7 +3,8 @@ module Physics
 using LinearAlgebra: diagm
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isacausal,
-    Instantaneous, adjoint, keldysh_trace
+    adjoint, keldysh_trace
+import ..NonEquilibriumGreenFunction: islocal
 import Base: *
 
 include("Physics/physics.jl")
@@ -25,8 +26,8 @@ retarded or instantaneous and `Σ_K` acausal or instantaneous.
 """
 function solve_keldysh(g::Kernel, Σ_R, Σ_K; check=true)
     if check
-        retarded_ok(x) = isretarded(x) || causality(x) == Instantaneous()
-        acausal_ok(x) = isacausal(x) || causality(x) == Instantaneous()
+        retarded_ok(x) = isretarded(x) || islocal(x)
+        acausal_ok(x) = isacausal(x) || islocal(x)
         @assert retarded_ok(g) "g must be retarded or instantaneous"
         @assert retarded_ok(Σ_R) "Σ_R must be retarded or instantaneous"
         @assert acausal_ok(Σ_K) "Σ_K must be acausal or instantaneous"
@@ -59,8 +60,8 @@ When `check` is true the causalities are validated: `G_R` must be retarded,
 """
 function lead_current(G_R, G_K, Σ_R, Σ_K; check=true)
     if check
-        retarded_ok(x) = isretarded(x) || causality(x) == Instantaneous()
-        acausal_ok(x) = isacausal(x) || causality(x) == Instantaneous()
+        retarded_ok(x) = isretarded(x) || islocal(x)
+        acausal_ok(x) = isacausal(x) || islocal(x)
         @assert isretarded(G_R) "G_R must be retarded"
         @assert retarded_ok(Σ_R) "Σ_R must be retarded or instantaneous"
         @assert acausal_ok(G_K) "G_K must be acausal or instantaneous"

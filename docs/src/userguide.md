@@ -12,7 +12,7 @@ ax = 0:δt:T                                   # time axis
 
 # 1. discretize the building blocks
 g     = RetardedKernel(ax, TwoTime(g_func); compression=cpr)
-Σ_R   = InstantaneousKernel(ax, Σ_R_func; compression=cpr) + ...
+Σ_R   = LocalKernel(ax, Σ_R_func; compression=cpr) + ...
 ρ     = AcausalKernel(ax, Stationary(ρ_func); compression=cpr)
 
 # 2. solve the retarded Dyson equation
@@ -40,14 +40,26 @@ The map returns the **block matrix** of the operator at the given times. The blo
 kernels combined in one simulation must return blocks of the same size. A scalar map
 gives `bs = 1`; a map returning a 2×2 Nambu matrix gives `bs = 2`.
 
-Four causalities are supported and tracked automatically through algebra:
+Three causalities are supported and tracked automatically through algebra:
 
 | Causality | Meaning | Constructor |
 |---|---|---|
 | `Retarded` | zero for `t < t'` | `RetardedKernel` |
 | `Advanced` | zero for `t > t'` | `AdvancedKernel` |
 | `Acausal` | no constraint (e.g. equilibrium occupations) | `AcausalKernel` |
-| `Instantaneous` | proportional to `δ(t-t')` | `InstantaneousKernel` |
+
+Contact terms `f(t) δ(t-t')` are *not* a causality: they satisfy every support
+constraint simultaneously. They form a separate **locality** axis:
+
+| Locality | Meaning | Constructor |
+|---|---|---|
+| `Local` | contact term `f(t) δ(t-t')`, applied exactly | `LocalKernel` |
+| `Smooth` | regular kernel, integrated by the quadrature | the three above |
+
+`Local` is the unit of the algebra: composing a `LocalKernel` with any other
+operator leaves the result's causality and locality unchanged, and a `Local`
+operator never enters the quadrature (no `δt` weight, no endpoint dressing) —
+it is applied exactly.
 
 Products and adjoints preserve causality (`Retarded × Retarded = Retarded`,
 `Retarded' = Advanced`, ...), and the discretizations use it: retarded kernels are
