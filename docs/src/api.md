@@ -89,7 +89,8 @@ NonEquilibriumGreenFunction.Kernels.AbstractOperator
 Retarded
 Advanced
 Acausal
-Instantaneous
+Local
+islocal
 isretarded
 isadvanced
 isacausal
