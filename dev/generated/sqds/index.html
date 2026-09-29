@@ -31,25 +31,25 @@ axis(p::Parameters) = 0:p.δt:p.T
 
 σ0() = @SMatrix [1.0 0.0; 0.0 1.0]
 σx() = @SMatrix [0 1.0; 1.0 0.0]
-σz() = @SMatrix [1.0 0.0; 0.0 -1.0]</code></pre><pre><code class="nohighlight hljs">σz (generic function with 1 method)</code></pre><h2 id="Retarded-branch"><a class="docs-heading-anchor" href="#Retarded-branch">Retarded branch</a><a id="Retarded-branch-1"></a><a class="docs-heading-anchor-permalink" href="#Retarded-branch" title="Permalink"></a></h2><p>The first step is to evaluate the leads Green function, which is made of a <span>$\delta$</span> part and a smooth one. A generic matrix can be compressed in <span>$O(N^2)$</span> operations and <span>$O(N)$</span> memory using stochastic algorithms. The cost reduces to <span>$O(N)$</span> for instantaneous operators and to <span>$O(N\log N)$</span> in both time and space for stationary operators — hence <code>stationary=true</code> below.</p><pre><code class="language-julia hljs">function compute_retarded_lead_green_function(p::Parameters; cpr=default_compression())
-    g_R_lead_delta = discretize_dirac(axis(p), t -&gt; -1im * σ0(), compression=cpr)
-    g_R_lead_continuous = discretize_retardedkernel(axis(p),
-        (t, tp) -&gt; (p.Δ * besselj0(p.Δ * (t - tp)) * σx() + 1im * p.Δ * besselj1(p.Δ * (t - tp)) * σ0()),
-        compression=cpr, stationary=true)
+σz() = @SMatrix [1.0 0.0; 0.0 -1.0]</code></pre><pre><code class="nohighlight hljs">σz (generic function with 1 method)</code></pre><h2 id="Retarded-branch"><a class="docs-heading-anchor" href="#Retarded-branch">Retarded branch</a><a id="Retarded-branch-1"></a><a class="docs-heading-anchor-permalink" href="#Retarded-branch" title="Permalink"></a></h2><p>The first step is to evaluate the leads Green function, which is made of a <span>$\delta$</span> part and a smooth one. A generic matrix can be compressed in <span>$O(N^2)$</span> operations and <span>$O(N)$</span> memory using stochastic algorithms. The cost reduces to <span>$O(N)$</span> for instantaneous operators and to <span>$O(N\log N)$</span> in both time and space for stationary operators — hence the <code>Stationary</code> map below.</p><pre><code class="language-julia hljs">function compute_retarded_lead_green_function(p::Parameters; cpr=default_compression())
+    g_R_lead_delta = InstantaneousKernel(axis(p), t -&gt; -1im * σ0(), compression=cpr)
+    g_R_lead_continuous = RetardedKernel(axis(p),
+        Stationary(τ -&gt; (p.Δ * besselj0(p.Δ * τ) * σx() + 1im * p.Δ * besselj1(p.Δ * τ) * σ0())),
+        compression=cpr)
     g_lead = g_R_lead_delta + g_R_lead_continuous
 end</code></pre><pre><code class="nohighlight hljs">compute_retarded_lead_green_function (generic function with 1 method)</code></pre><p>We can now solve the retarded Dyson equation.</p><pre><code class="language-julia hljs">function compute_GR(p::Parameters; cpr=default_compression())
     g_R_lead = compute_retarded_lead_green_function(p; cpr=cpr)
     apodisation(t) = (1 - exp(-(t / 2)^2))
-    coupling_left = discretize_dirac(axis(p),
+    coupling_left = InstantaneousKernel(axis(p),
         t -&gt; apodisation(t) * sqrt(p.Γl / 2) * exp(1im * σz() * p.ϕl(t) / 2) * σz(), compression=cpr)
-    coupling_right = discretize_dirac(axis(p),
+    coupling_right = InstantaneousKernel(axis(p),
         t -&gt; apodisation(t) * sqrt(p.Γr / 2) * exp(1im * σz() * p.ϕr(t) / 2) * σz(), compression=cpr)
     Σ_R_left = coupling_left&#39; * g_R_lead * coupling_left
     Σ_R_right = coupling_right&#39; * g_R_lead * coupling_right
     Σ_R = Σ_R_left + Σ_R_right
-    g = discretize_retardedkernel(axis(p),
-        (t, tp) -&gt; -1im * exp(-(p.η * (t - tp))) * σ0(),
-        compression=cpr, stationary=true)
+    g = RetardedKernel(axis(p),
+        Stationary(τ -&gt; -1im * exp(-p.η * τ) * σ0()),
+        compression=cpr)
     G_R = solve_dyson(g, g * Σ_R)
     return (; g_R_lead, g, G_R, Σ_R_left, Σ_R, coupling_left, coupling_right)
 end</code></pre><pre><code class="nohighlight hljs">compute_GR (generic function with 1 method)</code></pre><h2 id="Kinetic-branch"><a class="docs-heading-anchor" href="#Kinetic-branch">Kinetic branch</a><a id="Kinetic-branch-1"></a><a class="docs-heading-anchor-permalink" href="#Kinetic-branch" title="Permalink"></a></h2><p>With the retarded solution at hand we can solve the whole Dyson equation.</p><pre><code class="language-julia hljs">function simulate_junction(p::Parameters; cpr=default_compression())
@@ -59,9 +59,9 @@ end</code></pre><pre><code class="nohighlight hljs">compute_GR (generic function
     coupling_right = results_GR[:coupling_right]
     G_R = results_GR[:G_R]
 
-    ρ = discretize_acausalkernel(axis(p),
-        (t, tp) -&gt; thermal_kernel(t - tp, p.β) * σ0() .|&gt; ComplexF64,
-        stationary=true, compression=cpr)
+    ρ = AcausalKernel(axis(p),
+        Stationary(τ -&gt; thermal_kernel(τ, p.β) * σ0() .|&gt; ComplexF64),
+        compression=cpr)
     g_lead_kinetic = g_R_lead * ρ - ρ * g_R_lead&#39;
     g = results_GR[:g]
     g_dot_kinetic = g * ρ - ρ * g&#39;
@@ -136,4 +136,4 @@ lines!(axis(p), real.(Idc), label=L&quot;\langle I(t)\rangle&quot;)
 lines!(axis(p), filt(zpk, real.(Idc)), label=&quot;Low frequencies&quot;)
 axislegend(position=:rb)
 save(joinpath(@__DIR__, &quot;transient_current_SQDS.svg&quot;), f)
-f</code></pre><p><img src="../sqds-25.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../mqdm/">« Metal - QD - Metal junction</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 29 September 2026 05:13">Tuesday 29 September 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+f</code></pre><p><img src="../sqds-25.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../mqdm/">« Metal - QD - Metal junction</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 29 September 2026 12:43">Tuesday 29 September 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
