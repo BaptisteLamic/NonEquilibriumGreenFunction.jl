@@ -25,8 +25,8 @@ structure for stationary kernels), the cost drops to ``\mathcal O(N \log N)``.
 A simulation always follows the same pipeline, regardless of the physics:
 
 1. **Discretize the kernels**: the bare retarded Green function `g`, the lead self-energies
-   `Σ` (built from `discretize_dirac` for instantaneous terms and
-   `discretize_retardedkernel` / `discretize_acausalkernel` for continuous ones), and the
+   `Σ` (built from `InstantaneousKernel` for instantaneous terms and
+   `RetardedKernel` / `AcausalKernel` for continuous ones), and the
    thermal occupation `ρ` (an acausal kernel).
 2. **Solve the retarded Dyson equation**: `solve_dyson(g, g * Σ_R)` returns the full
    retarded Green function `G_R`.
@@ -41,7 +41,7 @@ the manual):
 - [Metal - Quantum Dot - Metal junction](generated/mqdm.md): scalar (bs=1) kernels in
   equilibrium and under a voltage bias, including a complexity benchmark.
 - [Superconductor - Quantum Dot - Superconductor junction](generated/sqds.md): Nambu
-  (bs=2) kernels with superconducting leads, `stationary=true` circulant compression,
+  (bs=2) kernels with superconducting leads, `Stationary` circulant compression,
   and the transient current response to a voltage ramp.
 
 ## Installation

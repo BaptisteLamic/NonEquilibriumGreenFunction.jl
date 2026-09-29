@@ -11,9 +11,9 @@ using NonEquilibriumGreenFunction
 ax = 0:δt:T                                   # time axis
 
 # 1. discretize the building blocks
-g     = discretize_retardedkernel(ax, g_func; compression=cpr, stationary=...)
-Σ_R   = discretize_dirac(ax, Σ_R_func; compression=cpr) + ...
-ρ     = discretize_acausalkernel(ax, ρ_func; compression=cpr, stationary=...)
+g     = RetardedKernel(ax, TwoTime(g_func); compression=cpr)
+Σ_R   = InstantaneousKernel(ax, Σ_R_func; compression=cpr) + ...
+ρ     = AcausalKernel(ax, Stationary(ρ_func); compression=cpr)
 
 # 2. solve the retarded Dyson equation
 G_R = solve_dyson(g, g * Σ_R)
@@ -28,19 +28,26 @@ I_avr = ... # products of G_R, G_K, Σ_R, Σ_K
 
 ## Kernels and causality
 
-A kernel function `f(t, t')` returns the **block matrix** of the operator at times
-`(t, t')`. The block size `bs` is inferred from `size(f(ax[1], ax[1]))` and is *global*:
-all kernels combined in one simulation must return blocks of the same size. A scalar
-function gives `bs = 1`; a function returning a 2×2 Nambu matrix gives `bs = 2`.
+A kernel is described by a **map** wrapping its time dependence:
+
+- `TwoTime(f)`: general two-time function `f(t, t')`.
+- `Stationary(f)`: time-translation invariant kernel `f(t - t')`; the one-argument
+  signature guarantees the stationarity structurally and enables circulant compression.
+- `Separable(f, g)`: separable kernel `f(t) * g(t')`, exploited by low-rank compression.
+
+The map returns the **block matrix** of the operator at the given times. The block size
+`bs` is inferred from the map sampled at the first axis point and is *global*: all
+kernels combined in one simulation must return blocks of the same size. A scalar map
+gives `bs = 1`; a map returning a 2×2 Nambu matrix gives `bs = 2`.
 
 Four causalities are supported and tracked automatically through algebra:
 
 | Causality | Meaning | Constructor |
 |---|---|---|
-| `Retarded` | zero for `t < t'` | `discretize_retardedkernel` |
-| `Advanced` | zero for `t > t'` | `discretize_advancedkernel` |
-| `Acausal` | no constraint (e.g. equilibrium occupations) | `discretize_acausalkernel` |
-| `Instantaneous` | proportional to `δ(t-t')` | `discretize_dirac` |
+| `Retarded` | zero for `t < t'` | `RetardedKernel` |
+| `Advanced` | zero for `t > t'` | `AdvancedKernel` |
+| `Acausal` | no constraint (e.g. equilibrium occupations) | `AcausalKernel` |
+| `Instantaneous` | proportional to `δ(t-t')` | `InstantaneousKernel` |
 
 Products and adjoints preserve causality (`Retarded × Retarded = Retarded`,
 `Retarded' = Advanced`, ...), and the discretizations use it: retarded kernels are
@@ -71,8 +78,8 @@ The matrix of a discretized kernel is compressed to make the algebra quasi-linea
 
 Two knobs matter in practice:
 
-- `stationary=true` (constructors only): the kernel depends only on `t-t'`, so the matrix
-  is block-circulant. It is built through an FFT-accelerated circulant operator:
+- `Stationary` maps: the kernel depends only on `t-t'`, so the matrix is
+  block-circulant. It is built through an FFT-accelerated circulant operator:
   ``\mathcal O(N \log N)`` construction and ``\mathcal O(N \log N)`` products.
 - `leafsize` (HSS only): size of the HSS tree leaves. The examples use `leafsize=32`
   (bs=1) and `leafsize=64` (bs=2); adapt it to the rank structure of your kernel.

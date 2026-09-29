@@ -54,10 +54,10 @@ end
         foo_st(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
         foo_st(x, y) = foo_st(x - y)
         for cpr in (NONCompression(), HssCompression())
-            for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
-                GA = Kernel(ax, foo_st, compression=cpr, stationary=true)
+            for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+                GA = Kernel(ax, Stationary(foo_st), compression=cpr)
                 compress!(GA)
-                GB = Kernel(ax, foo_st, compression=cpr, stationary=false)
+                GB = Kernel(ax, TwoTime(foo_st), compression=cpr)
                 compress!(GB)
                 @test matrix(GA) - matrix(GB) |> norm < tol
             end
@@ -79,7 +79,7 @@ end
             mask = _getMask(_causality)
             refMatrix = [f(x) * g(y) * mask(x, y) for x in ax, y in ax]
             for cpr in (NONCompression(), HssCompression())
-                GA = discretize_lowrank_kernel(TrapzDiscretisation, _causality, ax, f, g, compression=cpr)
+                GA = Kernel(_causality, ax, Separable(f, g), compression=cpr)
                 compress!(GA)
                 @test matrix(GA) - refMatrix |> norm < tol * N^2
                 @test _causality() == causality(GA)
@@ -98,10 +98,10 @@ end
         foo_st(x) = T <: Complex ? T.(1im * x) : T.(x)
         foo_st(x, y) = foo_st(x - y)
         for cpr in (NONCompression(), HssCompression())
-            for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
-                GA = Kernel(ax, foo_st, compression=cpr, stationary=true)
+            for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+                GA = Kernel(ax, Stationary(foo_st), compression=cpr)
                 compress!(GA)
-                GB = Kernel(ax, foo_st, compression=cpr, stationary=false)
+                GB = Kernel(ax, TwoTime(foo_st), compression=cpr)
                 compress!(GB)
                 @test matrix(GA) - matrix(GB) |> norm < tol
             end
@@ -117,8 +117,8 @@ end
         tol = 100 * max(1E-6, eps(real(T)))
         ax = LinRange(-Dt / 2, Dt, N)
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
-        for Kernel in (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel)
-            GA = Kernel(ax, foo, compression=NONCompression(), stationary=false)
+        for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
+            GA = Kernel(ax, TwoTime(foo), compression=NONCompression())
             _causality = causality(GA)
             bs = blocksize(GA)
             B = zeros(T, N * bs, N * bs)
@@ -232,11 +232,11 @@ end
             gooL(x, y) = exp(-((x - x0)^2 + y^2) / sigma0^2) .* foo(x, y)
             gooR(x, y) = exp(-((x + x0)^2 + y^2) / sigma0^2) .* foo(x, y)
             for (Left, Right) in zip(
-                (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_retardedkernel, discretize_acausalkernel),
-                (discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel, discretize_acausalkernel, discretize_advancedkernel)
+                (RetardedKernel, AdvancedKernel, AcausalKernel, RetardedKernel, AcausalKernel),
+                (RetardedKernel, AdvancedKernel, AcausalKernel, AcausalKernel, AdvancedKernel)
             )
-                GL = Left(ax, gooL, compression=NONCompression())
-                GR = Right(ax, gooR, compression=NONCompression())
+                GL = Left(ax, TwoTime(gooL), compression=NONCompression())
+                GR = Right(ax, TwoTime(gooR), compression=NONCompression())
                 discretization_GL = discretization(GL)
                 discretization_GR = discretization(GR)
                 causality_left = causality(GL)
@@ -286,8 +286,8 @@ end
         g(x, y) = g(x - y)
         n1 = 128
         n2 = 2 * n1
-        g1 = discretize_retardedkernel(LinRange(t0, t1, n1), g, compression=compression)
-        g2 = discretize_retardedkernel(LinRange(t0, t1, n2), g, compression=compression)
+        g1 = RetardedKernel(LinRange(t0, t1, n1), TwoTime(g), compression=compression)
+        g2 = RetardedKernel(LinRange(t0, t1, n2), TwoTime(g), compression=compression)
         @test abs(norm(g1) / norm(g2) - 1) < 0.1
     end
 end
@@ -304,8 +304,8 @@ end
         g(x, y) = g(x - y)
         tf1 = 1
         tf2 = 2 * tf1
-        g1 = discretize_retardedkernel(LinRange(0, tf1, n), g, compression=compression)
-        g2 = discretize_retardedkernel(LinRange(0, tf2, n), g, compression=compression)
+        g1 = RetardedKernel(LinRange(0, tf1, n), TwoTime(g), compression=compression)
+        g2 = RetardedKernel(LinRange(0, tf2, n), TwoTime(g), compression=compression)
         @test abs(norm(g1) / norm(g2) - 1) < 0.1
     end
 end
@@ -325,12 +325,12 @@ end
             sol_ana(x, y) = sol_ana(x - y)
             t0, t1 = 0, 10
             ax = LinRange(t0, t1, 2^8)
-            G0 = discretize_retardedkernel(ax, g, compression=compressionMethod)
+            G0 = RetardedKernel(ax, TwoTime(g), compression=compressionMethod)
             @test scalartype(G0) == T
-            K = discretize_retardedkernel(ax, k, compression=compressionMethod)
+            K = RetardedKernel(ax, TwoTime(k), compression=compressionMethod)
             @test scalartype(K) == T
             G = solve_dyson(G0, K)
-            G_ana = discretize_retardedkernel(ax, sol_ana, compression=compressionMethod)
+            G_ana = RetardedKernel(ax, TwoTime(sol_ana), compression=compressionMethod)
             @test norm(matrix(G - G_ana)) / norm(G_ana |> matrix) < 1E-3
         end
     end

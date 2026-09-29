@@ -9,6 +9,7 @@ Public = false
 
 ```@docs
 NonEquilibriumGreenFunction.Kernels._discretize_uniformScaling
+NonEquilibriumGreenFunction.Kernels.blocksize_and_eltype
 ```
 
 ```@autodocs

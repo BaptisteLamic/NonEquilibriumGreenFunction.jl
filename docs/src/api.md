@@ -5,11 +5,14 @@
 ```@docs
 AbstractDiscretisation
 TrapzDiscretisation
-discretize_retardedkernel
-discretize_advancedkernel
-discretize_acausalkernel
-discretize_dirac
-discretize_lowrank_kernel
+RetardedKernel
+AdvancedKernel
+AcausalKernel
+InstantaneousKernel
+AbstractKernelMap
+Stationary
+TwoTime
+Separable
 ```
 
 ## Solving

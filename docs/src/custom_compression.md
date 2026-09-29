@@ -41,7 +41,8 @@ The matrix family your compression produces must support:
 | `to_cpu(m)` | Materialize as CPU `Matrix`; fallback `Matrix(m)`. |
 | `same_time_blocks(m, bs)` | One `bs×bs` CPU matrix per time step; generic fallback uses ranged `getindex`. |
 
-Only these entry points are used by `discretize_*`, kernel algebra
+Only these entry points are used by the kernel constructors (`RetardedKernel`,
+`AdvancedKernel`, `AcausalKernel`, `InstantaneousKernel`), kernel algebra
 (`+`, `-`, `*`, `adjoint`), `solve_dyson`, `same_time`/`keldysh_trace` and
 `compress!`.
 
@@ -49,8 +50,8 @@ Only these entry points are used by `discretize_*`, kernel algebra
 
 `test_compression_interface(cpr; N=32, bs=2, atol=1e-8, types=(ComplexF64,))`
 checks the whole contract against a dense reference: construction of all
-kernel kinds (including `stationary`, `discretize_dirac`,
-`discretize_lowrank_kernel`), the algebra, `solve_dyson`, `same_time`,
+kernel kinds (including `Stationary` maps, `InstantaneousKernel`,
+`Separable`), the algebra, `solve_dyson`, `same_time`,
 `keldysh_trace`, recompression, `make_similar` and `compress!`.
 
 ```julia
@@ -72,7 +73,7 @@ using NonEquilibriumGreenFunction
 using JLArrays
 
 cpr = Base.get_extension(NonEquilibriumGreenFunction, :JLArraysExt).JLArrayCompression()
-g = discretize_retardedkernel(axis, f; compression=cpr)
+g = RetardedKernel(axis, TwoTime(f); compression=cpr)
 G = solve_dyson(g, K)
 ```
 

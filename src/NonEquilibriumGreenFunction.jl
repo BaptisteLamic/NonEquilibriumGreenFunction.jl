@@ -48,12 +48,11 @@ export Retarded, Advanced, Acausal, Instantaneous
 export isretarded, isadvanced, isacausal
 export discretization
 export SimpleOperator, CompositeOperator
-export DiracOperator, discretize_dirac
+export DiracOperator, InstantaneousKernel
 export SumOperator
 export Kernel
-export RetardedKernel, AdvancedKernel, AcausalKernel
-export discretize_retardedkernel, discretize_advancedkernel, discretize_acausalkernel
-export discretize_lowrank_kernel
+export RetardedKernel, AdvancedKernel, AcausalKernel, InstantaneousKernel
+export AbstractKernelMap, Stationary, TwoTime, Separable
 export causality
 export solve_dyson
 export adjoint

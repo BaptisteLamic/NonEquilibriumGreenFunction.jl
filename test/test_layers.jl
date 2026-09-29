@@ -29,10 +29,10 @@ end
     end
 
     ax = 0:0.1:2
-    g = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(-2im); compression=HssCompression(), stationary=true)
-    Σ_R = discretize_dirac(ax, t -> ComplexF64(-1im * 0.5); compression=HssCompression())
-    ρ = discretize_acausalkernel(ax, (t, tp) -> thermal_kernel(t - tp, 100) .|> ComplexF64; stationary=true, compression=HssCompression())
-    W = discretize_dirac(ax, t -> ComplexF64(sqrt(0.5)); compression=HssCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=HssCompression())
+    Σ_R = InstantaneousKernel(ax, t -> ComplexF64(-1im * 0.5); compression=HssCompression())
+    ρ = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 100) .|> ComplexF64); compression=HssCompression())
+    W = InstantaneousKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=HssCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -57,19 +57,19 @@ end
     using NonEquilibriumGreenFunction: Physics
 
     ax = 0:0.1:1
-    g = discretize_retardedkernel(ax, (t, tp) -> ComplexF64(-2im); compression=NONCompression(), stationary=true)
-    Σ_R = discretize_dirac(ax, t -> ComplexF64(-1im * 0.5); compression=NONCompression())
-    ρ = discretize_acausalkernel(ax, (t, tp) -> ComplexF64(1.0); stationary=true, compression=NONCompression())
-    W = discretize_dirac(ax, t -> ComplexF64(sqrt(0.5)); compression=NONCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=NONCompression())
+    Σ_R = InstantaneousKernel(ax, t -> ComplexF64(-1im * 0.5); compression=NONCompression())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(1.0)); compression=NONCompression())
+    W = InstantaneousKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=NONCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
 
-    zero_dirac = discretize_dirac(ax, t -> ComplexF64(0); compression=NONCompression())
+    zero_dirac = InstantaneousKernel(ax, t -> ComplexF64(0); compression=NONCompression())
     I_zero = Physics.lead_current(G_R, G_K, zero_dirac, zero_dirac)
     @test matrix(I_zero) ≈ zeros(ComplexF64, size(matrix(G_R))) atol = 1e-12
 
-    ρ2 = discretize_acausalkernel(ax, (t, tp) -> thermal_kernel(t - tp, 50) .|> ComplexF64; stationary=true, compression=NONCompression())
+    ρ2 = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 50) .|> ComplexF64); compression=NONCompression())
     Σ_K2 = -2im * W' * ρ2 * W
     I1 = Physics.lead_current(G_R, G_K, Σ_R, Σ_K)
     I2 = Physics.lead_current(G_R, G_K, Σ_R, Σ_K2)
@@ -100,10 +100,10 @@ end
     using NonEquilibriumGreenFunction: Physics
 
     ax = 0:0.25:1
-    g = discretize_retardedkernel(ax, (t, tp) -> ComplexF64[1.0 2.0; 3.0 4.0] * (t - tp + 1.0); compression=NONCompression(), stationary=true)
-    Σ_R = discretize_dirac(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
-    ρ = discretize_acausalkernel(ax, (t, tp) -> ComplexF64[1 0; 0 1] * exp(-(t - tp)^2); stationary=true, compression=NONCompression())
-    W = discretize_dirac(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); compression=NONCompression())
+    Σ_R = InstantaneousKernel(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64[1 0; 0 1] * exp(-tau^2)); compression=NONCompression())
+    W = InstantaneousKernel(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -115,14 +115,14 @@ end
     @test sig ≈ manual atol = 1e-12
     @test sig ≠ diag(mat)[1:2:end]
 
-    z = discretize_dirac(ax, t -> zeros(ComplexF64, 2, 2); compression=NONCompression())
+    z = InstantaneousKernel(ax, t -> zeros(ComplexF64, 2, 2); compression=NONCompression())
     @test Physics.current_signal(Physics.lead_current(G_R, G_K, z, z)) ≈ zeros(ComplexF64, length(ax)) atol = 1e-12
 end
 
 @testitem "Causality predicates on all operators" begin
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
-    δ = discretize_dirac(ax, t -> ComplexF64(-1im); compression=HssCompression())
+    δ = InstantaneousKernel(ax, t -> ComplexF64(-1im); compression=HssCompression())
     @test !isretarded(δ)
     @test !isadvanced(δ)
     @test !isacausal(δ)

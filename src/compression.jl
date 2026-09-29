@@ -552,14 +552,8 @@ end
             tol = 100 * max(1E-12, eps(real(T)))
             f(x) = T.([x 0; 0 x])
             g(x) = T.([x^2 0; 0 x^2])
-            K = discretize_lowrank_kernel(
-                TrapzDiscretisation,
-                causality,
-                ax,
-                f,
-                g;
-                compression=HssCompression(atol=1e-12, rtol=1e-12)
-            )
+            K = Kernel(causality, ax, Separable(f, g);
+                compression=HssCompression(atol=1e-12, rtol=1e-12))
             _getMask(::Type{Acausal}) = (i, j) -> T(true)
             _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
             _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)

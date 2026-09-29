@@ -37,16 +37,16 @@ for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, f_acausal, f_dirac = setup_benchmark(N; bs=bs)
 
     SUITE["discretization"]["retarded", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable discretize_retardedkernel($ax, $f_ret, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable RetardedKernel($ax, TwoTime($f_ret), compression=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["advanced", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable discretize_advancedkernel($ax, $f_ret, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable AdvancedKernel($ax, TwoTime($f_ret), compression=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["acausal", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable discretize_acausalkernel($ax, $f_acausal, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable AcausalKernel($ax, TwoTime($f_acausal), compression=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["dirac", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable discretize_dirac($ax, $f_dirac, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable InstantaneousKernel($ax, $f_dirac, compression=$cpr) samples=10 evals=1 gcsample=true
 end
 
 # =============================================================================
@@ -56,10 +56,10 @@ SUITE["operations"] = BenchmarkGroup()
 
 for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, f_acausal, _ = setup_benchmark(N; bs=bs)
-    k1 = discretize_retardedkernel(ax, f_ret, compression=cpr)
-    k2 = discretize_retardedkernel(ax, f_ret, compression=cpr)
-    k_ac = discretize_acausalkernel(ax, f_acausal, compression=cpr)
-    d = discretize_dirac(ax, x -> Matrix{Float64}(I, bs, bs), compression=cpr)
+    k1 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
+    k2 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
+    k_ac = AcausalKernel(ax, TwoTime(f_acausal), compression=cpr)
+    d = InstantaneousKernel(ax, x -> Matrix{Float64}(I, bs, bs), compression=cpr)
 
     SUITE["operations"]["addition", "N=$N", "bs=$bs"] =
         @benchmarkable $k1 + $k2 samples=100 evals=10 gcsample=true
@@ -111,9 +111,9 @@ SUITE["solver"] = BenchmarkGroup()
 
 for N in [SMALL_N], bs in [1, 4]
     ax, f_ret, _, _ = setup_benchmark(N; bs=bs)
-    g = discretize_retardedkernel(ax, (t, tp) -> exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64})),
+    g = RetardedKernel(ax, TwoTime((t, tp) -> exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64}))),
                                    compression=HssCompression(atol=1e-8, rtol=1e-8))
-    K = discretize_retardedkernel(ax, (t, tp) -> 0.5 * exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64})),
+    K = RetardedKernel(ax, TwoTime((t, tp) -> 0.5 * exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64}))),
                                    compression=HssCompression(atol=1e-8, rtol=1e-8))
 
     SUITE["solver"]["dyson", "N=$N", "bs=$bs"] =
@@ -127,7 +127,7 @@ SUITE["indexing"] = BenchmarkGroup()
 
 for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, _, _ = setup_benchmark(N; bs=bs)
-    k = discretize_retardedkernel(ax, f_ret, compression=cpr)
+    k = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
     dis = discretization(k)
 
     SUITE["indexing"]["single_block", "N=$N", "bs=$bs"] =
