@@ -56,7 +56,7 @@ export LocalKernel
 export SumOperator
 export Kernel
 export RetardedKernel, AdvancedKernel, AcausalKernel
-export AbstractKernelMap, Stationary, TwoTime, Separable
+export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality
 export solve_dyson
 export adjoint
