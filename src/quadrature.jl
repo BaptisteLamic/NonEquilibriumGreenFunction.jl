@@ -20,9 +20,9 @@ rule own three concerns:
    integration line collapses to a single point; kernels that do not
    vanish at the boundary must not leak through the circulant wraparound.
 
-Concrete implementations: [`RectangleQuadrature`](@ref) (left rule; the
-historical behaviour) and [`TrapezoidQuadrature`](@ref) (second order for
-smooth kernels).
+Concrete implementations: [`TrapezoidQuadrature`](@ref) (second order for
+smooth kernels; the default) and [`RectangleQuadrature`](@ref) (the
+historical left rule, first order).
 """
 abstract type AbstractQuadrature end
 
@@ -30,10 +30,11 @@ abstract type AbstractQuadrature end
     RectangleQuadrature() <: AbstractQuadrature
 
 Left-point rectangle rule: every node carries weight `\\delta t`,
-including the endpoints. This is the rule the package historically used
-(`\\delta t \\cdot M_L M_R`), so results are bit-for-bit identical to the
-pre-quadrature-refactor behaviour. First-order accurate on smooth
-kernels; the degenerate boundary row is handled by the causal masking.
+including the endpoints. First-order accurate on smooth kernels; the
+degenerate boundary row is handled by the causal masking. Retained as
+the historical behaviour (`\\delta t \\cdot M_L M_R`), useful as a
+first-order baseline; the package default is
+[`TrapezoidQuadrature`](@ref).
 """
 struct RectangleQuadrature <: AbstractQuadrature end
 
@@ -60,11 +61,11 @@ struct TrapezoidQuadrature <: AbstractQuadrature end
 
 Return the quadrature rule of a discretization. Every discretization
 carries its rule structurally; fallback for foreign types is
-[`RectangleQuadrature`](@ref) (the historical behaviour).
+[`TrapezoidQuadrature`](@ref) (the package default).
 """
 function quadrature end
 
-quadrature(::Any) = RectangleQuadrature()
+quadrature(::Any) = TrapezoidQuadrature()
 
 """
     edge_weights(q::AbstractQuadrature)

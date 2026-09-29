@@ -30,13 +30,13 @@ struct TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
 end
 
 """
-    TrapzDiscretisation(axis, matrix, blocksize, compression; quadrature=RectangleQuadrature())
+    TrapzDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
 
 Backwards-compatible constructor: the quadrature rule defaults to the
 historical rectangle rule.
 """
 function TrapzDiscretisation(axis, matrix, blocksize, compression;
-    quadrature::AbstractQuadrature=RectangleQuadrature())
+    quadrature::AbstractQuadrature=TrapezoidQuadrature())
     return TrapzDiscretisation(axis, matrix, blocksize, compression, quadrature)
 end
 

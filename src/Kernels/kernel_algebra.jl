@@ -80,6 +80,12 @@ _acausal_advanced_edges(::RectangleQuadrature, right, weighted_R) = weighted_R
 # of the product vanishes exactly).
 function _acausal_advanced_edges(::TrapezoidQuadrature, right, weighted_R)
     bs = blocksize(right)
+    if weighted_R isa StridedMatrix
+        W = copy(weighted_R)
+        W[blockrange(1, bs), :] .*= 0.5
+        W[:, blockrange(1, bs)] .= zero(eltype(W))
+        return W
+    end
     half = _boundary_blockdiag(right, 0.5 * Matrix{scalartype(right)}(I, bs, bs))
     zer = _boundary_blockdiag(right, zeros(scalartype(right), bs, bs))
     return half * weighted_R * zer
@@ -87,33 +93,44 @@ end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dl = extract_blockdiag(matrix(left), blocksize(left))
     weighted_L = _dressing(left, dl)
-    weighted_L = _retarded_acausal_edges(quadrature(left), left, weighted_L)
-    result = step(left)*weighted_L * matrix(right)
+    weighted_L, MR = _retarded_acausal_edges(quadrature(left), left, weighted_L, matrix(right))
+    result = step(left)*weighted_L * MR
     return make_similar(left, result)
 end
 
 # Rectangle rule: historical behaviour, no edge correction.
-_retarded_acausal_edges(::RectangleQuadrature, left, weighted_L) = weighted_L
+_retarded_acausal_edges(::RectangleQuadrature, left, weighted_L, MR) = weighted_L, MR
 
 # Trapezoid rule: the integration interval t'' ∈ [t₀, t] has its domain
-# edge at t₀ (half weight on the first column-block of the dressed left
-# kernel) and degenerates to a point at t = t₀ (the first row-block of
-# the product vanishes exactly).
-function _retarded_acausal_edges(::TrapezoidQuadrature, left, weighted_L)
+# edge at t₀ (half weight on that node of the contraction variable) and
+# degenerates to a point at t = t₀ (the first row-block of the product
+# vanishes exactly). By associativity, `zer * weighted_L * half * MR`
+# equals zeroing the first row-block of the dressed left kernel and
+# halving the first row-block of the right kernel: O(N²) in-place block
+# edits instead of two extra O(N³) products.
+function _retarded_acausal_edges(::TrapezoidQuadrature, left, weighted_L, MR)
     bs = blocksize(left)
+    if weighted_L isa StridedMatrix && MR isa StridedMatrix
+        W = copy(weighted_L)
+        W[blockrange(1, bs), :] .= zero(eltype(W))
+        R = copy(MR)
+        R[blockrange(1, bs), :] .*= 0.5
+        return W, R
+    end
     half = _boundary_blockdiag(left, 0.5 * Matrix{scalartype(left)}(I, bs, bs))
     zer = _boundary_blockdiag(left, zeros(scalartype(left), bs, bs))
-    return zer * weighted_L * half
+    return zer * weighted_L, half * MR
 end
 """
     prod(::Acausal, ::Acausal, left, right)
 
 Discretized product of two acausal kernels: a quadrature-weighted matrix
 product whose weights are owned by the discretization's quadrature rule
-([`AbstractQuadrature`](@ref)). With `RectangleQuadrature` (the default)
-this is the historical `δt * M_L * M_R`; with `TrapezoidQuadrature` the
-two domain-edge nodes carry half weights, which restores second-order
-convergence for smooth kernels at any blocksize. Products involving
+([`AbstractQuadrature`](@ref)). With `TrapezoidQuadrature` (the default)
+the two domain-edge nodes carry half weights, which gives second-order
+convergence for smooth kernels at any blocksize; with
+`RectangleQuadrature` this is the historical `δt · M_L · M_R`.
+Products involving
 `Local` operators never reach this path; they are applied exactly by the
 operator-level `*` methods.
 """
@@ -143,6 +160,29 @@ end
 
 _quadrature_prod(::RectangleQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation) =
     step(left) * matrix(left) * matrix(right)
+
+# Trapezoid rule: only the two domain-edge row-blocks of MR carry a half
+# weight. For dense matrices this is an O(N²) in-place block scaling; for
+# compressed matrices (which do not support setindex!) the half weights are
+# applied through a block-diagonal matrix built in the same compression.
+function _quadrature_prod(::TrapezoidQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation)
+    ML, MR = matrix(left), matrix(right)
+    bs = blocksize(left)
+    n = length(axis(left))
+    if MR isa StridedMatrix
+        w = step(left) .* edge_weights(TrapezoidQuadrature(), n)
+        return ML * _scale_rowblocks(MR, w, bs, n)
+    end
+    T = scalartype(left)
+    blocks = Array{T,3}(undef, bs, bs, n)
+    for i in 1:n
+        blocks[:, :, i] .= Matrix{T}(I, bs, bs)
+    end
+    blocks[:, :, 1] .= 0.5 * Matrix{T}(I, bs, bs)
+    blocks[:, :, n] .= 0.5 * Matrix{T}(I, bs, bs)
+    D = build_blockdiag(blocks; compression=compression(left))
+    return step(left) * ML * D * MR
+end
 
 function _scale_rowblocks(M, w, bs, n)
     Mr = copy(M)

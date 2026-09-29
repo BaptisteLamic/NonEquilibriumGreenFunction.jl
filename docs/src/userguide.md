@@ -91,15 +91,15 @@ The matrix of a discretized kernel is compressed to make the algebra quasi-linea
 Two knobs matter in practice:
 
 - `quadrature`: the discretization's integration rule
-  ([`AbstractQuadrature`](@ref)). `RectangleQuadrature()` (the default)
-  reproduces the historical first-order weights; `TrapezoidQuadrature()`
+  ([`AbstractQuadrature`](@ref)). `TrapezoidQuadrature()` (the default)
   gives half weights at the domain edges and converges second order for
   smooth kernels at any blocksize, including kernels that do not vanish
   at the boundary, and for every causality pairing (acausal × acausal,
   retarded × acausal, acausal × advanced; same-causality products are
-  second order under both rules via the diagonal dressing). Pass it to
-  any kernel constructor:
-  `AcausalKernel(ax, map; compression, quadrature=TrapezoidQuadrature())`.
+  second order under both rules via the diagonal dressing).
+  `RectangleQuadrature()` is the historical first-order rule, useful
+  as a baseline. Pass a rule to any kernel constructor:
+  `AcausalKernel(ax, map; compression, quadrature=RectangleQuadrature())`.
 
 - `Singular` maps: kernels with an integrable singularity at ``\tau = 0``
   (e.g. the Keldysh thermal core ``-i/\beta \, \mathrm{csch}(\pi\tau/\beta)``)

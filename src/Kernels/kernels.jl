@@ -98,7 +98,7 @@ Discretize the kernel described by `map` masked by the causality `C`
 Returns a `Kernel` with causality `C`.
 """
 function Kernel(::Type{C}, axis, map::AbstractKernelMap;
-    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(map, axis)
     f_masked = masked(map, causality, map(axis[1], axis[1]))
@@ -120,7 +120,7 @@ or matrix-valued (blocksize `> 1`, e.g. multi-level finite-temperature
 systems).
 """
 function Kernel(::Type{C}, axis, map::Singular;
-    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(map, axis)
     dt = step(axis)
@@ -151,7 +151,7 @@ function _masked_circulant(C, m, N)
 end
 
 function Kernel(::Type{C}, axis, sep::Separable;
-    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(sep, axis)
     matrix = triangularLowRankCompression(compression, causality, axis, sep.f, sep.g)
