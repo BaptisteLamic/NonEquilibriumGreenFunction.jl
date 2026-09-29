@@ -97,6 +97,10 @@ Two knobs matter in practice:
   hat-function integrals instead of sampled values, restoring second-order
   convergence of kernel products. The principal-value diagonal is exactly zero
   for odd cores. Use `Singular(f)` instead of `Stationary(f)` for such kernels.
+  The core may be scalar-valued or matrix-valued, so finite-temperature
+  multi-level systems (blocksize `> 1`) are supported; `thermal_kernel(t, β)`
+  also provides the `T = 0` limit (`β = ∞`) where the core reduces to
+  `-i/(πt)`.
 - `Stationary` maps: the kernel depends only on `t-t'`, so the matrix is
   block-circulant. It is built through an FFT-accelerated circulant operator:
   ``\mathcal O(N \log N)`` construction and ``\mathcal O(N \log N)`` products.

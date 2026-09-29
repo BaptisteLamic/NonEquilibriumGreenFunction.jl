@@ -203,7 +203,15 @@ A new discretization of the same type with the specified modifications.
 function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(discretization),
     blocksize=blocksize(discretization), compression=compression(discretization)
 ) where {D<:AbstractDiscretisation}
-    return D(
+    if eltype(new_matrix) <: scalartype(discretization)
+        return D(
+            axis,
+            new_matrix,
+            blocksize,
+            compression
+        )
+    end
+    return TrapzDiscretisation(
         axis,
         new_matrix,
         blocksize,

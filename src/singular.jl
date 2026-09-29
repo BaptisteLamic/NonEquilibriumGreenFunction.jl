@@ -1,3 +1,5 @@
+using LinearAlgebra
+
 """
     singular_weights(f, dt; N, atol=1e-13, rtol=1e-13)
 
@@ -17,9 +19,15 @@ core (`f(-τ) = -f(τ)`, e.g. `-i/β csch(πτ/β)`) the diagonal weight vanishe
 exactly: `W_0 = 0`, which is the principal-value prescription.
 
 Returns the weights as a vector indexed `k = -(N-1), ..., N-1`, i.e.
-`W[k + N]`.
+`W[k + N]`. For a matrix-valued core `f` (blocksize `> 1`), returns a
+3D array `W[:, :, k + N]` of per-entry weights, indexed the same way.
 """
 function singular_weights(f, dt; N, atol=1e-13, rtol=1e-13)
+    sample = f(dt)
+    return _singular_weights(f, dt, sample; N=N, atol=atol, rtol=rtol)
+end
+
+function _singular_weights(f, dt, ::Number; N, atol, rtol)
     hat(k) = τ -> max(0.0, 1.0 - abs(τ / dt - k))
     W = Vector{ComplexF64}(undef, 2N - 1)
     for k in -(N - 1):(N - 1)
@@ -28,6 +36,21 @@ function singular_weights(f, dt; N, atol=1e-13, rtol=1e-13)
         else
             W[k + N] = _pv_panel_integral(f, hat(k), (k - 1) * dt, k * dt, atol, rtol) +
                        _pv_panel_integral(f, hat(k), k * dt, (k + 1) * dt, atol, rtol)
+        end
+    end
+    return W
+end
+
+function _singular_weights(f, dt, B::AbstractMatrix; N, atol, rtol)
+    hat(k) = τ -> max(0.0, 1.0 - abs(τ / dt - k))
+    T = complex(eltype(B))
+    W = Array{T,3}(undef, size(B)..., 2N - 1)
+    for k in -(N - 1):(N - 1)
+        if k == 0
+            W[:, :, k + N] .= zero(B)
+        else
+            W[:, :, k + N] = _pv_panel_integral(f, hat(k), (k - 1) * dt, k * dt, atol, rtol) +
+                            _pv_panel_integral(f, hat(k), k * dt, (k + 1) * dt, atol, rtol)
         end
     end
     return W

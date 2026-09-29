@@ -115,7 +115,9 @@ product-integration weights: the block-circulant matrix stores the exact
 hat-function integrals `W_k / δt` instead of the sampled values
 `f(k·δt)`. This is the principal-value-aware discretization of the
 Keldysh thermal core; it restores second-order convergence of kernel
-products involving the singular branch.
+products involving the singular branch. The core `f` may be scalar-valued
+or matrix-valued (blocksize `> 1`, e.g. multi-level finite-temperature
+systems).
 """
 function Kernel(::Type{C}, axis, map::Singular;
     compression=HssCompression()) where {C<:AbstractCausality}
@@ -124,12 +126,11 @@ function Kernel(::Type{C}, axis, map::Singular;
     dt = step(axis)
     N = length(axis)
     W = singular_weights(map.f, dt; N=N)
-    m = zeros(ComplexF64, bs, bs, 2N - 1)
-    for k in -(N - 1):(N - 1)
-        block = map.f(k * dt)
-        fref = k == 0 ? zero(complex(block[1, 1])) : complex(block[1, 1])
-        ratio = k == 0 ? zero(complex(W[k + N])) : (W[k + N] / dt) / fref
-        m[:, :, k + N] .= ratio .* block
+    if W isa AbstractVector
+        m = zeros(ComplexF64, 1, 1, 2N - 1)
+        m[1, 1, :] .= W ./ dt
+    else
+        m = W ./ dt
     end
     tab = _masked_circulant(causality, m, N)
     matrix = compression(axis, tab)
