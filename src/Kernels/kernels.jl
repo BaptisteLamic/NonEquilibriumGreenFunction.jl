@@ -107,6 +107,48 @@ function Kernel(::Type{C}, axis, map::AbstractKernelMap;
     return Kernel(discretization, causality)
 end
 
+"""
+    Kernel(::Type{C}, axis, map::Singular; compression=HssCompression()) where {C<:AbstractCausality}
+
+Discretize a singular stationary kernel (see [`Singular`](@ref)) with
+product-integration weights: the block-circulant matrix stores the exact
+hat-function integrals `W_k / δt` instead of the sampled values
+`f(k·δt)`. This is the principal-value-aware discretization of the
+Keldysh thermal core; it restores second-order convergence of kernel
+products involving the singular branch.
+"""
+function Kernel(::Type{C}, axis, map::Singular;
+    compression=HssCompression()) where {C<:AbstractCausality}
+    causality = C()
+    bs, _ = blocksize_and_eltype(map, axis)
+    dt = step(axis)
+    N = length(axis)
+    W = singular_weights(map.f, dt; N=N)
+    m = zeros(ComplexF64, bs, bs, 2N - 1)
+    for k in -(N - 1):(N - 1)
+        block = map.f(k * dt)
+        fref = k == 0 ? zero(complex(block[1, 1])) : complex(block[1, 1])
+        ratio = k == 0 ? zero(complex(W[k + N])) : (W[k + N] / dt) / fref
+        m[:, :, k + N] .= ratio .* block
+    end
+    tab = _masked_circulant(causality, m, N)
+    matrix = compression(axis, tab)
+    return Kernel(TrapzDiscretisation(axis, matrix, bs, compression), causality)
+end
+
+function _masked_circulant(::Acausal, m, N)
+    return BlockCirculantMatrix(m)
+end
+function _masked_circulant(C, m, N)
+    mm = copy(m)
+    for k in -(N - 1):(N - 1)
+        if (C isa Retarded && k < 0) || (C isa Advanced && k > 0)
+            mm[:, :, k + N] .= 0
+        end
+    end
+    return BlockCirculantMatrix(mm)
+end
+
 function Kernel(::Type{C}, axis, sep::Separable;
     compression=HssCompression()) where {C<:AbstractCausality}
     causality = C()

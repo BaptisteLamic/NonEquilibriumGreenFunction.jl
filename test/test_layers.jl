@@ -177,3 +177,55 @@ end
     @test all(isfinite, f_reg(0.2, 0.1))
     @test f_reg(0.1, 0.1) == f_reg(0.2, 0.2)
 end
+
+@testitem "Singular kernel map: product-integration restores second order" begin
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction.Kernels: Singular
+
+    β = 10.0
+    s(τ) = abs(τ) > 1e-64 ? -1im / β * csch(π * τ / β) : 0.0im
+    T = 2.0
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+
+    # reference: fine-grid singular rule (converges O(dt^2))
+    Nref = 4001
+    axref = range(-T, T; length=Nref)
+    Lref = AcausalKernel(axref, Stationary(g); compression=NONCompression())
+    Kref = AcausalKernel(axref, Singular(s); compression=NONCompression())
+    mid = (Nref + 1) ÷ 2
+    ref = matrix(Kref * Lref)[mid, mid]
+
+    function midval(N, maptype)
+        ax = range(-T, T; length=N)
+        K = AcausalKernel(ax, maptype; compression=NONCompression())
+        L = AcausalKernel(ax, Stationary(g); compression=NONCompression())
+        return matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
+    end
+
+    # diagonal weight vanishes (principal-value prescription for the odd core)
+    ax = range(-T, T; length=51)
+    W = singular_weights(s, step(ax); N=51)
+    @test W[0 + 51] == 0.0
+    K = AcausalKernel(ax, Singular(s); compression=NONCompression())
+    @test matrix(K)[(51 + 1) ÷ 2, (51 + 1) ÷ 2] == 0.0
+
+    # second-order convergence: error drops ~4x per refinement
+    e1 = abs(midval(101, Singular(s)) - ref)
+    e2 = abs(midval(201, Singular(s)) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+
+    # naive sampling of the singular core is strictly worse at matched N
+    @test abs(midval(101, Stationary(s)) - ref) > 2 * e1
+
+    # HSS compression path produces a finite product with a smooth partner
+    axh = range(-T, T; length=201)
+    Kh = AcausalKernel(axh, Singular(s); compression=HssCompression(leafsize=32))
+    Lh = AcausalKernel(axh, Stationary(g); compression=HssCompression(leafsize=32))
+    Ph = Kh * Lh
+    @test all(isfinite, real(matrix(Ph)[100, 100]))
+
+    # retarded masking: no support at negative lags
+    Kr = RetardedKernel(ax, Singular(s); compression=NONCompression())
+    Mr = matrix(Kr)
+    @test Mr[10, 20] == 0.0
+end

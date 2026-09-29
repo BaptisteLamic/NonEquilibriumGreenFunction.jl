@@ -52,6 +52,26 @@ function (sep::Separable)(t, tp)
 end
 
 """
+    Singular(f) <: AbstractKernelMap
+
+Wraps the one-argument stationary core `f(τ)` of a kernel that is
+principal-value singular at `τ = 0` (e.g. the thermal Keldysh core
+`-i/β csch(πτ/β)`). Sampling `f` on the time grid loses one order of
+convergence, so a `Singular` map is discretized with product-integration
+weights: the matrix entries are `W_k / δt` with
+`W_k = PV∫ f(τ) ℓ_k(τ) dτ` the exact integrals against
+the piecewise-linear hat functions of the grid. This restores second-order
+accuracy for products with smooth kernels. The diagonal weight vanishes
+(`W_0 = 0` for the odd thermal core), which is the principal-value
+prescription.
+"""
+struct Singular <: AbstractKernelMap
+    f
+end
+
+(s::Singular)(t, tp) = s.f(t - tp)
+
+"""
     blocksize_and_eltype(m::AbstractKernelMap, axis)
 
 Sample the map at the first axis point and return `(bs, T)` after

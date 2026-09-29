@@ -23,6 +23,7 @@ import LinearAlgebra.norm
 include("causality.jl")
 include("matrixinterface.jl")
 include("locality.jl")
+include("singular.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
@@ -39,6 +40,7 @@ include("test_compression_interface.jl")
 include("AdaptiveRichardson.jl")
 
 export Kernels, Physics
+export singular_weights
 
 export axis, blocksize
 export getindex

@@ -90,6 +90,13 @@ The matrix of a discretized kernel is compressed to make the algebra quasi-linea
 
 Two knobs matter in practice:
 
+- `Singular` maps: kernels with an integrable singularity at ``\tau = 0``
+  (e.g. the Keldysh thermal core ``-i/\beta \, \mathrm{csch}(\pi\tau/\beta)``)
+  are discretized with product-integration weights
+  (see [`singular_weights`](@ref)): the block-circulant matrix stores the exact
+  hat-function integrals instead of sampled values, restoring second-order
+  convergence of kernel products. The principal-value diagonal is exactly zero
+  for odd cores. Use `Singular(f)` instead of `Stationary(f)` for such kernels.
 - `Stationary` maps: the kernel depends only on `t-t'`, so the matrix is
   block-circulant. It is built through an FFT-accelerated circulant operator:
   ``\mathcal O(N \log N)`` construction and ``\mathcal O(N \log N)`` products.
