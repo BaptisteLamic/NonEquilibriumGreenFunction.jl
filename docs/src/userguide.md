@@ -95,7 +95,10 @@ Two knobs matter in practice:
   reproduces the historical first-order weights; `TrapezoidQuadrature()`
   gives half weights at the domain edges and converges second order for
   smooth kernels at any blocksize, including kernels that do not vanish
-  at the boundary. Pass it to any kernel constructor:
+  at the boundary, and for every causality pairing (acausal × acausal,
+  retarded × acausal, acausal × advanced; same-causality products are
+  second order under both rules via the diagonal dressing). Pass it to
+  any kernel constructor:
   `AcausalKernel(ax, map; compression, quadrature=TrapezoidQuadrature())`.
 
 - `Singular` maps: kernels with an integrable singularity at ``\tau = 0``

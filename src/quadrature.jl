@@ -46,12 +46,12 @@ accurate for smooth kernels, for any blocksize, including kernels that
 do not vanish at the domain boundary (the half-weights encode the
 boundary line collapse instead of relying on wraparound cancellation).
 
-Currently implemented for acausal × acausal products, where the
-integration interval is the full axis and the edge weights are exact.
-Causal (retarded/advanced) products keep the diagonal dressing
-correction, which already encodes the collapse-point weights of the
-moving integration interval; those paths therefore ignore the rule for
-now.
+Second order for acausal × acausal (edge weights on the full axis),
+for retarded × acausal and acausal × advanced (half weight on the
+domain-edge node of the moving interval, exact zero on the degenerate
+boundary line), and — via the diagonal dressing, which is the trapezoid
+treatment of the moving interval — for retarded × retarded and
+advanced × advanced under both rules.
 """
 struct TrapezoidQuadrature <: AbstractQuadrature end
 

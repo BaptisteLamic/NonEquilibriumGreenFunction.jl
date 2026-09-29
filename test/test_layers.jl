@@ -359,3 +359,51 @@ end
     # trapezoid strictly dominates rectangle at matched N
     @test e1 < r1
 end
+
+@testitem "Quadrature axis: causal products under the trapezoid rule" begin
+    using NonEquilibriumGreenFunction
+
+    T = 2.0
+    k1(τ) = ComplexF64(exp(-τ^2))
+    k2(τ) = ComplexF64(exp(-((τ - 0.2)^2) / 0.3) * (1.0 - 0.3im))
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    t, tp = 0.6, 0.2
+
+    function entry(N, q, cons)
+        ax = range(0.0, T; length=N)
+        dt = step(ax)
+        i = round(Int, t / dt) + 1
+        j = round(Int, tp / dt) + 1
+        K, L = cons(ax, q)
+        return matrix(K * L)[i, j]
+    end
+
+    # retarded x acausal: trapezoid restores second order
+    rac = (ax, q) -> (
+        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
+        AcausalKernel(ax, Stationary(g); compression=NONCompression(), quadrature=q))
+    ref = entry(1601, TrapezoidQuadrature(), rac)
+    e1 = abs(entry(101, TrapezoidQuadrature(), rac) - ref)
+    e2 = abs(entry(201, TrapezoidQuadrature(), rac) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+    r1 = abs(entry(101, RectangleQuadrature(), rac) - ref)
+    @test r1 > e1
+
+    # degenerate boundary row: exactly zero under the trapezoid rule
+    # (the collapse point carries a zero panel), nonzero under the
+    # historical rectangle rule
+    ax = range(0.0, T; length=101)
+    K, L = rac(ax, TrapezoidQuadrature())
+    @test maximum(abs.(matrix(K * L)[1, :])) == 0.0
+    K, L = rac(ax, RectangleQuadrature())
+    @test maximum(abs.(matrix(K * L)[1, :])) > 0.0
+
+    # retarded x retarded: already second order under both rules (dressing)
+    rr = (ax, q) -> (
+        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
+        RetardedKernel(ax, Stationary(k2); compression=NONCompression(), quadrature=q))
+    refrr = entry(1601, RectangleQuadrature(), rr)
+    a1 = abs(entry(101, RectangleQuadrature(), rr) - refrr)
+    a2 = abs(entry(201, RectangleQuadrature(), rr) - refrr)
+    @test 3.0 < a1 / a2 < 5.5
+end
