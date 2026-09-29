@@ -13,6 +13,7 @@ using ..NonEquilibriumGreenFunction: I
 using TestItems
 
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step, compression, make_similar
+import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!
 
 import Base: +, -, *, ==, adjoint, step, getindex, size, sum, prod
 import LinearAlgebra: norm, adjoint

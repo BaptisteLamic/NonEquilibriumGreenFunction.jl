@@ -30,6 +30,7 @@ makedocs(;
             "Superconductor - QD - Superconductor junction" => "generated/sqds.md",
         ],
         "API" => "api.md",
+        "Custom compression" => "custom_compression.md",
         "Internals" => "internals.md",
     ],
 )

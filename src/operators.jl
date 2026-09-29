@@ -130,7 +130,7 @@ This modifies the discretization in-place by replacing its matrix with a compres
 """
 function compress!(discretization::AbstractDiscretisation)
     cpr = discretization |> compression
-    cpr(discretization |> matrix)
+    recompress_inplace!(cpr, discretization |> matrix)
     return discretization
 end
 
@@ -481,14 +481,7 @@ way to observe an operator; unlike `diag(matrix(op))` it is defined for
 `SumOperator`s and does not require knowing the storage layout.
 """
 function same_time(op::SimpleOperator)
-    mat = matrix(op)
-    bs = blocksize(op)
-    N = div(size(mat, 1), bs)
-    if mat isa HssMatrix
-        T = scalartype(op)
-        return [T[mat[p + j, p + k] for j in 1:bs, k in 1:bs] for (i, p) in enumerate(0:bs:(N - 1) * bs)]
-    end
-    return [copy(@view mat[blockrange(i, bs), blockrange(i, bs)]) for i in 1:N]
+    return same_time_blocks(matrix(op), blocksize(op))
 end
 same_time(op::SumOperator) = same_time(op.left) .+ same_time(op.right)
 
