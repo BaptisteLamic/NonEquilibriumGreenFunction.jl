@@ -8,7 +8,6 @@ TrapzDiscretisation
 RetardedKernel
 AdvancedKernel
 AcausalKernel
-LocalKernel
 AbstractKernelMap
 Stationary
 TwoTime
@@ -89,11 +88,27 @@ NonEquilibriumGreenFunction.Kernels.AbstractOperator
 Retarded
 Advanced
 Acausal
-Local
-islocal
 isretarded
 isadvanced
 isacausal
+```
+
+## Locality
+
+```@docs
+AbstractLocality
+Local
+Smooth
+locality
+islocal
+locality_of_prod
+locality_of_sum
+```
+
+## Kernel products
+
+```@docs
+prod(::Acausal, ::Acausal, ::AbstractDiscretisation, ::AbstractDiscretisation)
 ```
 
 ## Compression

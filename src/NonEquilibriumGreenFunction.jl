@@ -39,14 +39,13 @@ include("test_compression_interface.jl")
 include("AdaptiveRichardson.jl")
 
 export Kernels, Physics
-export locality, islocal
 
 export axis, blocksize
 export getindex
 export build_linearMap, blockrange, blockindex, build_CirculantlinearMap
 #new export
 export TrapzDiscretisation, AbstractDiscretisation
-export AbstractLocality, Local, Smooth
+export AbstractLocality, Local, Smooth, locality, islocal, locality_of_prod, locality_of_sum
 export Retarded, Advanced, Acausal
 export isretarded, isadvanced, isacausal
 export discretization
