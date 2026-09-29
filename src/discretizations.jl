@@ -32,8 +32,10 @@ end
 """
     TrapzDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
 
-Backwards-compatible constructor: the quadrature rule defaults to the
-historical rectangle rule.
+Constructor with the quadrature rule as an optional keyword; it
+defaults to the package default, [`TrapezoidQuadrature`](@ref).
+Pass `quadrature=RectangleQuadrature()` for the historical first-order
+rule.
 """
 function TrapzDiscretisation(axis, matrix, blocksize, compression;
     quadrature::AbstractQuadrature=TrapezoidQuadrature())

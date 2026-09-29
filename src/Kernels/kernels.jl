@@ -122,7 +122,12 @@ systems).
 function Kernel(::Type{C}, axis, map::Singular;
     compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
-    bs, _ = blocksize_and_eltype(map, axis)
+    # never evaluate the core at the singular point τ = 0: probe one
+    # grid step away, like `singular_weights` does
+    probe = map.f(step(axis))
+    size(probe, 1) == size(probe, 2) || throw(ArgumentError(
+        "singular kernel map must return square matrices, got $(size(probe))"))
+    bs = probe isa Number ? 1 : size(probe, 1)
     dt = step(axis)
     N = length(axis)
     W = singular_weights(map.f, dt; N=N)

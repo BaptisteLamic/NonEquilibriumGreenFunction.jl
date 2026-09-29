@@ -14,6 +14,7 @@ end
 
 function *(left::Kernel, right::Kernel)
     prod_causality = causality_of_prod(left |> causality, right |> causality)
+    @assert quadrature(left) == quadrature(right) "kernel product requires matching quadrature rules, got $(typeof(quadrature(left))) × $(typeof(quadrature(right)))"
     result_dis = prod(
         left |> causality,
         right |> causality,
@@ -153,9 +154,22 @@ function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, r
     bs = blocksize(left)
     n = length(axis(left))
     w = step(left) .* edge_weights(q, n)
-    # W on the contraction variable: scale the row-blocks of MR
-    WR = _scale_rowblocks(MR, w, bs, n)
-    return ML * WR
+    if MR isa StridedMatrix
+        # W on the contraction variable: scale the row-blocks of MR
+        return ML * _scale_rowblocks(MR, w, bs, n)
+    end
+    # compressed storage does not support setindex!: apply the weights
+    # through a block-diagonal matrix built in the same compression
+    T = scalartype(left)
+    blocks = Array{T,3}(undef, bs, bs, n)
+    for i in 1:n
+        blocks[:, :, i] .= Matrix{T}(I, bs, bs)
+    end
+    for i in 1:n
+        blocks[:, :, i] .*= w[i] / step(left)
+    end
+    D = build_blockdiag(blocks; compression=compression(left))
+    return step(left) * ML * D * MR
 end
 
 _quadrature_prod(::RectangleQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation) =

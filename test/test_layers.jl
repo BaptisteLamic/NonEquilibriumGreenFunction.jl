@@ -442,3 +442,50 @@ end
     Br = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=RectangleQuadrature())
     @test maximum(abs.(matrix(Ar * Br)[:, 1])) > 0.0
 end
+
+@testitem "Review fixes: Singular export, f(0) never evaluated, mixed-rule guard" begin
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction: Singular
+
+    # Singular is re-exported from the top-level module
+    @test NonEquilibriumGreenFunction.Singular === NonEquilibriumGreenFunction.Kernels.Singular
+
+    ax = range(-2.0, 2.0; length=41)
+
+    # a core that *throws* at the singular point τ = 0 can still be
+    # discretized: construction must never evaluate f(0)
+    f_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
+                  -1im / 10 * csch(π * τ / 10)
+    K = AcausalKernel(ax, Singular(f_throws); compression=NONCompression())
+    @test size(matrix(K)) == (41, 41)
+    @test matrix(K)[21, 21] == 0.0
+
+    # matrix-valued core that throws at τ = 0: blocksize still inferred
+    A = [1.0 2.0; 0.5 1.5]
+    fm_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
+                   (-1im / 10) .* A .* csch(π * τ / 10)
+    Km = AcausalKernel(ax, Singular(fm_throws); compression=NONCompression())
+    @test blocksize(Km) == 2
+    @test size(matrix(Km)) == (82, 82)
+
+    # mismatched quadrature rules are rejected instead of silently
+    # resolving to the left operand's rule
+    Kt = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=NONCompression(), quadrature=TrapezoidQuadrature())
+    Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=NONCompression(), quadrature=RectangleQuadrature())
+    @test_throws AssertionError Kt * Kr
+
+    # trapezoid acausal×acausal matches the dense reference when the
+    # operands are compressed (generic weighted-product path)
+    axh = range(-2.0, 2.0; length=129)
+    Kd = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
+    L = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    Lh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=HssCompression(atol=1e-12, rtol=1e-12))
+    Kh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2)));
+        compression=HssCompression(atol=1e-12, rtol=1e-12))
+    Pdense = matrix(Kd * L)           # dense × dense
+    Ph = matrix(Kh * Lh)              # compressed, generic path
+    @test norm(Ph - Pdense) / norm(Pdense) < 1e-8
+end
