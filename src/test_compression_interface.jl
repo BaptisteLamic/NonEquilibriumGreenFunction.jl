@@ -8,9 +8,9 @@ methods and their matrix representations.
 Checks, each against a dense `NONCompression()` reference on the same
 problem:
 
-1. **Construction**: `discretize_retardedkernel`, `discretize_advancedkernel`,
-   `discretize_acausalkernel` (`stationary=true` and `false`),
-   `discretize_dirac` and `discretize_lowrank_kernel`; sizes, `eltype`,
+1. **Construction**: `RetardedKernel`, `AdvancedKernel`,
+   `AcausalKernel` (with `Stationary` and `TwoTime` maps),
+   `InstantaneousKernel` and `Separable`; sizes, `eltype`,
    `blocksize`, causality.
 2. **Algebra**: `+`, `-`, `*`, scalar `*`, `adjoint`, `==`, `norm`,
    `same_time`, `keldysh_trace`, compared to the dense reference.
@@ -39,11 +39,11 @@ function test_compression_interface(cpr::AbstractCompression;
                     ((t, tp) -> T.(Matrix{Float64}(I, bs, bs) .* exp(-(t - tp)^2)))
                 ref = NONCompression()
                 for caus in (Retarded(), Advanced(), Acausal())
-                    ctor = caus isa Retarded ? discretize_retardedkernel :
-                           caus isa Advanced ? discretize_advancedkernel :
-                           discretize_acausalkernel
-                    k_ref = ctor(ax, f; compression=ref)
-                    k = ctor(ax, f; compression=cpr)
+                    ctor = caus isa Retarded ? RetardedKernel :
+                           caus isa Advanced ? AdvancedKernel :
+                           AcausalKernel
+                    k_ref = ctor(ax, TwoTime(f); compression=ref)
+                    k = ctor(ax, TwoTime(f); compression=cpr)
                     @test size(matrix(k)) == size(matrix(k_ref))
                     @test scalartype(k) == T
                     @test blocksize(k) == bs
@@ -51,31 +51,34 @@ function test_compression_interface(cpr::AbstractCompression;
                     _assert_matrices_approx_equal(matrix(k), matrix(k_ref), atol)
                 end
                 @testset "stationary" begin
-                    k_ref = discretize_retardedkernel(ax, f; compression=ref, stationary=true)
-                    k = discretize_retardedkernel(ax, f; compression=cpr, stationary=true)
+                    f_s = bs == 1 ?
+                        (τ -> T(exp(-τ^2))) :
+                        (τ -> T.(Matrix{Float64}(I, bs, bs) .* exp(-τ^2)))
+                    k_ref = RetardedKernel(ax, Stationary(f_s); compression=ref)
+                    k = RetardedKernel(ax, Stationary(f_s); compression=cpr)
                     _assert_matrices_approx_equal(matrix(k), matrix(k_ref), atol)
                 end
                 @testset "dirac" begin
-                    d_ref = discretize_dirac(ax, t -> T(2); compression=ref)
-                    d = discretize_dirac(ax, t -> T(2); compression=cpr)
+                    d_ref = InstantaneousKernel(ax, t -> T(2); compression=ref)
+                    d = InstantaneousKernel(ax, t -> T(2); compression=cpr)
                     @test causality(d) == Instantaneous()
                     _assert_matrices_approx_equal(matrix(d), matrix(d_ref), atol)
                 end
                 @testset "lowrank" begin
                     lf = t -> T.([t 0; 0 t])
                     lg = t -> T.([t^2 0; 0 t^2])
-                    l_ref = discretize_lowrank_kernel(TrapzDiscretisation, Retarded, ax, lf, lg; compression=ref)
-                    l = discretize_lowrank_kernel(TrapzDiscretisation, Retarded, ax, lf, lg; compression=cpr)
+                    l_ref = RetardedKernel(ax, Separable(lf, lg); compression=ref)
+                    l = RetardedKernel(ax, Separable(lf, lg); compression=cpr)
                     _assert_matrices_approx_equal(matrix(l), matrix(l_ref), atol)
                 end
                 _fK = bs == 1 ?
                     ((t, tp) -> T(0.1 * exp(-(t - tp)))) :
                     ((t, tp) -> T.(Matrix{Float64}(I, bs, bs) .* (0.1 * exp(-(t - tp)))))
                 @testset "algebra" begin
-                    g_ref = discretize_retardedkernel(ax, f; compression=ref)
-                    K_ref = discretize_retardedkernel(ax, _fK; compression=ref)
-                    g = discretize_retardedkernel(ax, f; compression=cpr)
-                    K = discretize_retardedkernel(ax, _fK; compression=cpr)
+                    g_ref = RetardedKernel(ax, TwoTime(f); compression=ref)
+                    K_ref = RetardedKernel(ax, TwoTime(_fK); compression=ref)
+                    g = RetardedKernel(ax, TwoTime(f); compression=cpr)
+                    K = RetardedKernel(ax, TwoTime(_fK); compression=cpr)
                     _assert_matrices_approx_equal(matrix(g + K), matrix(g_ref + K_ref), atol)
                     _assert_matrices_approx_equal(matrix(g - K), matrix(g_ref - K_ref), atol)
                     _assert_matrices_approx_equal(matrix(g * K), matrix(g_ref * K_ref), atol)
@@ -86,21 +89,21 @@ function test_compression_interface(cpr::AbstractCompression;
                     @test keldysh_trace(g) ≈ keldysh_trace(g_ref) atol=atol
                 end
                 @testset "solver" begin
-                    _fg = bs == 1 ? ((t, tp) -> T(-1im)) :
-                        ((t, tp) -> T.(-1im .* Matrix{Float64}(I, bs, bs)))
-                    _fKs = bs == 1 ? ((t, tp) -> T(-0.05im)) :
-                        ((t, tp) -> T.(-0.05im .* Matrix{Float64}(I, bs, bs)))
-                    g_ref = discretize_retardedkernel(ax, _fg; compression=ref, stationary=true)
-                    K_ref = discretize_retardedkernel(ax, _fKs; compression=ref, stationary=true)
+                    _fg = bs == 1 ? (τ -> T(-1im)) :
+                        (τ -> T.(-1im .* Matrix{Float64}(I, bs, bs)))
+                    _fKs = bs == 1 ? (τ -> T(-0.05im)) :
+                        (τ -> T.(-0.05im .* Matrix{Float64}(I, bs, bs)))
+                    g_ref = RetardedKernel(ax, Stationary(_fg); compression=ref)
+                    K_ref = RetardedKernel(ax, Stationary(_fKs); compression=ref)
                     G_ref = solve_dyson(g_ref, K_ref)
-                    g = discretize_retardedkernel(ax, _fg; compression=cpr, stationary=true)
-                    K = discretize_retardedkernel(ax, _fKs; compression=cpr, stationary=true)
+                    g = RetardedKernel(ax, Stationary(_fg); compression=cpr)
+                    K = RetardedKernel(ax, Stationary(_fKs); compression=cpr)
                     G = solve_dyson(g, K)
                     _assert_matrices_approx_equal(matrix(G), matrix(G_ref), atol)
                     @test same_time(G) ≈ same_time(G_ref) atol=atol
                 end
                 @testset "recompression and make_similar" begin
-                    k = discretize_retardedkernel(ax, f; compression=cpr)
+                    k = RetardedKernel(ax, TwoTime(f); compression=cpr)
                     m2 = cpr(matrix(k))
                     @test size(m2) == size(matrix(k))
                     _assert_matrices_approx_equal(m2, matrix(k), atol)
