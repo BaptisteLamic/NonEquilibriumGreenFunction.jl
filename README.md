@@ -14,8 +14,11 @@ This package solves the non-equilibrium Dyson equation in the time domain with q
 
 ## Features
 
-- Solves non-equilibrium Dyson equation in time domain
-- Quasi-linear time complexity 
+- Solves the transient Dyson equation $G = g + g \Sigma G$ in the time domain
+- Quasi-linear $\mathcal{O}(N \log N)$ time complexity via kernel-matrix compression (HSS compression, or FFT-accelerated circulant compression for stationary kernels)
+- Typed kernel maps for local, retarded, acausal and singular self-energy terms, with kernel algebra (`+`, `-`, `*`, composition)
+- Works with scalar and Nambu (block) kernels, e.g. for superconducting leads
+- Explicit compression/matrix interface with support for [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl)
 
 ## Documentation
 
@@ -30,24 +33,31 @@ documentation build time, so the published docs always show runnable code.
 Build locally with:
 
 ```bash
-julia --project=docs -e 'using Pkg; Pkg.develop(path=.); Pkg.instantiate()'
+julia --project=docs -e 'using Pkg; Pkg.develop(path=dirname(pwd())); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
 ## Examples
 
-### Metal - Quantum Dot - Metal Junction
+The worked examples live as Literate scripts in `docs/lit/` and are rendered (and executed)
+in the published documentation:
 
-The notebook `examples/MQDM_junction.ipynb` demonstrates how to compute the Green function of a non-interacting quantum dot connected to two leads and evaluate its current.
+- **Metal – Quantum Dot – Metal junction** ([`docs/lit/mqdm.jl`](docs/lit/mqdm.jl)): Green
+  function of a non-interacting quantum dot connected to two metal leads, a complexity
+  benchmark, and the average current under a voltage bias.
+- **Superconductor – Quantum Dot – Superconductor junction** ([`docs/lit/sqds.jl`](docs/lit/sqds.jl)):
+  Green function of a quantum dot connected to two superconducting leads (Nambu kernels,
+  stationary circulant compression) and the transient current response to a voltage ramp.
 
 ![Benchmark_QD_equilibrium](examples/QD_benchmark.svg)
 ![QD_Iavr](examples/average_current_QD.svg)
-
-### Superconductor - Quantum Dot - Superconductor Junction
-
-The notebook `examples/SQDS_junction.ipynb` shows how to compute the Green function of a non-interacting quantum dot connected to two superconducting leads and evaluate its current.
-
 ![QD_Iavr](examples/transient_current_SQDS.svg)
+
+## Benchmarks
+
+Performance benchmarks live in `benchmark/` and are managed with
+[PkgBenchmark.jl](https://juliaci.github.io/PkgBenchmark.jl/stable/). See
+[`benchmark/README.md`](benchmark/README.md) for per-hardware baselines and how to run them.
 
 ## Installation
 
