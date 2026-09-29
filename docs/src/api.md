@@ -98,6 +98,12 @@ isacausal
 BlockCirculantMatrix
 HssCompression
 NONCompression
+AbstractCompression
+ldiv
+to_cpu
+same_time_blocks
+recompress_inplace!
+test_compression_interface
 build_linearMap
 build_CirculantlinearMap
 ```
