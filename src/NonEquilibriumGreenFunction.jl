@@ -28,6 +28,7 @@ include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
 include("utils.jl")
+include("quadrature.jl")
 include("discretizations.jl")
 
 include("Kernels.jl")

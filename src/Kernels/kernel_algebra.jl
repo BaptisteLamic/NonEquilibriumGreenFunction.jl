@@ -58,13 +58,48 @@ end
 """
     prod(::Acausal, ::Acausal, left, right)
 
-Discretized product of two acausal kernels: a plain quadrature-weighted
-matrix product. Products involving `Local` operators never reach this
-path; they are applied exactly by the operator-level `*` methods.
+Discretized product of two acausal kernels: a quadrature-weighted matrix
+product whose weights are owned by the discretization's quadrature rule
+([`AbstractQuadrature`](@ref)). With `RectangleQuadrature` (the default)
+this is the historical `δt * M_L * M_R`; with `TrapezoidQuadrature` the
+two domain-edge nodes carry half weights, which restores second-order
+convergence for smooth kernels at any blocksize. Products involving
+`Local` operators never reach this path; they are applied exactly by the
+operator-level `*` methods.
 """
 function prod(::Acausal, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    result = step(left)*matrix(left) * matrix(right)
+    result = _quadrature_prod(quadrature(left), left, right)
     return make_similar(left, result)
+end
+
+"""
+    _quadrature_prod(q::AbstractQuadrature, left, right)
+
+Quadrature-weighted product `M_L · W · M_R` with
+`W = diag(δt .* edge_weights(q, N))` applied along the contraction
+variable `t''` (columns of the left matrix, rows of the right one). For
+the rectangle rule all weights are 1, recovering the historical
+`δt * M_L * M_R`.
+"""
+function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation)
+    ML, MR = matrix(left), matrix(right)
+    bs = blocksize(left)
+    n = length(axis(left))
+    w = step(left) .* edge_weights(q, n)
+    # W on the contraction variable: scale the row-blocks of MR
+    WR = _scale_rowblocks(MR, w, bs, n)
+    return ML * WR
+end
+
+_quadrature_prod(::RectangleQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation) =
+    step(left) * matrix(left) * matrix(right)
+
+function _scale_rowblocks(M, w, bs, n)
+    Mr = copy(M)
+    for i in 1:n
+        Mr[blockrange(i, bs), :] .*= w[i]
+    end
+    return Mr
 end
 
 function adjoint(kernel::Kernel)

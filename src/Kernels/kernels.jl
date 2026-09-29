@@ -98,12 +98,12 @@ Discretize the kernel described by `map` masked by the causality `C`
 Returns a `Kernel` with causality `C`.
 """
 function Kernel(::Type{C}, axis, map::AbstractKernelMap;
-    compression=HssCompression()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(map, axis)
     f_masked = masked(map, causality, map(axis[1], axis[1]))
     matrix = compression(axis, f_masked, stationary = map isa Stationary)
-    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
+    discretization = TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 
@@ -120,7 +120,7 @@ or matrix-valued (blocksize `> 1`, e.g. multi-level finite-temperature
 systems).
 """
 function Kernel(::Type{C}, axis, map::Singular;
-    compression=HssCompression()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(map, axis)
     dt = step(axis)
@@ -134,7 +134,7 @@ function Kernel(::Type{C}, axis, map::Singular;
     end
     tab = _masked_circulant(causality, m, N)
     matrix = compression(axis, tab)
-    return Kernel(TrapzDiscretisation(axis, matrix, bs, compression), causality)
+    return Kernel(TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature), causality)
 end
 
 function _masked_circulant(::Acausal, m, N)
@@ -151,11 +151,11 @@ function _masked_circulant(C, m, N)
 end
 
 function Kernel(::Type{C}, axis, sep::Separable;
-    compression=HssCompression()) where {C<:AbstractCausality}
+    compression=HssCompression(), quadrature::AbstractQuadrature=RectangleQuadrature()) where {C<:AbstractCausality}
     causality = C()
     bs, _ = blocksize_and_eltype(sep, axis)
     matrix = triangularLowRankCompression(compression, causality, axis, sep.f, sep.g)
-    discretization = TrapzDiscretisation(axis, matrix, bs, compression)
+    discretization = TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 

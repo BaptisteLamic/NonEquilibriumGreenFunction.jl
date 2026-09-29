@@ -303,3 +303,59 @@ end
     # large-β consistency: csch form approaches the T=0 limit
     @test isapprox(thermal_kernel(0.05, 1e10), -1im / (π * 0.05); rtol=1e-6)
 end
+
+@testitem "Quadrature axis: rules are structural and switchable" begin
+    using NonEquilibriumGreenFunction
+
+    # default is the historical rectangle rule
+    ax = range(-2.0, 2.0; length=51)
+    K = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    @test quadrature(discretization(K)) == RectangleQuadrature()
+
+    Kt = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression(),
+        quadrature=TrapezoidQuadrature())
+    @test quadrature(discretization(Kt)) == TrapezoidQuadrature()
+
+    # rectangle rule reproduces the historical product bit-for-bit
+    L = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
+    Lt = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression(),
+        quadrature=TrapezoidQuadrature())
+    dt = step(ax)
+    @test matrix(K * L) ≈ dt * matrix(K) * matrix(L)
+end
+
+@testitem "Quadrature axis: trapezoid restores second order, bs-independent" begin
+    using NonEquilibriumGreenFunction
+
+    # smooth matrix-valued kernels, bs = 2, non-decaying at the boundary
+    T = 2.0
+    k1(τ) = ComplexF64.([exp(-τ^2) 0.3exp(-(τ-0.2)^2); 0.2exp(-(τ+0.1)^2) 0.5exp(-τ^2)])
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    g2(τ) = [1.0 0.3; 0.2 0.9] .* g(τ) .+ ComplexF64.([0.5 0.1; 0.1 0.25])
+
+    function midval(N, q)
+        ax = range(-T, T; length=N)
+        K = AcausalKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q)
+        L = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=q)
+        M = matrix(K * L)
+        n0 = (N + 1) ÷ 2
+        return M[2*(n0-1)+1, 2*(n0-1)+1]
+    end
+
+    # reference: fine-grid trapezoid (converges O(dt^2)); ref error is
+    # ~1e-9, far below the compared errors
+    ref = midval(1601, TrapezoidQuadrature())
+
+    # trapezoid: second order (ratio ~ 4), independent of blocksize
+    e1 = abs(midval(101, TrapezoidQuadrature()) - ref)
+    e2 = abs(midval(201, TrapezoidQuadrature()) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+
+    # rectangle: first order (ratio ~ 2) at the same bs
+    r1 = abs(midval(101, RectangleQuadrature()) - ref)
+    r2 = abs(midval(201, RectangleQuadrature()) - ref)
+    @test 1.5 < r1 / r2 < 2.7
+
+    # trapezoid strictly dominates rectangle at matched N
+    @test e1 < r1
+end

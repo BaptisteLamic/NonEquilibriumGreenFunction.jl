@@ -7,6 +7,8 @@ using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression
     extract_blockdiag, build_blockdiag, triangularLowRankCompression,
     blockrange, blockindex
 import ..NonEquilibriumGreenFunction: locality, islocal, singular_weights, BlockCirculantMatrix
+import ..NonEquilibriumGreenFunction: quadrature, AbstractQuadrature, RectangleQuadrature, TrapezoidQuadrature
+import ..NonEquilibriumGreenFunction: edge_weights
 
 using HssMatrices
 using SparseArrays
