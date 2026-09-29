@@ -22,6 +22,7 @@ import LinearAlgebra.norm
 
 include("causality.jl")
 include("matrixinterface.jl")
+include("locality.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
 include("compression.jl")
@@ -44,14 +45,15 @@ export getindex
 export build_linearMap, blockrange, blockindex, build_CirculantlinearMap
 #new export
 export TrapzDiscretisation, AbstractDiscretisation
-export Retarded, Advanced, Acausal, Instantaneous
+export AbstractLocality, Local, Smooth, locality, islocal, locality_of_prod, locality_of_sum
+export Retarded, Advanced, Acausal
 export isretarded, isadvanced, isacausal
 export discretization
 export SimpleOperator, CompositeOperator
-export DiracOperator, InstantaneousKernel
+export LocalKernel
 export SumOperator
 export Kernel
-export RetardedKernel, AdvancedKernel, AcausalKernel, InstantaneousKernel
+export RetardedKernel, AdvancedKernel, AcausalKernel
 export AbstractKernelMap, Stationary, TwoTime, Separable
 export causality
 export solve_dyson

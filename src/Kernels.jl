@@ -2,9 +2,11 @@ module Kernels
 
 using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression, TrapzDiscretisation,
     HssCompression, causality_of_sum, causality_of_prod,
-    Retarded, Advanced, Acausal, Instantaneous, AbstractCausality,
+    Retarded, Advanced, Acausal, AbstractCausality,
+    AbstractLocality, Local, Smooth, locality_of_sum, locality_of_prod,
     extract_blockdiag, build_blockdiag, triangularLowRankCompression,
     blockrange, blockindex
+import ..NonEquilibriumGreenFunction: locality, islocal
 
 using HssMatrices
 using SparseArrays
@@ -22,8 +24,9 @@ include("operators.jl")
 include("Kernels/kernel_maps.jl")
 include("Kernels/kernels.jl")
 
-export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, DiracOperator, SumOperator
-export RetardedKernel, AdvancedKernel, AcausalKernel, InstantaneousKernel
+export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, LocalKernel, SumOperator
+export locality, islocal, AbstractLocality, Local, Smooth
+export RetardedKernel, AdvancedKernel, AcausalKernel
 export AbstractKernelMap, Stationary, TwoTime, Separable
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace

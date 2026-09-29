@@ -8,7 +8,6 @@ TrapzDiscretisation
 RetardedKernel
 AdvancedKernel
 AcausalKernel
-InstantaneousKernel
 AbstractKernelMap
 Stationary
 TwoTime
@@ -26,7 +25,7 @@ solve_keldysh
 
 ```@docs
 Kernel
-DiracOperator
+LocalKernel
 SumOperator
 SimpleOperator
 CompositeOperator
@@ -73,9 +72,9 @@ NonEquilibriumGreenFunction.Kernels.AbstractOperator
 -(::NonEquilibriumGreenFunction.Kernels.AbstractOperator, ::NonEquilibriumGreenFunction.Kernels.AbstractOperator)
 -(::NonEquilibriumGreenFunction.Kernels.AbstractOperator, ::UniformScaling)
 -(::UniformScaling, ::NonEquilibriumGreenFunction.Kernels.AbstractOperator)
-*(::DiracOperator, ::DiracOperator)
-*(::DiracOperator, ::SimpleOperator)
-*(::SimpleOperator, ::DiracOperator)
+*(::LocalKernel, ::LocalKernel)
+*(::LocalKernel, ::SimpleOperator)
+*(::SimpleOperator, ::LocalKernel)
 *(::SumOperator, ::SumOperator)
 *(::SumOperator, ::Union{Number, UniformScaling, NonEquilibriumGreenFunction.Kernels.AbstractOperator})
 *(::Union{Number, UniformScaling, NonEquilibriumGreenFunction.Kernels.AbstractOperator}, ::SumOperator)
@@ -89,10 +88,27 @@ NonEquilibriumGreenFunction.Kernels.AbstractOperator
 Retarded
 Advanced
 Acausal
-Instantaneous
 isretarded
 isadvanced
 isacausal
+```
+
+## Locality
+
+```@docs
+AbstractLocality
+Local
+Smooth
+locality
+islocal
+locality_of_prod
+locality_of_sum
+```
+
+## Kernel products
+
+```@docs
+prod(::Acausal, ::Acausal, ::AbstractDiscretisation, ::AbstractDiscretisation)
 ```
 
 ## Compression

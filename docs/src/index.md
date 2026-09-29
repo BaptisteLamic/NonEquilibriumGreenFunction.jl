@@ -25,7 +25,7 @@ structure for stationary kernels), the cost drops to ``\mathcal O(N \log N)``.
 A simulation always follows the same pipeline, regardless of the physics:
 
 1. **Discretize the kernels**: the bare retarded Green function `g`, the lead self-energies
-   `Σ` (built from `InstantaneousKernel` for instantaneous terms and
+   `Σ` (built from `LocalKernel` for local (contact) terms and
    `RetardedKernel` / `AcausalKernel` for continuous ones), and the
    thermal occupation `ρ` (an acausal kernel).
 2. **Solve the retarded Dyson equation**: `solve_dyson(g, g * Σ_R)` returns the full

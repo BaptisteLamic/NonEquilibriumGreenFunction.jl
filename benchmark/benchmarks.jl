@@ -46,7 +46,7 @@ for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
         @benchmarkable AcausalKernel($ax, TwoTime($f_acausal), compression=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["dirac", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable InstantaneousKernel($ax, $f_dirac, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable LocalKernel($ax, $f_dirac, compression=$cpr) samples=10 evals=1 gcsample=true
 end
 
 # =============================================================================
@@ -59,7 +59,7 @@ for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     k1 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
     k2 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
     k_ac = AcausalKernel(ax, TwoTime(f_acausal), compression=cpr)
-    d = InstantaneousKernel(ax, x -> Matrix{Float64}(I, bs, bs), compression=cpr)
+    d = LocalKernel(ax, x -> Matrix{Float64}(I, bs, bs), compression=cpr)
 
     SUITE["operations"]["addition", "N=$N", "bs=$bs"] =
         @benchmarkable $k1 + $k2 samples=100 evals=10 gcsample=true

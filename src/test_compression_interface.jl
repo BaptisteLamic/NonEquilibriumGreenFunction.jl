@@ -10,7 +10,7 @@ problem:
 
 1. **Construction**: `RetardedKernel`, `AdvancedKernel`,
    `AcausalKernel` (with `Stationary` and `TwoTime` maps),
-   `InstantaneousKernel` and `Separable`; sizes, `eltype`,
+   `LocalKernel` and `Separable`; sizes, `eltype`,
    `blocksize`, causality.
 2. **Algebra**: `+`, `-`, `*`, scalar `*`, `adjoint`, `==`, `norm`,
    `same_time`, `keldysh_trace`, compared to the dense reference.
@@ -58,10 +58,11 @@ function test_compression_interface(cpr::AbstractCompression;
                     k = RetardedKernel(ax, Stationary(f_s); compression=cpr)
                     _assert_matrices_approx_equal(matrix(k), matrix(k_ref), atol)
                 end
-                @testset "dirac" begin
-                    d_ref = InstantaneousKernel(ax, t -> T(2); compression=ref)
-                    d = InstantaneousKernel(ax, t -> T(2); compression=cpr)
-                    @test causality(d) == Instantaneous()
+                @testset "local" begin
+                    d_ref = LocalKernel(ax, t -> T(2); compression=ref)
+                    d = LocalKernel(ax, t -> T(2); compression=cpr)
+                    @test locality(d) == Local()
+                    @test causality(d) == Acausal()
                     _assert_matrices_approx_equal(matrix(d), matrix(d_ref), atol)
                 end
                 @testset "lowrank" begin
