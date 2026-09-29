@@ -177,3 +177,129 @@ end
     @test all(isfinite, f_reg(0.2, 0.1))
     @test f_reg(0.1, 0.1) == f_reg(0.2, 0.2)
 end
+
+@testitem "Singular kernel map: product-integration restores second order" begin
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction.Kernels: Singular
+
+    β = 10.0
+    s(τ) = abs(τ) > 1e-64 ? -1im / β * csch(π * τ / β) : 0.0im
+    T = 2.0
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+
+    # reference: fine-grid singular rule (converges O(dt^2))
+    Nref = 4001
+    axref = range(-T, T; length=Nref)
+    Lref = AcausalKernel(axref, Stationary(g); compression=NONCompression())
+    Kref = AcausalKernel(axref, Singular(s); compression=NONCompression())
+    mid = (Nref + 1) ÷ 2
+    ref = matrix(Kref * Lref)[mid, mid]
+
+    function midval(N, maptype)
+        ax = range(-T, T; length=N)
+        K = AcausalKernel(ax, maptype; compression=NONCompression())
+        L = AcausalKernel(ax, Stationary(g); compression=NONCompression())
+        return matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
+    end
+
+    # diagonal weight vanishes (principal-value prescription for the odd core)
+    ax = range(-T, T; length=51)
+    W = singular_weights(s, step(ax); N=51)
+    @test W[0 + 51] == 0.0
+    K = AcausalKernel(ax, Singular(s); compression=NONCompression())
+    @test matrix(K)[(51 + 1) ÷ 2, (51 + 1) ÷ 2] == 0.0
+
+    # second-order convergence: error drops ~4x per refinement
+    e1 = abs(midval(101, Singular(s)) - ref)
+    e2 = abs(midval(201, Singular(s)) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+
+    # naive sampling of the singular core is strictly worse at matched N
+    @test abs(midval(101, Stationary(s)) - ref) > 2 * e1
+
+    # HSS compression path produces a finite product with a smooth partner
+    axh = range(-T, T; length=201)
+    Kh = AcausalKernel(axh, Singular(s); compression=HssCompression(leafsize=32))
+    Lh = AcausalKernel(axh, Stationary(g); compression=HssCompression(leafsize=32))
+    Ph = Kh * Lh
+    @test all(isfinite, real(matrix(Ph)[100, 100]))
+
+    # retarded masking: no support at negative lags
+    Kr = RetardedKernel(ax, Singular(s); compression=NONCompression())
+    Mr = matrix(Kr)
+    @test Mr[10, 20] == 0.0
+end
+
+@testitem "Singular kernel map: finite temperature, matrix-valued core" begin
+    using LinearAlgebra
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction.Kernels: Singular
+
+    # matrix-valued thermal core: distinct β-scaled levels, bs = 2
+    β = 10.0
+    A = [1.0 2.0; 0.5 1.5]
+    f(τ) = abs(τ) > 1e-64 ?
+        (-1im / β) .* A .* csch(π * τ / β) :
+        zeros(ComplexF64, 2, 2)
+    T = 2.0
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+
+    g2(τ) = ComplexF64(1.0) .* A .+ g(τ) .* [1.0 0.3; 0.2 0.9]
+
+    Nref = 2001
+    axref = range(-T, T; length=Nref)
+    Lref = AcausalKernel(axref, Stationary(g2); compression=NONCompression())
+    Kref = AcausalKernel(axref, Singular(f); compression=NONCompression())
+    mid = (Nref + 1) ÷ 2
+    ref = matrix(Kref * Lref)[mid, mid]
+
+    # weights are per-entry, diagonal block exactly zero
+    W = singular_weights(f, 0.02; N=201)
+    @test size(W) == (2, 2, 401)
+    @test all(iszero, W[:, :, 0 + 201])
+
+    function midval(N, mt)
+        ax = range(-T, T; length=N)
+        K = AcausalKernel(ax, mt; compression=NONCompression())
+        L = AcausalKernel(ax, Stationary(g2); compression=NONCompression())
+        return matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
+    end
+    # product-integration beats naive sampling of the singular core at
+    # matched N (note: bs > 1 acausal products are first-order in the
+    # current quadrature, so we compare errors at fixed N)
+    @test abs(midval(201, Singular(f)) - ref) < abs(midval(201, Stationary(f)) - ref)
+    @test abs(midval(201, Singular(f)) - ref) < abs(midval(101, Singular(f)) - ref)
+end
+
+@testitem "Singular kernel map: finite-temperature convergence across β" begin
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction.Kernels: Singular
+
+    T = 2.0
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    for β in (2.0, 50.0)
+        s(τ) = abs(τ) > 1e-64 ? -1im / β * csch(π * τ / β) : 0.0im
+        Nref = 2001
+        axref = range(-T, T; length=Nref)
+        Lref = AcausalKernel(axref, Stationary(g); compression=NONCompression())
+        Kref = AcausalKernel(axref, Singular(s); compression=NONCompression())
+        mid = (Nref + 1) ÷ 2
+        ref = matrix(Kref * Lref)[mid, mid]
+        midval(N) = begin
+            ax = range(-T, T; length=N)
+            K = AcausalKernel(ax, Singular(s); compression=NONCompression())
+            L = AcausalKernel(ax, Stationary(g); compression=NONCompression())
+            matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
+        end
+        e1 = abs(midval(101) - ref)
+        e2 = abs(midval(201) - ref)
+        @test 3.0 < e1 / e2 < 5.5
+    end
+end
+
+@testitem "thermal_kernel zero-temperature limit" begin
+    using NonEquilibriumGreenFunction
+    @test thermal_kernel(0.5, Inf) ≈ -1im / (π * 0.5)
+    # large-β consistency: csch form approaches the T=0 limit
+    @test isapprox(thermal_kernel(0.05, 1e10), -1im / (π * 0.05); rtol=1e-6)
+end

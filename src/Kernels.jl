@@ -6,7 +6,7 @@ using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression
     AbstractLocality, Local, Smooth, locality_of_sum, locality_of_prod,
     extract_blockdiag, build_blockdiag, triangularLowRankCompression,
     blockrange, blockindex
-import ..NonEquilibriumGreenFunction: locality, islocal
+import ..NonEquilibriumGreenFunction: locality, islocal, singular_weights, BlockCirculantMatrix
 
 using HssMatrices
 using SparseArrays
@@ -27,7 +27,7 @@ include("Kernels/kernels.jl")
 export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, LocalKernel, SumOperator
 export locality, islocal, AbstractLocality, Local, Smooth
 export RetardedKernel, AdvancedKernel, AcausalKernel
-export AbstractKernelMap, Stationary, TwoTime, Separable
+export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace
 export solve_dyson

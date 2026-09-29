@@ -27,9 +27,13 @@ end
     thermal_kernel(t, β)
 
 Equilibrium (thermal) occupation kernel at inverse temperature `β`:
-`-i/β csch(πt/β)`, vanishing at `t = 0`.
+`-i/β csch(πt/β)`, vanishing at `t = 0`. At `T = 0` (`β = ∞`) the
+kernel reduces to the zero-temperature limit `-i/(πt)`.
 """
 function thermal_kernel(t,β)
+    if isinf(β)
+        return -1im / (π * (t + 0im))
+    end
     t_min = 1e-64
     if abs(t) > 1e-64
         return -1im/β * csch(π*t/β)

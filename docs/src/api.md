@@ -12,6 +12,13 @@ AbstractKernelMap
 Stationary
 TwoTime
 Separable
+Singular
+```
+
+## Quadrature
+
+```@docs
+singular_weights
 ```
 
 ## Solving
