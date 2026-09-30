@@ -49,6 +49,13 @@ Returns the compression method used by the operator.
 compression(g::SimpleOperator) = g |> discretization |> compression
 
 """
+    quadrature(g::SimpleOperator)
+
+Returns the quadrature rule of the operator's discretization.
+"""
+quadrature(g::SimpleOperator) = g |> discretization |> quadrature
+
+"""
     matrix(g::SimpleOperator)
 
 Returns the underlying matrix of the operator.

@@ -10,6 +10,8 @@ Public = false
 ```@docs
 NonEquilibriumGreenFunction.Kernels._discretize_uniformScaling
 NonEquilibriumGreenFunction.Kernels.blocksize_and_eltype
+NonEquilibriumGreenFunction.Kernels._quadrature_prod
+NonEquilibriumGreenFunction.Kernels._boundary_blockdiag
 ```
 
 ```@autodocs

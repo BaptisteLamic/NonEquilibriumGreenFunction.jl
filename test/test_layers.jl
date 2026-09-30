@@ -303,3 +303,189 @@ end
     # large-β consistency: csch form approaches the T=0 limit
     @test isapprox(thermal_kernel(0.05, 1e10), -1im / (π * 0.05); rtol=1e-6)
 end
+
+@testitem "Quadrature axis: rules are structural and switchable" begin
+    using NonEquilibriumGreenFunction
+
+    # default is the second-order trapezoid rule
+    ax = range(-2.0, 2.0; length=51)
+    K = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    @test quadrature(discretization(K)) == TrapezoidQuadrature()
+    Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression(),
+        quadrature=RectangleQuadrature())
+    @test quadrature(discretization(Kr)) == RectangleQuadrature()
+    # rectangle rule reproduces the historical product bit-for-bit
+    Lr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression(),
+        quadrature=RectangleQuadrature())
+    dt = step(ax)
+    @test matrix(Kr * Lr) ≈ dt * matrix(Kr) * matrix(Lr)
+    # trapezoid rule: half weights on the two domain-edge row-blocks
+    L = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
+    Mr = copy(matrix(L))
+    Mr[1, :] .*= 0.5
+    Mr[size(Mr, 1), :] .*= 0.5
+    @test matrix(K * L) ≈ dt * matrix(K) * Mr
+end
+
+@testitem "Quadrature axis: trapezoid restores second order, bs-independent" begin
+    using NonEquilibriumGreenFunction
+
+    # smooth matrix-valued kernels, bs = 2, non-decaying at the boundary
+    T = 2.0
+    k1(τ) = ComplexF64.([exp(-τ^2) 0.3exp(-(τ-0.2)^2); 0.2exp(-(τ+0.1)^2) 0.5exp(-τ^2)])
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    g2(τ) = [1.0 0.3; 0.2 0.9] .* g(τ) .+ ComplexF64.([0.5 0.1; 0.1 0.25])
+
+    function midval(N, q)
+        ax = range(-T, T; length=N)
+        K = AcausalKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q)
+        L = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=q)
+        M = matrix(K * L)
+        n0 = (N + 1) ÷ 2
+        return M[2*(n0-1)+1, 2*(n0-1)+1]
+    end
+
+    # reference: fine-grid trapezoid (converges O(dt^2)); ref error is
+    # ~1e-9, far below the compared errors
+    ref = midval(1601, TrapezoidQuadrature())
+
+    # trapezoid: second order (ratio ~ 4), independent of blocksize
+    e1 = abs(midval(101, TrapezoidQuadrature()) - ref)
+    e2 = abs(midval(201, TrapezoidQuadrature()) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+
+    # rectangle: first order (ratio ~ 2) at the same bs
+    r1 = abs(midval(101, RectangleQuadrature()) - ref)
+    r2 = abs(midval(201, RectangleQuadrature()) - ref)
+    @test 1.5 < r1 / r2 < 2.7
+
+    # trapezoid strictly dominates rectangle at matched N
+    @test e1 < r1
+end
+
+@testitem "Quadrature axis: causal products under the trapezoid rule" begin
+    using NonEquilibriumGreenFunction
+
+    T = 2.0
+    k1(τ) = ComplexF64(exp(-τ^2))
+    k2(τ) = ComplexF64(exp(-((τ - 0.2)^2) / 0.3) * (1.0 - 0.3im))
+    g(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    t, tp = 0.6, 0.2
+
+    function entry(N, q, cons)
+        ax = range(0.0, T; length=N)
+        dt = step(ax)
+        i = round(Int, t / dt) + 1
+        j = round(Int, tp / dt) + 1
+        K, L = cons(ax, q)
+        return matrix(K * L)[i, j]
+    end
+
+    # retarded x acausal: trapezoid restores second order
+    rac = (ax, q) -> (
+        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
+        AcausalKernel(ax, Stationary(g); compression=NONCompression(), quadrature=q))
+    ref = entry(1601, TrapezoidQuadrature(), rac)
+    e1 = abs(entry(101, TrapezoidQuadrature(), rac) - ref)
+    e2 = abs(entry(201, TrapezoidQuadrature(), rac) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+    r1 = abs(entry(101, RectangleQuadrature(), rac) - ref)
+    @test r1 > e1
+
+    # degenerate boundary row: exactly zero under the trapezoid rule
+    # (the collapse point carries a zero panel), nonzero under the
+    # historical rectangle rule
+    ax = range(0.0, T; length=101)
+    K, L = rac(ax, TrapezoidQuadrature())
+    @test maximum(abs.(matrix(K * L)[1, :])) == 0.0
+    K, L = rac(ax, RectangleQuadrature())
+    @test maximum(abs.(matrix(K * L)[1, :])) > 0.0
+
+    # retarded x retarded: already second order under both rules (dressing)
+    rr = (ax, q) -> (
+        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
+        RetardedKernel(ax, Stationary(k2); compression=NONCompression(), quadrature=q))
+    refrr = entry(1601, RectangleQuadrature(), rr)
+    a1 = abs(entry(101, RectangleQuadrature(), rr) - refrr)
+    a2 = abs(entry(201, RectangleQuadrature(), rr) - refrr)
+    @test 3.0 < a1 / a2 < 5.5
+end
+
+@testitem "Quadrature axis: acausal x advanced under the trapezoid rule" begin
+    T = 1.0
+    g2(τ) = ComplexF64(exp(-((τ - 0.3)^2) / 0.5) * (1.0 + 0.5im))
+    k3(τ) = ComplexF64(exp(-(τ + 0.1)^2))
+    t, tp = 0.6, 0.2
+    function entry(N, q)
+        ax = range(0.0, T; length=N)
+        dt = step(ax)
+        i = round(Int, t / dt) + 1
+        j = round(Int, tp / dt) + 1
+        A = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=q)
+        B = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=q)
+        return matrix(A * B)[i, j]
+    end
+    ref = entry(1601, TrapezoidQuadrature())
+    e1 = abs(entry(101, TrapezoidQuadrature()) - ref)
+    e2 = abs(entry(201, TrapezoidQuadrature()) - ref)
+    @test 3.0 < e1 / e2 < 5.5
+    r1 = abs(entry(101, RectangleQuadrature()) - ref)
+    r2 = abs(entry(201, RectangleQuadrature()) - ref)
+    @test 1.5 < r1 / r2 < 2.7
+    @test e1 < r1
+    # degenerate boundary column (t' = t₀): exactly zero under trapezoid
+    ax = range(0.0, T; length=101)
+    A = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=TrapezoidQuadrature())
+    B = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=TrapezoidQuadrature())
+    @test maximum(abs.(matrix(A * B)[:, 1])) == 0.0
+    Ar = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=RectangleQuadrature())
+    Br = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=RectangleQuadrature())
+    @test maximum(abs.(matrix(Ar * Br)[:, 1])) > 0.0
+end
+
+@testitem "Review fixes: Singular export, f(0) never evaluated, mixed-rule guard" begin
+    using NonEquilibriumGreenFunction
+    using NonEquilibriumGreenFunction: Singular
+
+    # Singular is re-exported from the top-level module
+    @test NonEquilibriumGreenFunction.Singular === NonEquilibriumGreenFunction.Kernels.Singular
+
+    ax = range(-2.0, 2.0; length=41)
+
+    # a core that *throws* at the singular point τ = 0 can still be
+    # discretized: construction must never evaluate f(0)
+    f_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
+                  -1im / 10 * csch(π * τ / 10)
+    K = AcausalKernel(ax, Singular(f_throws); compression=NONCompression())
+    @test size(matrix(K)) == (41, 41)
+    @test matrix(K)[21, 21] == 0.0
+
+    # matrix-valued core that throws at τ = 0: blocksize still inferred
+    A = [1.0 2.0; 0.5 1.5]
+    fm_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
+                   (-1im / 10) .* A .* csch(π * τ / 10)
+    Km = AcausalKernel(ax, Singular(fm_throws); compression=NONCompression())
+    @test blocksize(Km) == 2
+    @test size(matrix(Km)) == (82, 82)
+
+    # mismatched quadrature rules are rejected instead of silently
+    # resolving to the left operand's rule
+    Kt = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=NONCompression(), quadrature=TrapezoidQuadrature())
+    Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=NONCompression(), quadrature=RectangleQuadrature())
+    @test_throws AssertionError Kt * Kr
+
+    # trapezoid acausal×acausal matches the dense reference when the
+    # operands are compressed (generic weighted-product path)
+    axh = range(-2.0, 2.0; length=129)
+    Kd = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
+    L = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    Lh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2)));
+        compression=HssCompression(atol=1e-12, rtol=1e-12))
+    Kh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2)));
+        compression=HssCompression(atol=1e-12, rtol=1e-12))
+    Pdense = matrix(Kd * L)           # dense × dense
+    Ph = matrix(Kh * Lh)              # compressed, generic path
+    @test norm(Ph - Pdense) / norm(Pdense) < 1e-8
+end

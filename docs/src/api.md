@@ -18,6 +18,10 @@ Singular
 ## Quadrature
 
 ```@docs
+AbstractQuadrature
+RectangleQuadrature
+TrapezoidQuadrature
+quadrature
 singular_weights
 ```
 

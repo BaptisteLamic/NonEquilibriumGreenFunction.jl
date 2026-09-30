@@ -26,7 +26,23 @@ struct TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
     matrix::M
     blocksize::Int
     compression::C
+    quadrature::AbstractQuadrature
 end
+
+"""
+    TrapzDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
+
+Constructor with the quadrature rule as an optional keyword; it
+defaults to the package default, [`TrapezoidQuadrature`](@ref).
+Pass `quadrature=RectangleQuadrature()` for the historical first-order
+rule.
+"""
+function TrapzDiscretisation(axis, matrix, blocksize, compression;
+    quadrature::AbstractQuadrature=TrapezoidQuadrature())
+    return TrapzDiscretisation(axis, matrix, blocksize, compression, quadrature)
+end
+
+quadrature(dis::TrapzDiscretisation) = dis.quadrature
 
 """
     step(k::AbstractDiscretisation)
@@ -208,14 +224,16 @@ function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(d
             axis,
             new_matrix,
             blocksize,
-            compression
+            compression,
+            quadrature(discretization)
         )
     end
     return TrapzDiscretisation(
         axis,
         new_matrix,
         blocksize,
-        compression
+        compression,
+        quadrature(discretization)
     )
 end
 
