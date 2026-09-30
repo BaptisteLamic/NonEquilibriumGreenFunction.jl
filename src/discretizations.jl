@@ -24,9 +24,6 @@ baked in: it is carried by the `quadrature` field (an
 - `blocksize::Int`: Size of each block
 - `compression::C`: Compression method used
 - `quadrature::AbstractQuadrature`: Integration rule for products
-
-`TrapzDiscretisation` is retained as a deprecated alias for
-`UniformDiscretisation`.
 """
 struct UniformDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
     axis::A
@@ -48,15 +45,6 @@ function UniformDiscretisation(axis, matrix, blocksize, compression;
     quadrature::AbstractQuadrature=TrapezoidQuadrature())
     return UniformDiscretisation(axis, matrix, blocksize, compression, quadrature)
 end
-
-"""
-    TrapzDiscretisation
-
-Deprecated alias for [`UniformDiscretisation`](@ref). The historical
-name is misleading: the quadrature rule is a field of the
-discretization (rectangle or trapezoid), not baked into the type.
-"""
-const TrapzDiscretisation = UniformDiscretisation
 
 quadrature(dis::UniformDiscretisation) = dis.quadrature
 

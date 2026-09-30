@@ -5,7 +5,6 @@
 ```@docs
 AbstractDiscretisation
 UniformDiscretisation
-TrapzDiscretisation
 RetardedKernel
 AdvancedKernel
 AcausalKernel

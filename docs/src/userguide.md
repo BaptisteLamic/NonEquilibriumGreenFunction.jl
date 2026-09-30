@@ -67,8 +67,7 @@ compressed on their lower-triangular support only.
 
 ## Discretization
 
-The time axis is discretized on a uniform grid (`UniformDiscretisation`,
-formerly `TrapzDiscretisation`). `N =
+The time axis is discretized on a uniform grid (`UniformDiscretisation`). `N =
 length(ax)` time steps produce a `bs*N × bs*N` block matrix. Continuous kernels are
 integrated as
 
