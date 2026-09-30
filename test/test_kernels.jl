@@ -5,7 +5,7 @@
         ax = LinRange(-Dt / 2, Dt, N)
         A = randn(T, bs * N, bs * N)
         B = randn(T, bs * N, bs * N)
-        dA = TrapzDiscretisation(ax, A, bs, NONCompression())
+        dA = UniformDiscretisation(ax, A, bs, NONCompression())
         dB = make_similar(dA, B)
         @test matrix(dA) == A
         @test matrix(dB) == B
