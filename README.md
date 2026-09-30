@@ -15,7 +15,10 @@ This package solves the non-equilibrium Dyson equation in the time domain with q
 ## Features
 
 - Solves non-equilibrium Dyson equation in time domain
-- Quasi-linear time complexity 
+- Quasi-linear time complexity via kernel compression (HSS, or circulant for stationary kernels)
+- Typed kernel maps with algebra (`+`, `-`, `*`, composition)
+- Generic block-structure kernels (e.g. Nambu space)
+- Explicit compression/matrix interface with [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl) support
 
 ## Documentation
 
@@ -30,24 +33,30 @@ documentation build time, so the published docs always show runnable code.
 Build locally with:
 
 ```bash
-julia --project=docs -e 'using Pkg; Pkg.develop(path=.); Pkg.instantiate()'
+julia --project=docs -e 'using Pkg; Pkg.develop(path=dirname(pwd())); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
 ## Examples
 
+The examples are Literate scripts in `docs/lit/`, executed at documentation build time.
+
 ### Metal - Quantum Dot - Metal Junction
 
-The notebook `examples/MQDM_junction.ipynb` demonstrates how to compute the Green function of a non-interacting quantum dot connected to two leads and evaluate its current.
+`docs/lit/mqdm.jl` computes the Green function of a non-interacting quantum dot connected to two leads and evaluates its current.
 
 ![Benchmark_QD_equilibrium](examples/QD_benchmark.svg)
 ![QD_Iavr](examples/average_current_QD.svg)
 
 ### Superconductor - Quantum Dot - Superconductor Junction
 
-The notebook `examples/SQDS_junction.ipynb` shows how to compute the Green function of a non-interacting quantum dot connected to two superconducting leads and evaluate its current.
+`docs/lit/sqds.jl` computes the Green function of a non-interacting quantum dot connected to two superconducting leads and evaluates its current.
 
 ![QD_Iavr](examples/transient_current_SQDS.svg)
+
+## Benchmarks
+
+Performance benchmarks live in `benchmark/` and use [PkgBenchmark.jl](https://juliaci.github.io/PkgBenchmark.jl/stable/). See `benchmark/README.md`.
 
 ## Installation
 
