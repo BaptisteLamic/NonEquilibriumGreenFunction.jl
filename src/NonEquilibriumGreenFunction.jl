@@ -46,8 +46,7 @@ export singular_weights
 export axis, blocksize
 export getindex
 export build_linearMap, blockrange, blockindex, build_CirculantlinearMap
-#new export
-export TrapzDiscretisation, AbstractDiscretisation
+export UniformDiscretisation, AbstractDiscretisation
 export AbstractLocality, Local, Smooth, locality, islocal, locality_of_prod, locality_of_sum
 export Retarded, Advanced, Acausal
 export isretarded, isadvanced, isacausal

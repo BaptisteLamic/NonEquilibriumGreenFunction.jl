@@ -27,10 +27,10 @@ function *(left::Kernel, right::Kernel)
     )
 end
 
-function _dressing(g::TrapzDiscretisation, d)
+function _dressing(g::UniformDiscretisation, d)
      return matrix(g) - compression(g)(eltype(d)(0.5) * d)
 end
-function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation) where {C<:Union{Retarded,Advanced}}
+function _biased_mul(::C, ::C, gl::UniformDiscretisation, gr::UniformDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
     dl = extract_blockdiag(matrix(gl), bs)
     dr = extract_blockdiag(matrix(gr), bs)

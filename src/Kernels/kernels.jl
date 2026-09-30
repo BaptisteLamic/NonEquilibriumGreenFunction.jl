@@ -103,7 +103,7 @@ function Kernel(::Type{C}, axis, map::AbstractKernelMap;
     bs, _ = blocksize_and_eltype(map, axis)
     f_masked = masked(map, causality, map(axis[1], axis[1]))
     matrix = compression(axis, f_masked, stationary = map isa Stationary)
-    discretization = TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
+    discretization = UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 
@@ -139,7 +139,7 @@ function Kernel(::Type{C}, axis, map::Singular;
     end
     tab = _masked_circulant(causality, m, N)
     matrix = compression(axis, tab)
-    return Kernel(TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature), causality)
+    return Kernel(UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature), causality)
 end
 
 function _masked_circulant(::Acausal, m, N)
@@ -160,7 +160,7 @@ function Kernel(::Type{C}, axis, sep::Separable;
     causality = C()
     bs, _ = blocksize_and_eltype(sep, axis)
     matrix = triangularLowRankCompression(compression, causality, axis, sep.f, sep.g)
-    discretization = TrapzDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
+    discretization = UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 
@@ -182,7 +182,7 @@ RetardedKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Retarded, axis, map; kwargs...)
 
 RetardedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{TrapzDiscretisation,Retarded}(axis, matrix, blocksize, compression)
+    Kernel{UniformDiscretisation,Retarded}(axis, matrix, blocksize, compression)
 
 """
     AdvancedKernel(axis, map::AbstractKernelMap; compression=HssCompression())
@@ -196,7 +196,7 @@ AdvancedKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Advanced, axis, map; kwargs...)
 
 AdvancedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{TrapzDiscretisation,Advanced}(axis, matrix, blocksize, compression)
+    Kernel{UniformDiscretisation,Advanced}(axis, matrix, blocksize, compression)
 
 """
     AcausalKernel(axis, map::AbstractKernelMap; compression=HssCompression())
@@ -211,7 +211,7 @@ AcausalKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Acausal, axis, map; kwargs...)
 
 AcausalKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{TrapzDiscretisation,Acausal}(axis, matrix, blocksize, compression)
+    Kernel{UniformDiscretisation,Acausal}(axis, matrix, blocksize, compression)
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")

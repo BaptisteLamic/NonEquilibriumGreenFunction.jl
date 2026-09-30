@@ -11,17 +11,21 @@ Type parameters:
 abstract type AbstractDiscretisation{A,M,C} end
 
 """
-    TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
+    UniformDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
 
-Trapezoidal rule discretization for time-axis integrals.
+Discretization on a uniform time axis. The integration rule is not
+baked in: it is carried by the `quadrature` field (an
+[`AbstractQuadrature`](@ref)), defaulting to
+[`TrapezoidQuadrature`](@ref).
 
 # Fields
 - `axis::A`: Time axis
 - `matrix::M`: Discretized matrix
 - `blocksize::Int`: Size of each block
 - `compression::C`: Compression method used
+- `quadrature::AbstractQuadrature`: Integration rule for products
 """
-struct TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
+struct UniformDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
     axis::A
     matrix::M
     blocksize::Int
@@ -30,19 +34,19 @@ struct TrapzDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
 end
 
 """
-    TrapzDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
+    UniformDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
 
 Constructor with the quadrature rule as an optional keyword; it
 defaults to the package default, [`TrapezoidQuadrature`](@ref).
 Pass `quadrature=RectangleQuadrature()` for the historical first-order
 rule.
 """
-function TrapzDiscretisation(axis, matrix, blocksize, compression;
+function UniformDiscretisation(axis, matrix, blocksize, compression;
     quadrature::AbstractQuadrature=TrapezoidQuadrature())
-    return TrapzDiscretisation(axis, matrix, blocksize, compression, quadrature)
+    return UniformDiscretisation(axis, matrix, blocksize, compression, quadrature)
 end
 
-quadrature(dis::TrapzDiscretisation) = dis.quadrature
+quadrature(dis::UniformDiscretisation) = dis.quadrature
 
 """
     step(k::AbstractDiscretisation)
@@ -73,32 +77,32 @@ Returns the k-th dimension of the discretization's size.
 size(dis::AbstractDiscretisation, k) = size(dis)[k]
 
 """
-    blocksize(k::TrapzDiscretisation)
+    blocksize(k::UniformDiscretisation)
 
 Returns the block size of the discretization.
 """
-blocksize(k::TrapzDiscretisation) = k.blocksize
+blocksize(k::UniformDiscretisation) = k.blocksize
 
 """
-    compression(k::TrapzDiscretisation)
+    compression(k::UniformDiscretisation)
 
 Returns the compression method of the discretization.
 """
-compression(k::TrapzDiscretisation) = k.compression
+compression(k::UniformDiscretisation) = k.compression
 
 """
-    matrix(k::TrapzDiscretisation)
+    matrix(k::UniformDiscretisation)
 
 Returns the matrix of the discretization.
 """
-matrix(k::TrapzDiscretisation) = k.matrix
+matrix(k::UniformDiscretisation) = k.matrix
 
 """
-    axis(k::TrapzDiscretisation)
+    axis(k::UniformDiscretisation)
 
 Returns the axis of the discretization.
 """
-axis(k::TrapzDiscretisation) = k.axis
+axis(k::UniformDiscretisation) = k.axis
 
 """
     getindex(A::AbstractDiscretisation, ::Colon, I, ::Colon, J)
@@ -228,7 +232,7 @@ function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(d
             quadrature(discretization)
         )
     end
-    return TrapzDiscretisation(
+    return UniformDiscretisation(
         axis,
         new_matrix,
         blocksize,
@@ -238,11 +242,11 @@ function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(d
 end
 
 """
-    adjoint(dis::TrapzDiscretisation)
+    adjoint(dis::UniformDiscretisation)
 
-Return the adjoint of a TrapzDiscretisation.
+Return the adjoint of a UniformDiscretisation.
 """
-function adjoint(dis::TrapzDiscretisation)
+function adjoint(dis::UniformDiscretisation)
     return make_similar(dis, dis |> matrix |> adjoint)
 end
 
