@@ -3,7 +3,7 @@ using Documenter
 using Literate
 using LinearAlgebra
 
-const EXAMPLES = ["mqdm", "sqds"]
+const EXAMPLES = ["mqdm", "sqds", "noise"]
 
 function generate_examples()
     lit_dir = joinpath(@__DIR__, "lit")
@@ -28,6 +28,7 @@ makedocs(;
         "Examples" => [
             "Metal - QD - Metal junction" => "generated/mqdm.md",
             "Superconductor - QD - Superconductor junction" => "generated/sqds.md",
+            "Current noise of a QD junction" => "generated/noise.md",
         ],
         "API" => "api.md",
         "Custom compression" => "custom_compression.md",
