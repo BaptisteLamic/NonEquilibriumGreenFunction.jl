@@ -489,3 +489,184 @@ f_sqds
 # ($S \approx -1.4$, about $9\times$ the off-resonant value) after a transient
 # set by the apodization. Off resonance the bound state moves into the gap and
 # both the amplitude and the relaxation rate of the correlator drop sharply.
+
+# ## Energy spectrum of the noise
+#
+# The equal-time plateau alone does not say *where* the noise lives in
+# frequency. The interesting object is the symmetrized spectrum
+#
+# ```math
+# S(\omega) = \int d\tau\, e^{i\omega\tau}\, S\!\left(t_c+\tfrac{\tau}{2},
+# t_c-\tfrac{\tau}{2}\right),
+# ```
+#
+# averaged over center times $t_c$ in the stationary plateau. To get there we
+# need the **full two-time** correlator $S(t, t')$, not just its diagonal. The
+# same mechanical Wick recipe applies, but now every pairing is a two-time
+# kernel: the element-wise products only appear at the very end, when the full
+# $N\times N$ pair matrices are multiplied entry by entry.
+#
+# The dictionary maps each elementary pairing onto a block of the lesser /
+# greater kernels (validated pair by pair against the exact BdG arbiter):
+#
+# | pairing | kernel block |
+# |---|---|
+# | $\langle d^\dagger(t) d(t')\rangle$ | $-i\, G^<_{11}(t', t)$ |
+# | $\langle d(t) d^\dagger(t')\rangle$ | $+i\, G^>_{11}(t, t')$ |
+# | $\langle d^\dagger(t) \bar\psi(t')\rangle$ | $+i\, P^>_{22}(t, t')$ |
+# | $\langle \bar\psi^\dagger(t) d(t')\rangle$ | $-i\, P^<_{11}(t', t)$ |
+# | $\langle d^\dagger(t) \bar\psi^\dagger(t')\rangle$ | $+i\, P^>_{21}(t, t')$ |
+# | $\langle \bar\psi(t) d(t')\rangle$ | $+i\, P^<_{21}(t', t)$ |
+# | $\langle \bar\psi^\dagger(t) \bar\psi(t')\rangle$ | $-i\, \omega^<_{11}(t', t)$ |
+# | $\langle \bar\psi(t) \bar\psi^\dagger(t')\rangle$ | $+i\, \omega^>_{11}(t, t')$ |
+# | $\langle \bar\psi(t) \bar\psi(t')\rangle$ | $+i\, \omega^>_{12}(t, t')$ |
+# | $\langle \bar\psi^\dagger(t) \bar\psi^\dagger(t')\rangle$ | $+i\, \omega^>_{21}(t, t')$ |
+# | $\langle d^\dagger(t) d^\dagger(t')\rangle$ | $+i\, G^>_{21}(t, t')$ |
+# | $\langle d(t) d(t')\rangle$ | $+i\, G^>_{12}(t, t')$ |
+#
+# On the diagonal the trapezoid rule stores $G^R(t,t) = -i$ (the full
+# anticommutator), so $\tfrac{i}{2}$ is subtracted from the normal blocks before
+# extracting the pairings.
+
+module Spectrum
+
+using NonEquilibriumGreenFunction
+using LinearAlgebra
+
+function blk(M, a, b)
+    n2 = size(M, 1) ÷ 2
+    return [M[2i-2+a, 2j-2+b] for i in 1:n2, j in 1:n2]
+end
+
+function fixdiag!(M, a)
+    n2 = size(M, 1) ÷ 2
+    for i in 1:n2
+        M[2i-2+a, 2i-2+a] -= 0.5im
+    end
+    return M
+end
+
+"""
+Full two-time noise correlator S(t,t') of lead `:L` for the SQDS junction,
+assembled from the two-time Wick dictionary. The vertex apodization is
+applied at both times.
+"""
+function S_two_time(p, sol; lead=:L)
+    (; G_R, G_K, g_R, g_K, Tl, Tr) = sol
+    Tα = lead === :L ? Tl : Tr
+
+    P_K = G_R*(Tα'*g_K) + G_K*(Tα'*(g_R'))
+    P_R = G_R*(Tα'*g_R)
+    P_A = adjoint(P_R)
+    P_less = P_K - 0.5*(P_R - P_A)
+    P_greater = P_K + 0.5*(P_R - P_A)
+
+    ω_R = g_R + (g_R*Tα)*G_R*(Tα'*g_R)
+    ω_K = g_K + (g_R*Tα)*G_R*(Tα'*g_K) +
+        (g_R*Tα)*G_K*(Tα'*(g_R')) + (g_K*Tα)*(G_R')*(Tα'*(g_R'))
+    ω_less = ω_K - 0.5*(ω_R - adjoint(ω_R))
+    ω_greater = ω_K + 0.5*(ω_R - adjoint(ω_R))
+
+    G_less = G_K - 0.5*(G_R - adjoint(G_R))
+    G_greater = G_K + 0.5*(G_R - adjoint(G_R))
+
+    mat(op) = op isa NonEquilibriumGreenFunction.SumOperator ?
+        mat(op.left) .+ mat(op.right) : matrix(op)
+    GL = mat(G_less); GG = mat(G_greater)
+    ML = mat(P_less); MG = mat(P_greater)
+    WL = mat(ω_less); WG = mat(ω_greater)
+    for M in (GL, GG, WL, WG)
+        fixdiag!(M, 1); fixdiag!(M, 2)
+    end
+
+    dd    = -1im * blk(GL, 1, 1)'
+    dd_an =  1im * blk(GG, 2, 1)
+    ψψ    = -1im * blk(WL, 1, 1)'
+    ψψ_an =  1im * blk(WG, 1, 2)
+    ψψ_an2=  1im * blk(WG, 2, 1)
+    E     =  1im * blk(MG, 2, 2)
+    F     = -1im * blk(ML, 1, 1)'
+    A3    =  1im * blk(MG, 2, 1)
+    A4    =  1im * blk(ML, 2, 1)'
+    dd_an2=  1im * blk(GG, 1, 2)
+
+    t2 = sqrt(p.Γl / 2)
+    Eii = diag(E); Fii = diag(F)
+    XX = Eii .* Eii' - dd_an .* ψψ_an + E .* E'
+    YY = Fii .* Fii' - ψψ_an2 .* dd_an2 + F .* F'
+    XY = Eii .* Fii' - A3 .* A4 + dd .* ψψ'
+
+    c = 1im * conj(t2); d_ = -1im * t2
+    S = c*c .* XX - c*d_ .* XY - d_*c .* XY' + d_*d_ .* YY
+
+    ts = collect(0:p.δt:p.T)
+    w = [1 - exp(-(t/2)^2) for t in ts]
+    return ts, S .* (w * w')
+end
+
+"""
+Symmetrized noise spectrum S(ω): Wigner transform of S(t,t') averaged over
+stationary center times, with a Tukey taper (flat center, cosine roll-off) in
+the relative-time window. `tc_min` skips the switch-on transient, `τmax` the
+# correlator window.
+"""
+function wigner_spectrum(ts, S; tc_min=20.0, rtap=0.5, nω=401, ωmax=3.0, τmax=12.0)
+    N = length(ts); δt = ts[2] - ts[1]
+    K = min(round(Int, τmax ÷ (2δt)), (N - 1) ÷ 2)
+    ics = [ic for ic in 1:N if ts[ic] >= tc_min && ic - K >= 1 && ic + K <= N]
+    isempty(ics) && error("no stationary centers available")
+    kflat = round(Int, rtap * K)
+    w = [abs(k) <= kflat ? 1.0 :
+        0.5*(1 + cos(π*(abs(k) - kflat)/(K - kflat))) for k in -K:K]
+    Δτ = 2δt
+    om = collect(range(-ωmax, ωmax; length=nω))
+    Sw = zeros(Float64, length(om))
+    for (iw, ω) in enumerate(om)
+        acc = 0.0im
+        for ic in ics, k in -K:K
+            acc += w[k+K+1] * exp(1im*ω*Δτ*k) * S[ic+k, ic-k]
+        end
+        Sw[iw] = real(acc) * Δτ / length(ics)
+    end
+    return om, Sw
+end
+
+end
+
+# The full two-time correlator needs both runs again, but only the kernels
+# already computed: no new Dyson solve, just kernel assembly and block
+# extraction.
+
+ts2, S2_res = Spectrum.S_two_time(p_res, sol_res)
+_, S2_off = Spectrum.S_two_time(p_off, sol_off)
+S2_res_sym = 0.5 .* (S2_res .+ S2_res')
+S2_off_sym = 0.5 .* (S2_off .+ S2_off')
+
+ωs, Sw_res = Spectrum.wigner_spectrum(ts2, S2_res_sym)
+_, Sw_off = Spectrum.wigner_spectrum(ts2, S2_off_sym)
+
+f_spec = Figure()
+s_ax = Axis(f_spec[1, 1], xlabel=L"\omega", ylabel=L"S(\omega)",
+    title="SQDS noise spectrum (V = 0.2, Δ = 1, Γ_l = Γ_r = 1)")
+lines!(s_ax, ωs, Sw_res, label=L"\varepsilon = 0 (resonance)")
+lines!(s_ax, ωs, Sw_off, label=L"\varepsilon = 2\Delta (off resonance)")
+vlines!(s_ax, [0.0], color=:gray, linestyle=:dash)
+axislegend(position=:rt)
+save(joinpath(@__DIR__, "sqds_noise_spectrum.svg"), f_spec)
+f_spec
+
+# The spectrum makes the physics explicit:
+#
+# - At resonance ($\varepsilon = 0$) the symmetrized spectrum dips **below
+#   zero around $\omega = 0$** — equal-time anticorrelations from the Andreev
+#   bound state squeezing — with the weight pushed to finite frequencies
+#   (broad peaks near $|\omega| \sim 0.4$ and a second feature near
+#   $|\omega| \approx 1.6$).
+# - Off resonance ($\varepsilon = 2\Delta$) the spectrum is broad and positive
+#   around $\omega = 0$: no bound state at the Fermi level, so the low-frequency
+#   noise is ordinary thermal-ish fluctuation.
+#
+# The symmetrized $S(\omega)$ is not a positive function: negative values at
+# low frequency are the spectral signature of the superconducting
+# anticorrelations, and they satisfy $S(\omega) \geq -1$ in physical units
+# (the vacuum bound).
