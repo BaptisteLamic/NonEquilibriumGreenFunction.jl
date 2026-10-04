@@ -343,7 +343,7 @@ for (i, j) in ((10, 20), (50, 30), (100, 100), (80, 150), (150, 90), (180, 40))
     push!(errs, abs(S_qd[i, j] -
         Arbiter.S_exact(arb2, arb2.iL, arb2.iL, ts_qd[i], ts_qd[j])))
 end
-println(&quot;max |S_two_time - S_exact| = $(maximum(errs))&quot;)</code></pre><pre><code class="nohighlight hljs">max |S_two_time - S_exact| = 1.2749726383972248e-5
+println(&quot;max |S_two_time - S_exact| = $(maximum(errs))&quot;)</code></pre><pre><code class="nohighlight hljs">max |S_two_time - S_exact| = 1.2745294358869555e-5
 </code></pre><p>The Wigner transform then gives the finite-frequency spectrum of the QD junction, averaged over the stationary plateau:</p><pre><code class="language-julia hljs">S_qd_sym = 0.5 .* (S_qd .+ S_qd&#39;)
 ωs_qd, Sw_qd = wigner_spectrum(ts_qd, S_qd_sym; tc_min=4.0, ωmax=3.0, τmax=8.0)
 
