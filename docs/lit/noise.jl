@@ -83,10 +83,10 @@ end
 axis(p::Parameters) = 0:p.δt:p.T
 fermi(ε, μ, β) = 1 / (exp(β * (ε - μ)) + 1)
 
-# Bare lead propagators: for a surface-coupled tight-binding chain the
-# retarded surface Green function is a sum over the chain eigenmodes,
-# $g^R(\tau) = -i\sum_k |v_{1k}|^2 e^{-i\lambda_k \tau}$, and the kinetic
-# component is $g^K = \tfrac{1}{2}(g^> + g^<)$.
+## Bare lead propagators: for a surface-coupled tight-binding chain the
+## retarded surface Green function is a sum over the chain eigenmodes,
+## $g^R(\tau) = -i\sum_k |v_{1k}|^2 e^{-i\lambda_k \tau}$, and the kinetic
+## component is $g^K = \tfrac{1}{2}(g^> + g^<)$.
 
 function chain_eigs(p::Parameters, start)
     h = zeros(p.Lchain, p.Lchain)
@@ -133,8 +133,8 @@ function simulate(p::Parameters; cpr=HssCompression(leafsize=32))
     return (; G_R, G_K, L, R)
 end
 
-# Noise correlator, following the recipe above: kernel algebra for the
-# two-time objects, element-wise contractions at the very end.
+## Noise correlator, following the recipe above: kernel algebra for the
+## two-time objects, element-wise contractions at the very end.
 
 function noise_correlator(p::Parameters, sol; lead=:L)
     Ld = lead === :L ? sol.L : sol.R
@@ -201,14 +201,14 @@ function Model(; Lchain=30, εd=0.2, w_hop=1.0, tL=0.35, tR=0.35,
             end
         end
     end
-    # decoupled Hamiltonian sets the initial state (couplings switched on at t=0)
+    ## decoupled Hamiltonian sets the initial state (couplings switched on at t=0)
     ev_off = eigen(Symmetric(h))
     U_off, lam_off = ev_off.vectors, ev_off.values
     h[1, iL] = h[iL, 1] = tL
     h[1, iR] = h[iR, 1] = tR
     ev = eigen(Symmetric(h))
     U, lam = ev.vectors, ev.values
-    # initial state: dot half-filled, chains at their own μ
+    ## initial state: dot half-filled, chains at their own μ
     C0 = zeros(N, N)
     for k in 1:N
         w_dot = abs2(U_off[1, k])
@@ -230,9 +230,9 @@ function u(m::Model, t)
     end
 end
 
-# `<c_a†(t) c_b(t')>`
+## `<c_a†(t) c_b(t')>`
 gnp(m::Model, a, t, b, tp) = (u(m, t) * m.C0T * u(m, tp)')[a, b]
-# `<c_a(t) c_b†(t')>`
+## `<c_a(t) c_b†(t')>`
 gnn(m::Model, a, t, b, tp) = (u(m, t) * m.F0 * u(m, tp)')[a, b]
 
 pairval(m, o1, o2) =
@@ -303,7 +303,7 @@ f
 # $N^3$ in time and $N^2$ in memory; the HSS-compressed path scales
 # quasi-linearly.
 
-#md # # CI and interactive runs use a reduced grid.
+# CI and interactive runs use a reduced grid.
 if haskey(ENV, "CI")
     tab_N_hss = [100, 200, 400]
     tab_N_non = [100, 200]
@@ -344,6 +344,142 @@ f
 # uncompressed pipeline peaks around 2.5 GB and at $N = 3200$ it does not fit
 # in a 4 GB sandbox, while the HSS-compressed pipeline stays near the Julia
 # baseline (~1.1 GB) for all sizes.
+
+# ## Finite-frequency noise: the QD junction spectrum
+#
+# The equal-time plateau says how large the noise is, but not *where* it
+# lives in frequency. The finite-frequency (symmetrized) spectrum is the
+# Wigner transform of the **full two-time** correlator,
+#
+# ```math
+# S(\omega) = \int d\tau\, e^{i\omega\tau}
+#   S\!\left(t_c+\tfrac{\tau}{2}, t_c-\tfrac{\tau}{2}\right),
+# ```
+#
+# averaged over stationary center times $t_c$ in the plateau. The mechanical
+# Wick recipe is unchanged, but every pairing is now a full two-time kernel:
+# the element-wise products only appear at the very end, when the $N\times N$
+# pair matrices are glued entry by entry.
+#
+# For the normal-state junction the pairing dictionary (each block validated
+# against the exact arbiter above) reads
+#
+# | pairing | kernel block |
+# |---|---|
+# | $\langle d^\dagger(t) d(t')\rangle$ | $-i\, G^<(t, t')$ (diagonal fixed) |
+# | $\langle d^\dagger(t) \bar\psi(t')\rangle$ | $-i\, P^<(t, t')$ |
+# | $\langle \bar\psi^\dagger(t) d(t')\rangle$ | $+i\, P^<(t', t)$ |
+# | $\langle \bar\psi^\dagger(t) \bar\psi(t')\rangle$ | $-i\, \omega^<(t, t')$ (diagonal fixed) |
+#
+# On the diagonal the trapezoid rule stores the full anticommutator
+# ($-\tfrac{i}{2}$ too much), so $\tfrac{i}{2}$ is subtracted from the normal
+# blocks before the pairings are extracted.
+
+# The Wigner transform below is shared with the superconducting section.
+"""
+Symmetrized noise spectrum S(ω): Wigner transform of S(t,t') averaged over
+stationary center times, with a Tukey taper (flat center, cosine roll-off) in
+the relative-time window. `tc_min` skips the switch-on transient, `τmax` bounds
+the correlator window.
+"""
+function wigner_spectrum(ts, S; tc_min=20.0, rtap=0.5, nω=401, ωmax=3.0, τmax=12.0)
+    N = length(ts); δt = ts[2] - ts[1]
+    K = min(round(Int, τmax ÷ (2δt)), (N - 1) ÷ 2)
+    ics = [ic for ic in 1:N if ts[ic] >= tc_min && ic - K >= 1 && ic + K <= N]
+    isempty(ics) && error("no stationary centers available")
+    kflat = round(Int, rtap * K)
+    w = [abs(k) <= kflat ? 1.0 :
+        0.5*(1 + cos(π*(abs(k) - kflat)/(K - kflat))) for k in -K:K]
+    Δτ = 2δt
+    om = collect(range(-ωmax, ωmax; length=nω))
+    Sw = zeros(Float64, length(om))
+    for (iw, ω) in enumerate(om)
+        acc = 0.0im
+        for ic in ics, k in -K:K
+            acc += w[k+K+1] * exp(1im*ω*Δτ*k) * S[ic+k, ic-k]
+        end
+        Sw[iw] = real(acc) * Δτ / length(ics)
+    end
+    return om, Sw
+end
+
+"""
+Full two-time noise correlator S(t,t') of lead `:L` for the QD junction,
+assembled from the two-time Wick dictionary. Kernels are materialized to
+dense pair matrices; element-wise products only at the very end.
+"""
+function S_two_time(p, sol; lead=:L)
+    Ld = lead === :L ? sol.L : sol.R
+    coupling, tα = Ld.coupling, Ld.t
+    G_R, G_K = sol.G_R, sol.G_K
+
+    P_K = G_R * (coupling' * Ld.g_K) + G_K * (coupling' * (Ld.g_R)')
+    P_R = G_R * (coupling' * Ld.g_R)
+    P_less = P_K - 0.5 * (P_R - adjoint(P_R))
+
+    ω_K = Ld.g_K +
+        (Ld.g_R * coupling) * G_R * (coupling' * Ld.g_K) +
+        (Ld.g_R * coupling) * G_K * (coupling' * (Ld.g_R)') +
+        (Ld.g_K * coupling) * (G_R') * (coupling' * (Ld.g_R)')
+    ω_R = Ld.g_R + (Ld.g_R * coupling) * G_R * (coupling' * Ld.g_R)
+    ω_less = ω_K - 0.5 * (ω_R - adjoint(ω_R))
+
+    G_less = G_K - 0.5 * (G_R - adjoint(G_R))
+
+    mat(op) = op isa NonEquilibriumGreenFunction.SumOperator ?
+        Matrix(mat(op.left) .+ mat(op.right)) : Matrix(matrix(op))
+    fixdiag!(M) = (M[diagind(M)] .-= 0.5im; M)
+    GL = fixdiag!(mat(G_less))
+    ML = mat(P_less)
+    WL = fixdiag!(mat(ω_less))
+
+    dd = -1im * GL                     # ⟨d†(t) d(t')⟩
+    E  = -1im * ML                    # ⟨d†(t) ψ̄(t')⟩
+    F  =  1im * ML'                    # ⟨ψ̄†(t) d(t')⟩
+    ww = -1im * WL                     # ⟨ψ̄†(t) ψ̄(t')⟩
+    Eii = diag(E); Fii = diag(F)
+
+    W_XX = Eii .* transpose(Eii) + E .* transpose(E)
+    W_XY = Eii .* transpose(Fii) + dd .* transpose(ww)
+    W_YX = Fii .* transpose(Eii) + ww .* transpose(dd)
+    W_YY = Fii .* transpose(Fii) + F .* transpose(F)
+
+    a = 1im * conj(tα); c = -1im * tα
+    S = (a*a) .* W_XX - (a*c) .* W_XY - (c*a) .* W_YX + (c*c) .* W_YY
+    return collect(0:p.δt:p.T), S
+end
+
+# First the two-time correlator is validated against the exact arbiter on a
+# set of off-diagonal points:
+p2 = Junction.Parameters(δt=0.05, T=10.0)
+sol2 = Junction.simulate(p2)
+ts_qd, S_qd = S_two_time(p2, sol2)
+arb2 = Arbiter.Model(Lchain=p2.Lchain, εd=p2.εd, w_hop=p2.w_hop,
+                    tL=p2.tL, tR=p2.tR, μL=p2.μL, μR=p2.μR, β=p2.β)
+errs = Float64[]
+for (i, j) in ((10, 20), (50, 30), (100, 100), (80, 150), (150, 90), (180, 40))
+    push!(errs, abs(S_qd[i, j] -
+        Arbiter.S_exact(arb2, arb2.iL, arb2.iL, ts_qd[i], ts_qd[j])))
+end
+println("max |S_two_time - S_exact| = $(maximum(errs))")
+
+# The Wigner transform then gives the finite-frequency spectrum of the QD
+# junction, averaged over the stationary plateau:
+
+S_qd_sym = 0.5 .* (S_qd .+ S_qd')
+ωs_qd, Sw_qd = wigner_spectrum(ts_qd, S_qd_sym; tc_min=4.0, ωmax=3.0, τmax=8.0)
+
+f_spec_qd = Figure()
+ax_qd = Axis(f_spec_qd[1, 1], xlabel=L"\omega", ylabel=L"S(\omega)",
+    title="QD junction noise spectrum (V = 0.7, εd = 0.2)")
+lines!(ax_qd, ωs_qd, Sw_qd)
+vlines!(ax_qd, [0.0], color=:gray, linestyle=:dash)
+save(joinpath(@__DIR__, "qd_noise_spectrum.svg"), f_spec_qd)
+f_spec_qd
+
+# The spectrum is symmetric in $\omega$ (the symmetrized correlator is real),
+# broad around $\omega = 0$ (thermal fluctuation of the quench-relaxed
+# junction), and decays over the lead bandwidth ($w = 1$).
 
 # ## Superconducting leads: SQDS noise at and off resonance
 #
@@ -604,33 +740,6 @@ function S_two_time(p, sol; lead=:L)
     return ts, S .* (w * w')
 end
 
-"""
-Symmetrized noise spectrum S(ω): Wigner transform of S(t,t') averaged over
-stationary center times, with a Tukey taper (flat center, cosine roll-off) in
-the relative-time window. `tc_min` skips the switch-on transient, `τmax` the
-# correlator window.
-"""
-function wigner_spectrum(ts, S; tc_min=20.0, rtap=0.5, nω=401, ωmax=3.0, τmax=12.0)
-    N = length(ts); δt = ts[2] - ts[1]
-    K = min(round(Int, τmax ÷ (2δt)), (N - 1) ÷ 2)
-    ics = [ic for ic in 1:N if ts[ic] >= tc_min && ic - K >= 1 && ic + K <= N]
-    isempty(ics) && error("no stationary centers available")
-    kflat = round(Int, rtap * K)
-    w = [abs(k) <= kflat ? 1.0 :
-        0.5*(1 + cos(π*(abs(k) - kflat)/(K - kflat))) for k in -K:K]
-    Δτ = 2δt
-    om = collect(range(-ωmax, ωmax; length=nω))
-    Sw = zeros(Float64, length(om))
-    for (iw, ω) in enumerate(om)
-        acc = 0.0im
-        for ic in ics, k in -K:K
-            acc += w[k+K+1] * exp(1im*ω*Δτ*k) * S[ic+k, ic-k]
-        end
-        Sw[iw] = real(acc) * Δτ / length(ics)
-    end
-    return om, Sw
-end
-
 end
 
 # The full two-time correlator needs both runs again, but only the kernels
@@ -642,8 +751,8 @@ _, S2_off = Spectrum.S_two_time(p_off, sol_off)
 S2_res_sym = 0.5 .* (S2_res .+ S2_res')
 S2_off_sym = 0.5 .* (S2_off .+ S2_off')
 
-ωs, Sw_res = Spectrum.wigner_spectrum(ts2, S2_res_sym)
-_, Sw_off = Spectrum.wigner_spectrum(ts2, S2_off_sym)
+ωs, Sw_res = wigner_spectrum(ts2, S2_res_sym)
+_, Sw_off = wigner_spectrum(ts2, S2_off_sym)
 
 f_spec = Figure()
 s_ax = Axis(f_spec[1, 1], xlabel=L"\omega", ylabel=L"S(\omega)",
