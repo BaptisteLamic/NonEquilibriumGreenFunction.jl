@@ -1,0 +1,57 @@
+# Test-skills agent: exercise every Vibe skill safely
+# Pinned to Mistral Small (cheapest model) to keep test runs near-free.
+# Usage: vibe --agent test-skills
+
+agent_type = "agent"
+display_name = "Test Skills"
+description = "Exercises every Vibe skill in a safe read-only way and reports pass/fail per skill."
+safety = "safe"
+
+# Mistral Small — cheapest model, no reasoning needed for a test harness.
+active_model = "mistral-small"
+
+system_prompt_id = "test-skills"
+
+# Read-only: needs skill (to load skills), bash (to run safe commands),
+# task (to test delegation), read_file and grep (to inspect skill files).
+enabled_tools = [
+    "read_file",
+    "grep",
+    "bash",
+    "task",
+    "skill",
+    "todo",
+    "ask_user_question",
+]
+disabled_tools = [
+    "edit",
+    "write_file",
+]
+
+# Bash: always allow, restricted to safe read-only commands.
+# The docs build is deliberately NOT allowed here: it executes all Literate
+# examples and is too expensive for a skill smoke test.
+[tools.bash]
+permission = "always"
+allow = [
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+    "julia --project=@. -e 'using Pkg; Pkg.resolve()'",
+    "julia --project=@. -e 'using Pkg; Pkg.status()'",
+    "julia --project=test -e 'using Pkg; Pkg.resolve()'",
+    "julia --project=test -e 'using Pkg; Pkg.status()'",
+    "julia --project=test -e 'include(\"benchmark/quick_benchmarks.jl\"); run_quick_benchmarks(verbose=false)'",
+    "julia --project=docs -e 'using Pkg; Pkg.status()'",
+    "git status",
+    "git diff",
+    "ls",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"
+
+[tools.task]
+permission = "always"
+allow = ["explore"]

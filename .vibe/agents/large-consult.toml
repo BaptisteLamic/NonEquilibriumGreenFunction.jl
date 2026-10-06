@@ -1,0 +1,36 @@
+# Large-consult subagent (GLM 5.3) for NonEquilibriumGreenFunction.jl
+# Spawned by any agent via: task(agent="large-consult", task="<specific question>")
+# Single-step consultation: give a focused, independent answer to one
+# well-scoped question. No multi-step exploration, no tool chains.
+
+agent_type = "subagent"
+display_name = "Large Consult"
+description = "Single-step consultation subagent on GLM 5.3. Give a focused independent answer to one scoped question."
+
+# GLM 5.3 (Mistral-hosted, zai-glm-5-3) — used for its broad perspective and
+# strong baseline math (Green-function formalism, Volterra/Dyson iteration,
+# compression error analysis) on quick single-step calls. thinking is
+# configured at the model level ("high") in config.toml.
+active_model = "glm-5-3"
+
+system_prompt_id = "subagent-large-consult"
+
+enabled_tools = [
+    "read_file",
+    "grep",
+]
+disabled_tools = [
+    "edit",
+    "write_file",
+    "bash",
+    "task",
+    "todo",
+    "ask_user_question",
+    "skill",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"

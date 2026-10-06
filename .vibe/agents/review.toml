@@ -1,0 +1,43 @@
+# Review agent: read-only code review for NonEquilibriumGreenFunction.jl
+# Usage: vibe --agent review
+
+agent_type = "agent"
+display_name = "Review"
+description = "Read-only code review agent for NonEquilibriumGreenFunction.jl."
+
+system_prompt_id = "review"
+
+# Read-only: allow inspection tools, block all write/edit tools.
+# skill is enabled so the agent can load the `delegate` skill for subagent guidance.
+enabled_tools = [
+    "read_file",
+    "grep",
+    "bash",
+    "task",
+    "skill",
+    "todo",
+    "ask_user_question",
+]
+disabled_tools = [
+    "edit",
+    "write_file",
+]
+
+# Bash: ask before running anything, allow read-only git and julia test commands
+[tools.bash]
+permission = "ask"
+allow = [
+    "git diff",
+    "git diff --staged",
+    "git log",
+    "git show",
+    "git status",
+    "julia --project=@. -e 'using Pkg; Pkg.test()'",
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"

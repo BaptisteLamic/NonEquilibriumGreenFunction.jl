@@ -1,0 +1,44 @@
+# Project-level config for NonEquilibriumGreenFunction.jl
+# Extends the user config (~/.vibe/config.toml) with project-specific settings.
+
+# Define models available at project level
+[[models]]
+name = "zai-glm-5-3"
+provider = "mistral"
+alias = "glm-5-3"
+temperature = 1.0
+input_price = 1.4
+output_price = 4.4
+cached_input_price = 0.14
+# Mistral-hosted GLM 5.3 — the project's large model. Reasoning model,
+# thinking = "high" is supported (unlike mistral-large-latest). Used by
+# second-opinion, math-review, and large-consult. Defining alias "glm-5-3"
+# here also makes the global active_model pin in ~/.vibe/config.toml
+# resolve inside this repo.
+thinking = "high"
+supports_images = false
+auto_compact_threshold = 400000
+
+# Mistral Small: cheap model used by the test-skills agent and the
+# implement-mechanical subagent (devstral-small-latest is no longer served).
+[[models]]
+name = "mistral-small-latest"
+provider = "mistral"
+alias = "mistral-small"
+temperature = 0.2
+input_price = 0.15
+output_price = 0.6
+thinking = "off"
+auto_compact_threshold = 200000
+
+# Allow the orchestrator to spawn these custom subagents via the task tool.
+# "explore" is the built-in; the rest are defined in .vibe/agents/*.toml.
+[tools.task]
+permission = "ask"
+allow = [
+    "explore",
+    "code-review",
+    "implement-mechanical",
+    "implement-challenging",
+    "large-consult",
+]

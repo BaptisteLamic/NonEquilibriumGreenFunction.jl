@@ -1,0 +1,51 @@
+# Math review agent: mathematical/numerical review for NonEquilibriumGreenFunction.jl
+# Pinned to GLM 5.3 (reasoning model) for derivation tracing and invariant
+# verification on the Dyson-equation solver, kernel algebra, and compression.
+# Usage: vibe --agent math-review
+
+agent_type = "agent"
+display_name = "Math Review"
+description = "Read-only mathematical and numerical review of the Dyson-equation solver, kernel algebra, and compression."
+safety = "safe"
+
+# GLM 5.3 (Mistral-hosted, zai-glm-5-3): reasoning model supporting extended
+# chain-of-thought (thinking = "high" in config.toml). Good fit for
+# the derivation-tracing and causality/error-bound work this agent does.
+active_model = "glm-5-3"
+
+system_prompt_id = "math-review"
+
+# Read-only: inspection tools only, block all write/edit tools.
+# skill is enabled so the agent can load the `delegate` skill for subagent guidance.
+enabled_tools = [
+    "read_file",
+    "grep",
+    "bash",
+    "task",
+    "skill",
+    "todo",
+    "ask_user_question",
+]
+disabled_tools = [
+    "edit",
+    "write_file",
+]
+
+# Bash: ask before running, allow read-only git and julia test/load commands
+[tools.bash]
+permission = "ask"
+allow = [
+    "git diff",
+    "git diff --staged",
+    "git log",
+    "git show",
+    "git status",
+    "julia --project=@. -e 'using Pkg; Pkg.test()'",
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"

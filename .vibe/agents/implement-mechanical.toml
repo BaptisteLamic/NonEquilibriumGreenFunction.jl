@@ -1,0 +1,50 @@
+# Mechanical implementation subagent (Mistral Small) for NonEquilibriumGreenFunction.jl
+# Spawned by the orchestrator via: task(agent="implement-mechanical", task="...")
+# Handles boilerplate, simple edits, adding tests, straightforward refactors.
+
+agent_type = "subagent"
+display_name = "Implement (Mechanical)"
+description = "Subagent for mechanical implementation tasks: boilerplate, simple edits, tests, formatting."
+
+# Mistral Small — devstral-small-latest is no longer served by the API;
+# mistral-small (name: mistral-small-latest) is the cheap tier for
+# straightforward edits and boilerplate.
+active_model = "mistral-small"
+
+system_prompt_id = "subagent-implement-mechanical"
+
+enabled_tools = [
+    "read_file",
+    "grep",
+    "edit",
+    "write_file",
+    "bash",
+    "todo",
+]
+disabled_tools = [
+    "skill",
+    "task",
+    "ask_user_question",
+]
+
+[tools.bash]
+permission = "always"
+allow = [
+    "julia --project=@. -e 'using Pkg; Pkg.test()'",
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+    "julia --project=@. -e 'using Pkg; Pkg.resolve()'",
+    "git diff",
+    "git status",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"
+
+[tools.edit]
+permission = "always"
+
+[tools.write_file]
+permission = "always"

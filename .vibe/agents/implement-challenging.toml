@@ -1,0 +1,62 @@
+# Challenging implementation subagent (Mistral Medium) for NonEquilibriumGreenFunction.jl
+# Spawned by the orchestrator via: task(agent="implement-challenging", task="...")
+# Handles kernel/solver algorithm changes, multi-file refactors, compression work.
+
+agent_type = "subagent"
+display_name = "Implement (Challenging)"
+description = "Subagent for challenging implementation: kernel algebra, compression, solver changes, multi-file refactors."
+
+# Mistral Medium 3.5 — built-in model ID
+active_model = "mistral-medium-3.5"
+
+system_prompt_id = "subagent-implement-challenging"
+
+enabled_tools = [
+    "read_file",
+    "grep",
+    "edit",
+    "write_file",
+    "bash",
+    "todo",
+    "task",
+]
+disabled_tools = [
+    "skill",
+    "ask_user_question",
+]
+
+[tools.bash]
+permission = "always"
+allow = [
+    "julia --project=@. -e 'using Pkg; Pkg.test()'",
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+    "julia --project=@. -e 'using Pkg; Pkg.resolve()'",
+    "julia --project=test -e 'using Pkg; Pkg.resolve()'",
+    "julia --project=test benchmark/run.jl",
+    "julia --project=test benchmark/run.jl --update-baseline",
+    "julia --project=test -e 'include(\"benchmark/quick_benchmarks.jl\"); run_quick_benchmarks(verbose=true)'",
+    "julia --project=docs -e 'using Pkg; Pkg.develop(path=dirname(pwd())); Pkg.instantiate()'",
+    "julia --project=docs docs/make.jl",
+    "git diff",
+    "git diff --staged",
+    "git log",
+    "git show",
+    "git status",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"
+
+[tools.edit]
+permission = "always"
+
+[tools.write_file]
+permission = "always"
+
+# Can delegate exploration to the explore subagent
+[tools.task]
+permission = "always"
+allow = ["explore"]

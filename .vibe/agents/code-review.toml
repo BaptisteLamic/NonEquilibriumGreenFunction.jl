@@ -1,0 +1,44 @@
+# Code review subagent (Mistral Medium) for NonEquilibriumGreenFunction.jl
+# Spawned by the orchestrator via: task(agent="code-review", task="...")
+# Read-only: inspects diffs, runs tests, reports findings.
+
+agent_type = "subagent"
+display_name = "Code Review"
+description = "Read-only code review subagent for diffs, correctness, style, and test coverage."
+
+# Mistral Medium 3.5 — built-in model ID
+active_model = "mistral-medium-3.5"
+
+system_prompt_id = "subagent-code-review"
+
+enabled_tools = [
+    "read_file",
+    "grep",
+    "bash",
+    "todo",
+]
+disabled_tools = [
+    "edit",
+    "write_file",
+    "skill",
+    "task",
+    "ask_user_question",
+]
+
+[tools.bash]
+permission = "always"
+allow = [
+    "git diff",
+    "git diff --staged",
+    "git log",
+    "git show",
+    "git status",
+    "julia --project=@. -e 'using Pkg; Pkg.test()'",
+    "julia --project=@. -e 'using NonEquilibriumGreenFunction'",
+]
+
+[tools.read_file]
+permission = "always"
+
+[tools.grep]
+permission = "always"
