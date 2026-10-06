@@ -60,6 +60,7 @@ export RetardedKernel, AdvancedKernel, AcausalKernel
 export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality
 export solve_dyson
+export estimate_discretization_error, DiscretizationErrorEstimate
 export adjoint
 export norm
 export BlockCirculantMatrix

@@ -30,6 +30,8 @@ singular_weights
 ```@docs
 solve_dyson
 solve_keldysh
+estimate_discretization_error
+DiscretizationErrorEstimate
 ```
 
 ## Operators
