@@ -35,13 +35,6 @@ function Base.show(io::IO, r::DiscretizationErrorEstimate)
     println(io, "  Rigorous bound:              $(r.norm_bound)")
 end
 
-"""
-    _scheme_defect(K::Kernel, G::Kernel)
-
-Defect of the implicit-trapezoid scheme of `solve_dyson`, evaluated on the
-computed solution `G`: the Euler–Maclaurin quadrature correction plus the
-lower-endpoint bias term, block-wise (the integrand `F(s)` is matrix-valued).
-"""
 function _scheme_defect(K::Kernel, G::Kernel)
     bs = blocksize(G)
     dt = step(G)
