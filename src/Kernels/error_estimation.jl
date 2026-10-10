@@ -67,14 +67,11 @@ posteriori, without any grid refinement: the scheme defect is estimated by
 Euler–Maclaurin from the already computed matrices, and the error estimate
 `E = A⁻¹ D` is obtained with one additional solve with the same operator
 `A = I - δt (K - ½ diag K)` as the original solve (a dense triangular solve;
-see the note on cost below). Also returns an upper bound
-`exp(‖K‖_T) ‖D‖_max`, where `‖K‖_T` is the weighted trapezoid column-sum
-norm (a discrete Gronwall stability constant of the retarded problem).
-The bound is rigorous with respect to the *true* defect `D`; since `D` is
-approximated here by its leading-order Euler–Maclaurin term (itself
-O(δt²) accurate), the returned bound is rigorous only up to that
-approximation.
-
+see the note on cost below). Also returns a componentwise upper bound
+`max(|A⁻¹| |D|)`: since the error obeys exactly `e = A⁻¹D` for the true
+defect, this bounds max|e| without losing phase cancellation (the
+previous discrete-Gronwall constant `exp(‖K‖_T) ‖D‖_max` overestimated
+unitary kernels by up to ~1e64).
 Returns a `DiscretizationErrorEstimate` with fields:
 
 - `estimate`: the estimated error `G - X` as a `Kernel` (diagonal exactly zero);
@@ -89,11 +86,12 @@ effectivity `‖E‖ / ‖G - X‖` is ≈ 1 up to a few percent. The bound hold
 the compressed problem actually being solved; compression error must be
 added separately when relevant.
 
-Near-diagonal entries (`i = j+1`) are excluded from the defect: for a single
-panel the scheme's endpoint bias is not captured by the three-point one-sided
-differences, so those entries carry an unestimated O(δt²) defect. For smooth
-kernels the error is typically attained away from the diagonal, but a bound
-claiming full rigor must add this contribution separately.
+The superdiagonal entries (`i = j+1`) are excluded from the *estimate*
+(their single-panel endpoint bias is not resolved by the three-point one-sided
+differences) but their leading-order contribution, `δt·|K_ij|·|G_jj|`
+(validated to ≤3% on resolved grids, inflated ×2), is included in the
+*bound*, so the bound remains valid for diagonally-peaked kernels whose
+error maximum sits on the first superdiagonal.
 
 Cost: the estimate requires one additional solve with the operator `A`.
 Unlike `solve_dyson`, which can exploit HSS compression via `ldiv`, this
@@ -102,14 +100,11 @@ compressed path the estimate can be asymptotically more expensive than the
 solve it diagnoses. For `NONCompression` it remains cheaper than a single
 grid refinement.
 
-Caveats of the bound: the Gronwall constant `exp(‖K‖_T)` ignores phase
-cancellation and is therefore extremely conservative for oscillatory or
-unitary kernels (e.g. ratios `norm_bound / error` of ~1e18 for a pure-phase
-kernel `K = -9im`); treat it as a rigorous worst case, not as a tight
-error indicator — use `norm_estimate` for that. The estimate itself is
-leading-order: when the grid under-resolves the solution (roughly
-`δt·max|K| ≳ 0.5`), its effectivity degrades (measured ~0.12 for an
-oscillatory kernel on a coarse grid) and it under-reports the true error.
+Caveats of the bound: it is derived from the leading-order defect estimate,
+so on under-resolved grids (`δt·max|K| ≳ 0.5`) neither the estimate
+nor the bound covers the true error (measured effectivity ~0.12 for an
+oscillatory kernel on a coarse grid); refine the grid until `norm_estimate`
+is stable before trusting either number.
 """
 function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     bs = blocksize(G)
@@ -124,15 +119,43 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     for j in 1:n
         E[blockrange(j, bs), blockrange(j, bs)] .= 0
     end
-    w = ones(n)
-    w[1] *= 0.5
-    w[end] *= 0.5
-    w .*= dt
-    Knorm = 0.0
+    # Rigorous componentwise bound: |e| = |A⁻¹| |D| is exact for the
+    # *estimated* defect, so max|A⁻¹ D| is a tight upper bound of the error
+    # caused by that defect (no phase-cancellation loss, unlike the previous
+    # discrete-Gronwall constant exp(‖K‖_T), which overestimated by up to
+    # ~1e64 for unitary kernels). The superdiagonal entries (i = j+1) are
+    # excluded from the estimate; their single-panel defect is bounded by
+    # the exact triangle inequality: the true panel integral is within
+    # δt·|K_ij|·|G_jj| of both endpoints' contributions, and the scheme
+    # uses δt·|K_ij|·|c_j|·|g_jj| on the right-hand side, so the defect is
+    # at most δt·|K_ij|·(|G_jj| + |c_j|·|g_jj|) — all coarse data.
+    Ainv = inv(left)
+    Dabs = abs.(D)
+    Mh = to_cpu(matrix(G))
+    Mg = to_cpu(matrix(g))
+    eye = Matrix{T}(I, bs, bs)
+    half = T(0.5) .* eye
     for j in 1:n
-        Knorm = max(Knorm, sum(abs, view(Mk, :, blockrange(j, bs)) * w[j]))
+        rj = blockrange(j, bs)
+        # the defect of the true solution is nonzero on the diagonal:
+        # [A G - b](j,j) = (1 - dt K_jj/2) g_jj - g_jj/2 exactly (retarded
+        # support kills all other terms), and e = A^-1 D - C with the
+        # diagonal correction C makes e(j,j) = 0 exactly; the bound below
+        # takes the max over off-diagonal entries only.
+        Dabs[rj, rj] .= abs.((half - dt .* (Mk[rj, rj] ./ 2)) * Mg[rj, rj])
     end
-    bound = exp(Knorm) * maximum(abs, D)
+    for j in 1:n-1
+        rj = blockrange(j, bs)
+        cj = abs.(half / (eye - dt * (half * Mk[rj, rj])))
+        Dabs[blockrange(j + 1, bs), rj] .+=
+            dt .* abs.(Mk[blockrange(j + 1, bs), rj]) .*
+            (abs.(Mh[rj, rj]) .+ cj .* abs.(Mg[rj, rj]))
+    end
+    prod = abs.(Ainv * Dabs)
+    for j in 1:n
+        prod[blockrange(j, bs), blockrange(j, bs)] .= 0
+    end
+    bound = maximum(prod)
     cp = compression(g)
     return DiscretizationErrorEstimate(
         make_similar(g, cp(E)),

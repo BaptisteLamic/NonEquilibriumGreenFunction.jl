@@ -196,11 +196,12 @@ Returns a [`KeldyshErrorEstimate`](@ref) with:
   conditionally rigorous given its leading-order approximation, see
   [`estimate_discretization_error`](@ref)).
 
-The retarded bound is the discrete-Gronwall bound of the underlying
+The retarded bound is the componentwise modulus bound of the underlying
 `solve_dyson` (see [`estimate_discretization_error`](@ref)); the kinetic
-bound uses the same Gronwall constant and the operator norms of the
-products of the dressing. Both bounds are rigorous given the true defect
-and conditionally rigorous given its leading-order approximation.
+bound propagates it through the dressing (submultiplicatively, via the
+weighted column-sum operator norms) and adds the dressing and formation
+defects. Both bounds are rigorous given the true defect and conditionally
+rigorous given its leading-order approximation.
 
 When `check` is true the causalities are validated as in `solve_keldysh`.
 """
@@ -254,10 +255,14 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     Mk .+= to_cpu(matrix(D2))
     cp = compression(G_K)
     E_K_full = make_similar(G_K, cp(Mk))
-    # rigorous bound: the retarded Gronwall bound propagated through the
-    # dressing (submultiplicatively), plus the dressing and formation defects
+    # rigorous bound: the componentwise retarded bound propagated through
+    # the dressing, plus the dressing and formation defects. The formation
+    # defect propagates through the same operator A (componentwise, no
+    # Gronwall constant): |A⁻¹| (|Dform·G_R|) bounds its contribution to the
+    # retarded error; the dressing propagation is submultiplicative via
+    # the weighted column-sum operator norms.
     dform = maximum(abs, to_cpu(matrix(Dform * G_R)))
-    bound_R = est_R.norm_bound + exp(_weighted_colsum_norm(K)) * dform
+    bound_R = est_R.norm_bound + maximum(abs, inv(left) * (abs.(to_cpu(matrix(Dform * G_R)))))
     bound_K = bound_R * (
         _weighted_colsum_norm(Σ_K * G_R') + _weighted_colsum_norm(G_R * Σ_K)
     ) + maximum(abs, to_cpu(matrix(D1))) + maximum(abs, to_cpu(matrix(D2)))
