@@ -122,7 +122,9 @@ Fields:
   `lead_current` or any user observable;
 - `norm_estimate`: estimated error of `G_R` and `G_K` (max-norm of the
   two branch estimates);
-- `norm_bound`: rigorous bound of the same.
+- `norm_bound`: upper bound of the same (rigorous given the true defect,
+  conditionally rigorous given its leading-order approximation, see
+  [`estimate_discretization_error`](@ref)).
 
 The correction is deduced from the estimate, not from a refined solve:
 adding it back improves the retarded branch (the scheme error is
@@ -139,7 +141,7 @@ end
 function Base.show(io::IO, r::KeldyshErrorEstimate)
     println(io, "KeldyshErrorEstimate:")
     println(io, "  Estimated error (‖E‖_max):   $(r.norm_estimate)")
-    println(io, "  Rigorous bound:              $(r.norm_bound)")
+    println(io, "  Error bound:                 $(r.norm_bound)")
 end
 
 """
@@ -166,8 +168,8 @@ When `check` is true the causalities are validated as in `solve_keldysh`.
 """
 function solve_keldysh_with_error_estimate(g::Kernel, Σ_R, Σ_K; check=true)
     G_R, G_K = solve_keldysh(g, Σ_R, Σ_K; check=check)
-    error = estimate_keldysh_error(g, Σ_R, Σ_K, G_R, G_K; check=check)
-    return (; G_R, G_K, error)
+    est = estimate_keldysh_error(g, Σ_R, Σ_K, G_R, G_K; check=check)
+    return (; G_R, G_K, error=est)
 end
 
 """
@@ -190,12 +192,15 @@ Returns a [`KeldyshErrorEstimate`](@ref) with:
   `G + estimate`, directly usable in `lead_current` or any user
   observable: the correction is deduced from the estimate itself;
 - `norm_estimate` / `norm_bound`: max over the two branches of the
-  estimated error and of the rigorous bound.
+  estimated error and of the upper bound (rigorous given the true defect,
+  conditionally rigorous given its leading-order approximation, see
+  [`estimate_discretization_error`](@ref)).
 
 The retarded bound is the discrete-Gronwall bound of the underlying
 `solve_dyson` (see [`estimate_discretization_error`](@ref)); the kinetic
 bound uses the same Gronwall constant and the operator norms of the
-products of the dressing.
+products of the dressing. Both bounds are rigorous given the true defect
+and conditionally rigorous given its leading-order approximation.
 
 When `check` is true the causalities are validated as in `solve_keldysh`.
 """
@@ -226,7 +231,7 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     dt = step(G_R)
     MkK = to_cpu(matrix(K))
     T = eltype(MkK)
-    diag_K = _extract_blockdiag(to_cpu(matrix(K)), bs)
+    diag_K = _extract_blockdiag(MkK, bs)
     left = Matrix{T}(I, bs * n, bs * n) .- dt .* (MkK .- 0.5 .* Matrix(diag_K))
     E_form = left \ to_cpu(matrix(Dform * G_R))
     for j in 1:n
@@ -246,21 +251,20 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     Mk = zeros(eltype(to_cpu(matrix(G_K))), bs * n, bs * n)
     Mk .+= to_cpu(matrix(E_K))
     Mk .+= to_cpu(matrix(D1 * G_R'))
-    Mk .+= to_cpu(matrix(K1 * E_R_total'))
     Mk .+= to_cpu(matrix(D2))
     cp = compression(G_K)
     E_K_full = make_similar(G_K, cp(Mk))
     # rigorous bound: the retarded Gronwall bound propagated through the
     # dressing (submultiplicatively), plus the dressing and formation defects
-    dform = maximum(abs.(to_cpu(matrix(Dform * G_R))))
+    dform = maximum(abs, to_cpu(matrix(Dform * G_R)))
     bound_R = est_R.norm_bound + exp(_weighted_colsum_norm(K)) * dform
     bound_K = bound_R * (
         _weighted_colsum_norm(Σ_K * G_R') + _weighted_colsum_norm(G_R * Σ_K)
-    ) + maximum(abs.(to_cpu(matrix(D1)))) + maximum(abs.(to_cpu(matrix(D2))))
+    ) + maximum(abs, to_cpu(matrix(D1))) + maximum(abs, to_cpu(matrix(D2)))
     G_R_corrected = G_R + E_R_total
     G_K_corrected = G_K + E_K_full
-    norm_estimate_R = maximum(abs.(to_cpu(matrix(E_R_total))))
-    norm_estimate_K = maximum(abs.(to_cpu(matrix(E_K_full))))
+    norm_estimate_R = maximum(abs, to_cpu(matrix(E_R_total)))
+    norm_estimate_K = maximum(abs, to_cpu(matrix(E_K_full)))
     est_R_full = DiscretizationErrorEstimate(E_R_total, est_R.defect, norm_estimate_R, bound_R)
     return KeldyshErrorEstimate(
         est_R_full,
@@ -286,7 +290,12 @@ end
 # F(s) = left(t, s) right(s, t'); F' is estimated by one-sided three-point
 # finite differences of the coarse matrices, as in the retarded-scheme
 # defect. The rectangle rule has correction (δt/2)[F(b) - F(a)] (left-rule
-# bias).
+# bias). Intervals shorter than two panels are skipped (the three-point
+# differences do not resolve a single panel), leaving an unestimated
+# O(δt²) near-edge defect, as for the first superdiagonal of the retarded
+# scheme defect. For Singular (product-integration) factors the
+# Euler–Maclaurin correction does not strictly apply; the estimate remains
+# a useful leading-order diagnostic but carries no bound guarantee there.
 function _dressing_defect(left::SumOperator, right, prod::SumOperator)
     return _dressing_defect(left.left, right, prod.left) +
            _dressing_defect(left.right, right, prod.right)
@@ -413,8 +422,10 @@ function _weighted_colsum_norm(op)
     n = length(axis(op))
     dt = step(op)
     w = ones(n)
-    w[1] *= 0.5
-    w[end] *= 0.5
+    if quadrature(op) != RectangleQuadrature()
+        w[1] *= 0.5
+        w[end] *= 0.5
+    end
     w .*= dt
     acc = 0.0
     for j in 1:n

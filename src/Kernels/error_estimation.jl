@@ -32,7 +32,7 @@ end
 function Base.show(io::IO, r::DiscretizationErrorEstimate)
     println(io, "DiscretizationErrorEstimate:")
     println(io, "  Estimated error (‖E‖_max):   $(r.norm_estimate)")
-    println(io, "  Rigorous bound:              $(r.norm_bound)")
+    println(io, "  Error bound:                 $(r.norm_bound)")
 end
 
 function _scheme_defect(K::Kernel, G::Kernel)
@@ -66,22 +66,41 @@ Estimate the time-discretization error of `G = solve_dyson(g, K)` a
 posteriori, without any grid refinement: the scheme defect is estimated by
 Euler–Maclaurin from the already computed matrices, and the error estimate
 `E = A⁻¹ D` is obtained with one additional solve with the same operator
-`A = I - δt (K - ½ diag K)` as the original solve. Also returns a rigorous
-upper bound `exp(‖K‖_T) ‖D‖_max`, where `‖K‖_T` is the weighted trapezoid
-column-sum norm (a discrete Gronwall stability constant of the retarded
-problem).
+`A = I - δt (K - ½ diag K)` as the original solve (a dense triangular solve;
+see the note on cost below). Also returns an upper bound
+`exp(‖K‖_T) ‖D‖_max`, where `‖K‖_T` is the weighted trapezoid column-sum
+norm (a discrete Gronwall stability constant of the retarded problem).
+The bound is rigorous with respect to the *true* defect `D`; since `D` is
+approximated here by its leading-order Euler–Maclaurin term (itself
+O(δt²) accurate), the returned bound is rigorous only up to that
+approximation.
 
 Returns a `DiscretizationErrorEstimate` with fields:
 
 - `estimate`: the estimated error `G - X` as a `Kernel` (diagonal exactly zero);
 - `defect`: the defect `D` itself as a `Kernel`, for inspection;
 - `norm_estimate`: `‖E‖_max`, the estimated discretization error;
-- `norm_bound`: rigorous upper bound of `‖G - X‖_max`.
+- `norm_bound`: upper bound of `‖G - X‖_max`, rigorous given the true defect
+  and conditionally rigorous given its leading-order approximation (see
+  above).
 
 The estimate is asymptotically exact: validated on analytic solutions, the
 effectivity `‖E‖ / ‖G - X‖` is ≈ 1 up to a few percent. The bound holds for
 the compressed problem actually being solved; compression error must be
 added separately when relevant.
+
+Near-diagonal entries (`i = j+1`) are excluded from the defect: for a single
+panel the scheme's endpoint bias is not captured by the three-point one-sided
+differences, so those entries carry an unestimated O(δt²) defect. For smooth
+kernels the error is typically attained away from the diagonal, but a bound
+claiming full rigor must add this contribution separately.
+
+Cost: the estimate requires one additional solve with the operator `A`.
+Unlike `solve_dyson`, which can exploit HSS compression via `ldiv`, this
+solve uses a dense `(bs·N)²` matrix and is therefore O(N³) — for the
+compressed path the estimate can be asymptotically more expensive than the
+solve it diagnoses. For `NONCompression` it remains cheaper than a single
+grid refinement.
 """
 function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     bs = blocksize(G)
@@ -102,14 +121,14 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     w .*= dt
     Knorm = 0.0
     for j in 1:n
-        Knorm = max(Knorm, sum(abs, view(Mk, :, blockrange(j, bs)) .* w[j]))
+        Knorm = max(Knorm, sum(abs, view(Mk, :, blockrange(j, bs)) * w[j]))
     end
-    bound = exp(Knorm) * maximum(abs.(D))
+    bound = exp(Knorm) * maximum(abs, D)
     cp = compression(g)
     return DiscretizationErrorEstimate(
         make_similar(g, cp(E)),
         make_similar(g, cp(D)),
-        maximum(abs.(E)),
+        maximum(abs, E),
         bound,
     )
 end

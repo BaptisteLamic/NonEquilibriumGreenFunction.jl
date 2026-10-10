@@ -152,9 +152,9 @@ end
     err_raw = maximum(abs.(Matrix(matrix(sol.G_K)) .- ref))
     err_corr = maximum(abs.(Matrix(matrix(est.corrected.G_K)) .- ref))
     @test est.G_K.norm_estimate > 0
-    @test abs(est.G_K.norm_estimate - err_raw) < 0.5 * err_raw    # leading-order estimate
+    @test abs(est.G_K.norm_estimate - err_raw) < 0.3 * err_raw    # leading-order estimate
     @test est.G_K.norm_bound >= err_raw                           # rigorous bound
-    @test err_corr < err_raw                                      # correction improves
+    @test err_corr < 0.8 * err_raw                                # correction improves
     # the corrected Green functions are valid kernels usable downstream
     I_corr = current_signal(lead_current(est.corrected.G_R, est.corrected.G_K, S, K))
     I_raw = current_signal(lead_current(sol.G_R, sol.G_K, S, K))
@@ -229,6 +229,66 @@ end
     err_corr = maximum(abs.(Matrix(matrix(sol.error.corrected.G_K)) .- refK))
     @test err_corr < err_raw
     @test sol.error.G_K.norm_bound >= err_raw
+end
+
+@testitem "keldysh full-flow estimate: kinetic branch is O(dt^2)" begin
+    using LinearAlgebra
+    mk(ax) = (RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression()),
+              RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression()),
+              AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression()))
+    norms = Float64[]
+    for N in (2^6 + 1, 2^7 + 1, 2^8 + 1)
+        ax = range(0.0, 5.0; length=N)
+        g, S, K = mk(ax)
+        sol = solve_keldysh(g, S, K)
+        est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+        push!(norms, est.G_K.norm_estimate)
+    end
+    order = log(norms[1] / norms[3]) / log(4)
+    # the kinetic estimate is a leading-order propagation of the O(dt^2)
+    # retarded error plus the dressing defects: the measured order is
+    # slightly below the clean retarded value 2 pre-asymptotically
+    @test order > 1.5   # second-order convergence of the estimated kinetic error
+end
+
+@testitem "keldysh estimate with Singular thermal core in Sigma_K" begin
+    using LinearAlgebra
+    # thermal Keldysh core -i/beta * csch(pi*tau/beta): principal-value singular
+    # at tau = 0, discretized with product-integration weights via Singular.
+    # The Euler-Maclaurin estimate does not strictly apply to the
+    # product-integration rule; this test pins its leading-order behavior:
+    # the estimate must remain a positive, same-order diagnostic and the
+    # correction must not degrade the kinetic solution.
+    beta = 2.0
+    ax = range(0.0, 8.0; length=129)
+    cpr = NONCompression()
+    g = RetardedKernel(ax, TwoTime((t, tp) -> -1.0im); compression=cpr)
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-0.5im); compression=cpr)
+    ρ_core = Singular(τ -> -1.0im / beta * csch(pi * τ / beta))
+    ρ = AcausalKernel(ax, ρ_core; compression=cpr)
+    cl = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=cpr)
+    Σ_K = -2im * (cl' * ρ * cl)
+    sol = solve_keldysh_with_error_estimate(g, Σ_R, Σ_K)
+    @test sol.error isa KeldyshErrorEstimate
+    @test sol.error.norm_estimate > 0
+    @test sol.error.norm_bound >= sol.error.norm_estimate
+    # correction must not degrade the kinetic branch against a refined reference
+    ax2 = range(0.0, 8.0; length=513)
+    g2 = RetardedKernel(ax2, TwoTime((t, tp) -> -1.0im); compression=cpr)
+    Σ_R2 = LocalKernel(ax2, t -> ComplexF64(-0.5im); compression=cpr)
+    ρ2 = AcausalKernel(ax2, ρ_core; compression=cpr)
+    cl2 = LocalKernel(ax2, t -> ComplexF64(sqrt(0.5)); compression=cpr)
+    Σ_K2 = -2im * (cl2' * ρ2 * cl2)
+    ref = solve_keldysh(g2, Σ_R2, Σ_K2)
+    m = 4
+    idx = [1 + (i - 1) * m for i in 1:129]
+    refK = Matrix(matrix(ref.G_K))[idx, idx]
+    err_raw = maximum(abs.(Matrix(matrix(sol.G_K)) .- refK))
+    err_corr = maximum(abs.(Matrix(matrix(sol.error.corrected.G_K)) .- refK))
+    @test err_corr < err_raw
+    # the estimate is a same-order diagnostic of the true kinetic error
+    @test sol.error.G_K.norm_estimate < 10 * err_raw
+    @test sol.error.G_K.norm_estimate > 0.1 * err_raw
 end
 
 @testitem "keldysh estimate with sum self-energies (nested sums distribute)" begin
