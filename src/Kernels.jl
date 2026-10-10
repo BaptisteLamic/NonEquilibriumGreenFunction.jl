@@ -4,7 +4,7 @@ using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression
     HssCompression, causality_of_sum, causality_of_prod,
     Retarded, Advanced, Acausal, AbstractCausality,
     AbstractLocality, Local, Smooth, locality_of_sum, locality_of_prod,
-    extract_blockdiag, build_blockdiag, triangularLowRankCompression,
+    extract_blockdiag, build_blockdiag, blockdiag_blocks, triangularLowRankCompression,
     blockrange, blockindex
 import ..NonEquilibriumGreenFunction: locality, islocal, singular_weights, BlockCirculantMatrix
 import ..NonEquilibriumGreenFunction: quadrature, AbstractQuadrature, RectangleQuadrature, TrapezoidQuadrature

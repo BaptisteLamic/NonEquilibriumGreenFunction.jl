@@ -27,25 +27,42 @@ function *(left::Kernel, right::Kernel)
     )
 end
 
-function _dressing(g::TrapzDiscretisation, d)
-     return matrix(g) - compression(g)(eltype(d)(0.5) * d)
+function _dressing(g::TrapzDiscretisation, d::AbstractArray{T,3}) where {T}
+     # d holds the equal-time blocks: build the half-weighted block-diagonal
+     # directly in the compression family (exact for HSS, no recompression)
+     blocks = d .* T(1 // 2)
+     return matrix(g) - compression(g)(blocks)
 end
 function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
-    dl = extract_blockdiag(matrix(gl), bs)
-    dr = extract_blockdiag(matrix(gr), bs)
+    dl = blockdiag_blocks(matrix(gl), bs)
+    dr = blockdiag_blocks(matrix(gr), bs)
     weighted_L = _dressing(gl, dl)
     weighted_R = _dressing(gr, dr)
     return weighted_L * weighted_R, dl, dr
 end
 function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::AbstractDiscretisation) where {C<:Union{Retarded,Advanced}}
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
-    result = biased_result - compression(left)((1/4)*dl*dr)
+    result = biased_result - compression(left)(_mul_blocks(dl, dr, 1//4))
     result = step(left)*result
     return make_similar(left, result)
 end
+
+"""
+    _mul_blocks(dl, dr, α)
+
+Blockwise product of two block-diagonal block sets: block `k` of the result
+is `α * dl[:, :, k] * dr[:, :, k]`.
+"""
+function _mul_blocks(dl::AbstractArray{T,3}, dr::AbstractArray{T,3}, α) where {T}
+    r = similar(dl)
+    for k in 1:size(dl, 3)
+        @views r[:, :, k] .= α .* (dl[:, :, k] * dr[:, :, k])
+    end
+    return r
+end
 function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    dr = extract_blockdiag(matrix(right), blocksize(right))
+    dr = blockdiag_blocks(matrix(right), blocksize(right))
     weighted_R = _dressing(right, dr)
     weighted_R = _acausal_advanced_edges(quadrature(left), right, weighted_R)
     result = step(left)*matrix(left) * weighted_R
@@ -69,7 +86,7 @@ function _boundary_blockdiag(dis, firstblock)
         blocks[:, :, i] .= Matrix{T}(I, bs, bs)
     end
     blocks[:, :, 1] .= firstblock
-    return build_blockdiag(blocks; compression=compression(dis))
+    return compression(dis)(blocks)
 end
 
 # Rectangle rule: historical behaviour, no edge correction.
@@ -92,7 +109,7 @@ function _acausal_advanced_edges(::TrapezoidQuadrature, right, weighted_R)
     return half * weighted_R * zer
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    dl = extract_blockdiag(matrix(left), blocksize(left))
+    dl = blockdiag_blocks(matrix(left), blocksize(left))
     weighted_L = _dressing(left, dl)
     weighted_L, MR = _retarded_acausal_edges(quadrature(left), left, weighted_L, matrix(right))
     result = step(left)*weighted_L * MR
@@ -168,7 +185,7 @@ function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, r
     for i in 1:n
         blocks[:, :, i] .*= w[i] / step(left)
     end
-    D = build_blockdiag(blocks; compression=compression(left))
+    D = compression(left)(blocks)
     return step(left) * ML * D * MR
 end
 
@@ -194,7 +211,7 @@ function _quadrature_prod(::TrapezoidQuadrature, left::AbstractDiscretisation, r
     end
     blocks[:, :, 1] .= 0.5 * Matrix{T}(I, bs, bs)
     blocks[:, :, n] .= 0.5 * Matrix{T}(I, bs, bs)
-    D = build_blockdiag(blocks; compression=compression(left))
+    D = compression(left)(blocks)
     return step(left) * ML * D * MR
 end
 

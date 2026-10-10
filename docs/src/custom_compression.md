@@ -24,6 +24,7 @@ The package calls the following on it:
 | `c(axis, f; stationary=false)` | yes | Build the matrix of the kernel `f(t, tp)` (already causality-masked by the caller). `f` returns a square block of fixed size. `stationary=true` means `f` only depends on `t - tp`. |
 | `c(m::AbstractMatrix)` | yes | (Re)compress a matrix into your family. `m` may be a dense CPU `Matrix` or a `SparseMatrixCSC` produced internally (block diagonals). Must be pure. |
 | `c(axis, f, g)` | no | Separable kernel `f(t) * g(tp)`; a generic fallback exists, so this is an optimization hook. |
+| `c(blocks::AbstractArray{T,3})` | no | Block-diagonal matrix with block `blocks[:, :, k]` on diagonal block `k`. Used by `solve_dyson`, kernel dressings and quadrature weights. Generic fallback compresses the sparse form; compressions with an exact native representation should specialize it. |
 | `Base.:(==)` | yes | Between instances (free for plain immutable structs); needed for operator equality. |
 | `recompress_inplace!(c, m)` | no | In-place recompression used by `compress!`; default is a no-op. |
 
