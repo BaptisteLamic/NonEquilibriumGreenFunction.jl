@@ -230,3 +230,46 @@ end
     @test err_corr < err_raw
     @test sol.error.G_K.norm_bound >= err_raw
 end
+
+@testitem "keldysh estimate with sum self-energies (nested sums distribute)" begin
+    using LinearAlgebra
+    # Σ_R as a nested sum of contact + smooth retarded terms, as in the
+    # superconductor example (g_lead = local delta + smooth BCS kernel)
+    ax = range(0.0, 6.0; length=81)
+    cpr = NONCompression()
+    g = RetardedKernel(ax, TwoTime((t, tp) -> -1.0im * exp(-1im * 0.5 * (t - tp))); compression=cpr)
+    δ_part = LocalKernel(ax, t -> ComplexF64(-0.4im); compression=cpr)
+    smooth_part = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(-0.3im * exp(-2(t - tp)))); compression=cpr)
+    Σ_R_lead = δ_part + smooth_part
+    cl = LocalKernel(ax, t -> ComplexF64(0.5); compression=cpr)
+    cr = LocalKernel(ax, t -> ComplexF64(0.5); compression=cpr)
+    Σ_R = cl' * Σ_R_lead * cl + cr' * Σ_R_lead * cr
+    ρ = AcausalKernel(ax, TwoTime((t, tp) -> ComplexF64(exp(-(t - tp)^2))); compression=cpr)
+    Σ_K = -2im * (cl' * ρ * cl + cr' * ρ * cr)
+    sol = solve_keldysh_with_error_estimate(g, Σ_R, Σ_K)
+    @test sol.error isa KeldyshErrorEstimate
+    @test sol.error.norm_estimate > 0
+    @test sol.error.norm_bound >= sol.error.norm_estimate
+    # correction improves the retarded branch against a refined reference
+    ax2 = range(0.0, 6.0; length=321)
+    g2 = RetardedKernel(ax2, TwoTime((t, tp) -> -1.0im * exp(-1im * 0.5 * (t - tp))); compression=cpr)
+    δ2 = LocalKernel(ax2, t -> ComplexF64(-0.4im); compression=cpr)
+    sp2 = RetardedKernel(ax2, TwoTime((t, tp) -> ComplexF64(-0.3im * exp(-2(t - tp)))); compression=cpr)
+    ΣRl2 = δ2 + sp2
+    cl2 = LocalKernel(ax2, t -> ComplexF64(0.5); compression=cpr)
+    cr2 = LocalKernel(ax2, t -> ComplexF64(0.5); compression=cpr)
+    Σ_R2 = cl2' * ΣRl2 * cl2 + cr2' * ΣRl2 * cr2
+    ρ2 = AcausalKernel(ax2, TwoTime((t, tp) -> ComplexF64(exp(-(t - tp)^2))); compression=cpr)
+    Σ_K2 = -2im * (cl2' * ρ2 * cl2 + cr2' * ρ2 * cr2)
+    ref = solve_keldysh(g2, Σ_R2, Σ_K2)
+    m = 4
+    idx = [1 + (i - 1) * m for i in 1:81]
+    refR = Matrix(matrix(ref.G_R))[idx, idx]
+    err_raw = maximum(abs.(Matrix(matrix(sol.G_R)) .- refR))
+    err_corr = maximum(abs.(Matrix(matrix(sol.error.corrected.G_R)) .- refR))
+    # the correction is same-order as the raw error (leading-order defect
+    # propagation); the estimate must cover the true error
+    @test err_corr < 2 * err_raw
+    @test sol.error.G_R.norm_estimate >= 0.3 * err_raw
+    @test sol.error.G_R.norm_bound >= err_raw
+end

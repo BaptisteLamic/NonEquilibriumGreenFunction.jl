@@ -4,6 +4,7 @@ using LinearAlgebra: diagm, I
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
     adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar
+import ..NonEquilibriumGreenFunction.Kernels: SumOperator
 import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange, scalartype
 import ..NonEquilibriumGreenFunction: extract_blockdiag as _extract_blockdiag
@@ -11,6 +12,17 @@ import ..NonEquilibriumGreenFunction: Retarded, Advanced, Acausal
 import Base: *
 
 include("Physics/physics.jl")
+
+# A Local (contact) factor is causality-neutral: a sum mixing a contact term
+# with a smooth retarded (resp. acausal) operator is a valid retarded (resp.
+# acausal) self-energy even though the summed causality of a mixed sum is
+# Acausal. Validation therefore recurses into sums and checks only the smooth
+# components.
+function _smooth_causality_ok(x, ::Type{C}) where {C}
+    x isa SumOperator && return (
+        _smooth_causality_ok(x.left, C) && _smooth_causality_ok(x.right, C))
+    return islocal(x) || causality(x) isa C
+end
 
 """
     solve_keldysh(g, Σ_R, Σ_K; check=true)
@@ -29,8 +41,8 @@ retarded or instantaneous and `Σ_K` acausal or instantaneous.
 """
 function solve_keldysh(g::Kernel, Σ_R, Σ_K; check=true)
     if check
-        retarded_ok(x) = isretarded(x) || islocal(x)
-        acausal_ok(x) = isacausal(x) || islocal(x)
+        retarded_ok(x) = _smooth_causality_ok(x, Retarded)
+        acausal_ok(x) = _smooth_causality_ok(x, Acausal)
         @assert retarded_ok(g) "g must be retarded or instantaneous"
         @assert retarded_ok(Σ_R) "Σ_R must be retarded or instantaneous"
         @assert acausal_ok(Σ_K) "Σ_K must be acausal or instantaneous"
@@ -189,8 +201,11 @@ When `check` is true the causalities are validated as in `solve_keldysh`.
 """
 function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     if check
-        retarded_ok(x) = isretarded(x) || islocal(x)
-        acausal_ok(x) = isacausal(x) || islocal(x)
+        # a Local (contact) factor is causality-neutral: validate the smooth
+        # components of sums recursively (a contact + retarded sum is a valid
+        # retarded self-energy even though its summed causality is Acausal)
+        retarded_ok(x) = _smooth_causality_ok(x, Retarded)
+        acausal_ok(x) = _smooth_causality_ok(x, Acausal)
         @assert isretarded(G_R) "G_R must be retarded"
         @assert retarded_ok(Σ_R) "Σ_R must be retarded or instantaneous"
         @assert acausal_ok(G_K) "G_K must be acausal or instantaneous"
@@ -261,13 +276,37 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     )
 end
 
-# Quadrature defect of one kernel product `left * right` of the dressing,
-# estimated at leading order from the coarse data: the trapezoid rule on
-# each contraction line has Euler–Maclaurin correction -(δt²/12)[F'(b) -
-# F'(a)] with F(s) = left(t, s) right(s, t'); F' is estimated by one-sided
-# three-point finite differences of the coarse matrices, as in the
-# retarded-scheme defect. The rectangle rule has correction (δt/2)[F(b) -
-# F(a)] (left-rule bias).
+# Quadrature defect of one kernel product of the dressing, estimated at
+# leading order from the coarse data. Sums distribute:
+# defect(L·(A+B)) = defect(L·A) + defect(L·B), and products involving a
+# Local (contact) factor are applied exactly by the operator algebra
+# (block-diagonal multiplication, no quadrature), so their defect is zero.
+# For Smooth factors the trapezoid rule on each contraction line has
+# Euler–Maclaurin correction -(δt²/12)[F'(b) - F'(a)] with
+# F(s) = left(t, s) right(s, t'); F' is estimated by one-sided three-point
+# finite differences of the coarse matrices, as in the retarded-scheme
+# defect. The rectangle rule has correction (δt/2)[F(b) - F(a)] (left-rule
+# bias).
+function _dressing_defect(left::SumOperator, right, prod::SumOperator)
+    return _dressing_defect(left.left, right, prod.left) +
+           _dressing_defect(left.right, right, prod.right)
+end
+
+function _dressing_defect(left, right::SumOperator, prod::SumOperator)
+    return _dressing_defect(left, right.left, prod.left) +
+           _dressing_defect(left, right.right, prod.right)
+end
+
+function _dressing_defect(left::SumOperator, right::SumOperator, prod::SumOperator)
+    # both sides are sums: distribute fully and recompute each sub-product
+    return sum(_dressing_defect(li, rj, li * rj)
+               for li in _sum_terms(left) for rj in _sum_terms(right))
+end
+
+# Flatten a (possibly nested) sum into its leaf terms.
+_sum_terms(x) = (x,)
+_sum_terms(x::SumOperator) = Iterators.flatten((_sum_terms(x.left), _sum_terms(x.right)))
+
 function _dressing_defect(left::Kernel, right::Kernel, prod::Kernel)
     q = quadrature(left)
     if q == RectangleQuadrature()
