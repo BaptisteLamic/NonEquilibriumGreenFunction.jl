@@ -333,3 +333,72 @@ end
     @test sol.error.G_R.norm_estimate >= 0.3 * err_raw
     @test sol.error.G_R.norm_bound >= err_raw
 end
+
+@testitem "keldysh estimate under RectangleQuadrature (regression: wrong defect model)" begin
+    using LinearAlgebra
+    # Regression test: the rectangle-rule dressing-defect model must match
+    # the actual quadrature of the kernel algebra. The previous model treated
+    # rectangle products as plain left-rule sums, which inflated the retarded
+    # effectivity to ~60 and made `corrected` 60x WORSE than the raw solution.
+    # Same-causality products are dressed identically to trapezoid (pure EM
+    # defect); acausal rectangle paths carry an additional O(dt) domain-edge
+    # bias term.
+    mk(ax, q) = (RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression(), quadrature=q),
+                 RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression(), quadrature=q),
+                 AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression(), quadrature=q))
+    for (N1, N2) in ((51, 201), (101, 401))
+        ax = range(0.0, 5.0; length=N1)
+        ax2 = range(0.0, 5.0; length=N2)
+        g, S, K = mk(ax, RectangleQuadrature())
+        g2, S2, K2 = mk(ax2, RectangleQuadrature())
+        sol = solve_keldysh(g, S, K)
+        sol2 = solve_keldysh(g2, S2, K2)
+        est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+        m = (N2 - 1) ÷ (N1 - 1)
+        idx = [1 + (i - 1) * m for i in 1:N1]
+        # retarded branch: the estimate must be same-order (was ~60x too large)
+        refR = Matrix(matrix(sol2.G_R))[idx, idx]
+        err_raw = maximum(abs.(Matrix(matrix(sol.G_R)) .- refR))
+        err_corr = maximum(abs.(Matrix(matrix(est.corrected.G_R)) .- refR))
+        @test abs(est.G_R.norm_estimate - err_raw) < 0.5 * err_raw
+        @test est.G_R.norm_bound >= err_raw
+        @test err_corr < 0.8 * err_raw          # correction improves (was ~60x worse)
+        # kinetic branch
+        refK = Matrix(matrix(sol2.G_K))[idx, idx]
+        errK_raw = maximum(abs.(Matrix(matrix(sol.G_K)) .- refK))
+        errK_corr = maximum(abs.(Matrix(matrix(est.corrected.G_K)) .- refK))
+        @test est.G_K.norm_estimate < 3 * errK_raw
+        @test est.G_K.norm_bound >= errK_raw
+        @test errK_corr < errK_raw              # correction improves (was ~2.4x worse)
+    end
+end
+
+@testitem "bound conservatism for unitary kernels and coarse-grid effectivity" begin
+    using LinearAlgebra
+    cpr = NONCompression()
+    # The Gronwall constant exp(||K||_T) ignores phase cancellation: for a
+    # pure-phase kernel the bound is formally valid but astronomically
+    # conservative. This pins that behavior (documented in the docstring)
+    # so a future tightening can flip the assertion.
+    ax = range(0.0, 5.0; length=101)
+    g = RetardedKernel(ax, TwoTime((t, tp) -> 1.0 + 0im); compression=cpr)
+    K = RetardedKernel(ax, TwoTime((t, tp) -> -9.0im); compression=cpr)
+    G = solve_dyson(g, K)
+    est = estimate_discretization_error(g, K, G)
+    Gtrue = [x >= y ? exp(-9im * (x - y)) : 0.0im for x in ax, y in ax]
+    err = maximum(abs.(Matrix(matrix(G)) .- Gtrue))
+    @test est.norm_bound >= err                    # still rigorous
+    @test est.norm_bound / err > 1e10              # but vacuous (~1e18)
+    # coarse under-resolved grid: the leading-order estimate under-reports
+    # (documented caveat, not a bug)
+    axc = LinRange(0.0, 10.0, 11)
+    gc = RetardedKernel(axc, TwoTime((t, tp) -> sin(9(t - tp))); compression=cpr)
+    Kc = RetardedKernel(axc, TwoTime((t, tp) -> -cos(9(t - tp))); compression=cpr)
+    Gc = solve_dyson(gc, Kc)
+    estc = estimate_discretization_error(gc, Kc, Gc)
+    solc(x) = (18 * exp(-x / 2) * sin(sqrt(323) * x / 2)) / sqrt(323)
+    Gtc = [x >= y ? solc(x - y) : 0.0 for x in axc, y in axc]
+    errc = maximum(abs.(Matrix(matrix(Gc)) .- Gtc))
+    @test estc.norm_bound >= errc                  # bound holds
+    @test estc.norm_estimate / errc < 0.5          # estimate under-reports (was ~0.12)
+end

@@ -101,6 +101,15 @@ solve uses a dense `(bs·N)²` matrix and is therefore O(N³) — for the
 compressed path the estimate can be asymptotically more expensive than the
 solve it diagnoses. For `NONCompression` it remains cheaper than a single
 grid refinement.
+
+Caveats of the bound: the Gronwall constant `exp(‖K‖_T)` ignores phase
+cancellation and is therefore extremely conservative for oscillatory or
+unitary kernels (e.g. ratios `norm_bound / error` of ~1e18 for a pure-phase
+kernel `K = -9im`); treat it as a rigorous worst case, not as a tight
+error indicator — use `norm_estimate` for that. The estimate itself is
+leading-order: when the grid under-resolves the solution (roughly
+`δt·max|K| ≳ 0.5`), its effectivity degrades (measured ~0.12 for an
+oscillatory kernel on a coarse grid) and it under-reports the true error.
 """
 function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     bs = blocksize(G)

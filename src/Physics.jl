@@ -289,8 +289,18 @@ end
 # Euler–Maclaurin correction -(δt²/12)[F'(b) - F'(a)] with
 # F(s) = left(t, s) right(s, t'); F' is estimated by one-sided three-point
 # finite differences of the coarse matrices, as in the retarded-scheme
-# defect. The rectangle rule has correction (δt/2)[F(b) - F(a)] (left-rule
-# bias). Intervals shorter than two panels are skipped (the three-point
+# defect. Under RectangleQuadrature the dressed same-causality products are
+# identical to the trapezoid ones (only the acausal edge corrections of the
+# algebra are quadrature-dependent), so they keep the pure EM correction;
+# the acausal rectangle paths lose the half weight of the *domain-edge*
+# endpoint, contributing an O(δt) bias term (calibrated and validated
+# entry-by-entry against reference quadratures):
+#   - Retarded×Acausal / Acausal×Retarded / Acausal×Advanced /
+#     Advanced×Acausal: bias -(δt/2) F(lo) (the moving endpoint keeps its
+#     half weight from the diagonal dressing, the domain edge does not);
+#   - Acausal×Acausal (plain δt·M_L·M_R): bias -(δt/2)(F(lo) + F(hi))
+#     (left-rule on both domain edges).
+# Intervals shorter than two panels are skipped (the three-point
 # differences do not resolve a single panel), leaving an unestimated
 # O(δt²) near-edge defect, as for the first superdiagonal of the retarded
 # scheme defect. For Singular (product-integration) factors the
@@ -319,7 +329,7 @@ _sum_terms(x::SumOperator) = Iterators.flatten((_sum_terms(x.left), _sum_terms(x
 function _dressing_defect(left::Kernel, right::Kernel, prod::Kernel)
     q = quadrature(left)
     if q == RectangleQuadrature()
-        return _left_rule_defect(left, right, prod)
+        return _rectangle_defect(left, right, prod)
     end
     return _euler_maclaurin_defect(left, right, prod)
 end
@@ -359,7 +369,12 @@ function _euler_maclaurin_defect(left::Kernel, right::Kernel, prod::Kernel)
     return make_similar(prod, compression(prod)(D))
 end
 
-function _left_rule_defect(left::Kernel, right::Kernel, prod::Kernel)
+function _rectangle_defect(left::Kernel, right::Kernel, prod::Kernel)
+    cl, cr = causality(left), causality(right)
+    # same-causality products are dressed identically to the trapezoid rule
+    if (cl isa Retarded && cr isa Retarded) || (cl isa Advanced && cr isa Advanced)
+        return _euler_maclaurin_defect(left, right, prod)
+    end
     bs = blocksize(prod)
     dt = step(prod)
     Ml = to_cpu(matrix(left))
@@ -367,14 +382,22 @@ function _left_rule_defect(left::Kernel, right::Kernel, prod::Kernel)
     T = eltype(Ml)
     n = length(axis(prod))
     D = zeros(T, bs * n, bs * n)
+    both_edges = cl isa Acausal && cr isa Acausal
     @inbounds for j in 1:n
         rj = blockrange(j, bs)
         for i in 1:n
             ri = blockrange(i, bs)
-            lo, hi = _interval(causality(left), causality(right), i, j, n)
-            (isnothing(lo) || hi <= lo) && continue
+            lo, hi = _interval(cl, cr, i, j, n)
+            (isnothing(lo) || hi - lo < 2) && continue
             F(s) = Ml[ri, blockrange(s, bs)] * Mr[blockrange(s, bs), rj]
-            D[ri, rj] = (dt / 2) .* (F(lo) - F(hi))
+            dF_lo = (-3F(lo) + 4F(lo + 1) - F(lo + 2)) / (2dt)
+            dF_hi = (3F(hi) - 4F(hi - 1) + F(hi - 2)) / (2dt)
+            D[ri, rj] = -(dt^2 / 12) .* (dF_hi - dF_lo)
+            if both_edges
+                D[ri, rj] .-= (dt / 2) .* (F(lo) + F(hi))
+            else
+                D[ri, rj] .-= (dt / 2) .* F(lo)
+            end
         end
     end
     return make_similar(prod, compression(prod)(D))
