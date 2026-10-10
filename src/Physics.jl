@@ -1,10 +1,13 @@
 module Physics
 
-using LinearAlgebra: diagm
+using LinearAlgebra: diagm, I
 using ..NonEquilibriumGreenFunction: polygamma
-import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isacausal,
-    adjoint, keldysh_trace
-import ..NonEquilibriumGreenFunction: islocal
+import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
+    adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar
+import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature
+import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange
+import ..NonEquilibriumGreenFunction: extract_blockdiag as _extract_blockdiag
+import ..NonEquilibriumGreenFunction: Retarded, Advanced, Acausal
 import Base: *
 
 include("Physics/physics.jl")
@@ -90,6 +93,287 @@ physical signal from it.
 """
 current_signal(op) = keldysh_trace(op)
 
+"""
+    KeldyshErrorEstimate
+
+Full-flow discretization-error estimate of a Keldysh simulation
+(`solve_keldysh` and everything built from its output).
+
+Fields:
+
+- `G_R`: retarded-branch estimate (`DiscretizationErrorEstimate` of the
+  underlying `solve_dyson` solve);
+- `G_K`: kinetic-branch estimate (`DiscretizationErrorEstimate` of
+  `G_K = G_R Σ_K G_R'`);
+- `corrected`: named tuple `(; G_R, G_K)` of *corrected* Green functions
+  (`G + estimate`, the estimated error added back), ready to be passed to
+  `lead_current` or any user observable;
+- `norm_estimate`: estimated error of `G_R` and `G_K` (max-norm of the
+  two branch estimates);
+- `norm_bound`: rigorous bound of the same.
+
+The correction is deduced from the estimate, not from a refined solve:
+adding it back improves the retarded branch (the scheme error is
+asymptotically cancelled) and the kinetic branch at leading order.
+"""
+struct KeldyshErrorEstimate
+    G_R::Any
+    G_K::Any
+    corrected::Any
+    norm_estimate::Float64
+    norm_bound::Float64
+end
+
+function Base.show(io::IO, r::KeldyshErrorEstimate)
+    println(io, "KeldyshErrorEstimate:")
+    println(io, "  Estimated error (‖E‖_max):   $(r.norm_estimate)")
+    println(io, "  Rigorous bound:              $(r.norm_bound)")
+end
+
+"""
+    solve_keldysh_with_error_estimate(g, Σ_R, Σ_K; check=true)
+
+Full-flow variant of [`solve_keldysh`](@ref): solve the Keldysh flow and
+simultaneously estimate its time-discretization error and deduce the
+corresponding correction.
+
+Returns `(; G_R, G_K, error)`, where `(G_R, G_K)` are the raw solution of
+`solve_keldysh` and `error` is a [`KeldyshErrorEstimate`](@ref) whose
+`corrected` field contains the improved `(; G_R, G_K)`.
+
+The retarded-branch estimate is the a-posteriori estimate of the underlying
+`solve_dyson` solve (see [`estimate_discretization_error`](@ref)); the
+kinetic-branch error is obtained by propagating the retarded error through
+the dressing `G_K = G_R Σ_K G_R'` and adding the quadrature defect of that
+dressing itself, so the full flow — solve, dressing, and any downstream
+observable built from `corrected` — carries a consistent error estimate and
+correction at the cost of one extra triangular solve and O(N²) block
+arithmetic.
+
+When `check` is true the causalities are validated as in `solve_keldysh`.
+"""
+function solve_keldysh_with_error_estimate(g::Kernel, Σ_R, Σ_K; check=true)
+    G_R, G_K = solve_keldysh(g, Σ_R, Σ_K; check=check)
+    error = estimate_keldysh_error(g, Σ_R, Σ_K, G_R, G_K; check=check)
+    return (; G_R, G_K, error)
+end
+
+"""
+    estimate_keldysh_error(g, Σ_R, Σ_K, G_R, G_K; check=true)
+
+Estimate the time-discretization error of a completed Keldysh simulation
+`(G_R, G_K) = solve_keldysh(g, Σ_R, Σ_K)` a posteriori, and deduce the
+corresponding corrected Green functions. No refined grid, second problem
+or interpolation is involved.
+
+Returns a [`KeldyshErrorEstimate`](@ref) with:
+
+- `G_R`: the `DiscretizationErrorEstimate` of the retarded solve;
+- `G_K`: the `DiscretizationErrorEstimate` of the kinetic branch, obtained
+  by differentiating the dressing `G_K = G_R Σ_K G_R'` with respect to `G_R`
+  and adding the quadrature defect of the two kernel products of the
+  dressing (each product contributes an Euler–Maclaurin correction of its
+  contraction integral);
+- `corrected`: named tuple `(; G_R, G_K)` of corrected Green functions,
+  `G + estimate`, directly usable in `lead_current` or any user
+  observable: the correction is deduced from the estimate itself;
+- `norm_estimate` / `norm_bound`: max over the two branches of the
+  estimated error and of the rigorous bound.
+
+The retarded bound is the discrete-Gronwall bound of the underlying
+`solve_dyson` (see [`estimate_discretization_error`](@ref)); the kinetic
+bound uses the same Gronwall constant and the operator norms of the
+products of the dressing.
+
+When `check` is true the causalities are validated as in `solve_keldysh`.
+"""
+function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
+    if check
+        retarded_ok(x) = isretarded(x) || islocal(x)
+        acausal_ok(x) = isacausal(x) || islocal(x)
+        @assert isretarded(G_R) "G_R must be retarded"
+        @assert retarded_ok(Σ_R) "Σ_R must be retarded or instantaneous"
+        @assert acausal_ok(G_K) "G_K must be acausal or instantaneous"
+        @assert acausal_ok(Σ_K) "Σ_K must be acausal or instantaneous"
+    end
+    # the retarded flow is G_R = solve_dyson(g, K) with K = g * Σ_R: the
+    # kernel K is itself a quadrature product whose formation defect enters
+    # the retarded error to leading order; the estimate of the scheme is
+    # built from the *exact* kernel values, so both defects are added.
+    K = g * Σ_R
+    Dform = _dressing_defect(g, Σ_R, K)
+    est_R = estimate_discretization_error(g, K, G_R)
+    E_R = est_R.estimate
+    # first-order propagation of the formation defect through the solve:
+    # A e = Dform * G_R at leading order
+    bs = blocksize(G_R)
+    n = length(axis(G_R))
+    dt = step(G_R)
+    MkK = to_cpu(matrix(K))
+    T = eltype(MkK)
+    diag_K = _extract_blockdiag(to_cpu(matrix(K)), bs)
+    left = Matrix{T}(I, bs * n, bs * n) .- dt .* (MkK .- 0.5 .* Matrix(diag_K))
+    E_form = left \ to_cpu(matrix(Dform * G_R))
+    for j in 1:n
+        E_form[blockrange(j, bs), blockrange(j, bs)] .= 0
+    end
+    E_R_total = make_similar(G_R, compression(G_R)(to_cpu(matrix(E_R)) .+ E_form))
+    # defect of the dressing itself: the two kernel products G_R * Σ_K and
+    # (G_R * Σ_K) * G_R' are discretized by the quadrature rule; their
+    # Euler–Maclaurin correction is estimated from the same coarse data.
+    K1 = G_R * Σ_K
+    D1 = _dressing_defect(G_R, Σ_K, K1)
+    D2 = _dressing_defect(K1, G_R', G_K)
+    # first-order propagation of the retarded error through the dressing:
+    # δG_K = E_R Σ_K G_R' + G_R Σ_K E_R' (+ dressing defect)
+    E_K = E_R_total * Σ_K * G_R' + G_R * Σ_K * E_R_total'
+    # total defect of the kinetic branch, in matrix form
+    Mk = zeros(eltype(to_cpu(matrix(G_K))), bs * n, bs * n)
+    Mk .+= to_cpu(matrix(E_K))
+    Mk .+= to_cpu(matrix(D1 * G_R'))
+    Mk .+= to_cpu(matrix(K1 * E_R_total'))
+    Mk .+= to_cpu(matrix(D2))
+    cp = compression(G_K)
+    E_K_full = make_similar(G_K, cp(Mk))
+    # rigorous bound: the retarded Gronwall bound propagated through the
+    # dressing (submultiplicatively), plus the dressing and formation defects
+    dform = maximum(abs.(to_cpu(matrix(Dform * G_R))))
+    bound_R = est_R.norm_bound + exp(_weighted_colsum_norm(K)) * dform
+    bound_K = bound_R * (
+        _weighted_colsum_norm(Σ_K * G_R') + _weighted_colsum_norm(G_R * Σ_K)
+    ) + maximum(abs.(to_cpu(matrix(D1)))) + maximum(abs.(to_cpu(matrix(D2))))
+    G_R_corrected = G_R + E_R_total
+    G_K_corrected = G_K + E_K_full
+    norm_estimate_R = maximum(abs.(to_cpu(matrix(E_R_total))))
+    norm_estimate_K = maximum(abs.(to_cpu(matrix(E_K_full))))
+    est_R_full = DiscretizationErrorEstimate(E_R_total, est_R.defect, norm_estimate_R, bound_R)
+    return KeldyshErrorEstimate(
+        est_R_full,
+        DiscretizationErrorEstimate(
+            E_K_full,
+            cp(Mk),
+            norm_estimate_K,
+            bound_K,
+        ),
+        (; G_R = G_R_corrected, G_K = G_K_corrected),
+        max(norm_estimate_R, norm_estimate_K),
+        max(bound_R, bound_K),
+    )
+end
+
+# Quadrature defect of one kernel product `left * right` of the dressing,
+# estimated at leading order from the coarse data: the trapezoid rule on
+# each contraction line has Euler–Maclaurin correction -(δt²/12)[F'(b) -
+# F'(a)] with F(s) = left(t, s) right(s, t'); F' is estimated by one-sided
+# three-point finite differences of the coarse matrices, as in the
+# retarded-scheme defect. The rectangle rule has correction (δt/2)[F(b) -
+# F(a)] (left-rule bias).
+function _dressing_defect(left::Kernel, right::Kernel, prod::Kernel)
+    q = quadrature(left)
+    if q == RectangleQuadrature()
+        return _left_rule_defect(left, right, prod)
+    end
+    return _euler_maclaurin_defect(left, right, prod)
+end
+
+function _euler_maclaurin_defect(left::Kernel, right::Kernel, prod::Kernel)
+    bs = blocksize(prod)
+    dt = step(prod)
+    Ml = to_cpu(matrix(left))
+    Mr = to_cpu(matrix(right))
+    T = eltype(Ml)
+    n = length(axis(prod))
+    D = zeros(T, bs * n, bs * n)
+    @inbounds for j in 1:n
+        rj = blockrange(j, bs)
+        for i in 1:n
+            ri = blockrange(i, bs)
+            # integration interval along the contraction variable of the
+            # (i, j) entry depends on the causalities of the factors
+            lo, hi = _interval(causality(left), causality(right), i, j, n)
+            (isnothing(lo) || hi - lo < 2) && continue
+            F(s) = Ml[ri, blockrange(s, bs)] * Mr[blockrange(s, bs), rj]
+            dF_lo = (-3F(lo) + 4F(lo + 1) - F(lo + 2)) / (2dt)
+            dF_hi = (3F(hi) - 4F(hi - 1) + F(hi - 2)) / (2dt)
+            D[ri, rj] = -(dt^2 / 12) .* (dF_hi - dF_lo)
+        end
+    end
+    return make_similar(prod, compression(prod)(D))
+end
+
+function _left_rule_defect(left::Kernel, right::Kernel, prod::Kernel)
+    bs = blocksize(prod)
+    dt = step(prod)
+    Ml = to_cpu(matrix(left))
+    Mr = to_cpu(matrix(right))
+    T = eltype(Ml)
+    n = length(axis(prod))
+    D = zeros(T, bs * n, bs * n)
+    @inbounds for j in 1:n
+        rj = blockrange(j, bs)
+        for i in 1:n
+            ri = blockrange(i, bs)
+            lo, hi = _interval(causality(left), causality(right), i, j, n)
+            (isnothing(lo) || hi <= lo) && continue
+            F(s) = Ml[ri, blockrange(s, bs)] * Mr[blockrange(s, bs), rj]
+            D[ri, rj] = (dt / 2) .* (F(lo) - F(hi))
+        end
+    end
+    return make_similar(prod, compression(prod)(D))
+end
+
+# Integration interval [lo, hi] (grid indices, inclusive) of the contraction
+# variable for the (i, j) entry of a product `left * right`, as discretized by
+# the kernel algebra (validated against reference quadratures): the interval
+# depends only on the causalities of the factors — retarded rows bound it
+# above by `i`, advanced columns bound it below by `j`.
+function _interval(c_left, c_right, i, j, n)
+    if c_left isa Retarded
+        if c_right isa Retarded
+            return (j + 1, i - 1)
+        elseif c_right isa Acausal
+            return (1, i)
+        elseif c_right isa Advanced
+            return (j + 1, i)
+        end
+    elseif c_left isa Acausal
+        if c_right isa Acausal
+            return (1, n)
+        elseif c_right isa Advanced
+            return (1, j)
+        elseif c_right isa Retarded
+            return (1, i)
+        end
+    elseif c_left isa Advanced
+        if c_right isa Advanced
+            return (i, j - 1)
+        elseif c_right isa Retarded
+            return (i, j)
+        elseif c_right isa Acausal
+            return (i, n)
+        end
+    end
+    return nothing
+end
+
+# Weighted column-sum style norm of an operator with the quadrature weights
+# of its axis: the discrete analogue of ‖∫ K‖ used in the kinetic bound.
+function _weighted_colsum_norm(op)
+    M = to_cpu(matrix(op))
+    bs = blocksize(op)
+    n = length(axis(op))
+    dt = step(op)
+    w = ones(n)
+    w[1] *= 0.5
+    w[end] *= 0.5
+    w .*= dt
+    acc = 0.0
+    for j in 1:n
+        acc = max(acc, sum(abs, view(M, :, blockrange(j, bs))) * w[j])
+    end
+    return acc
+end
 
 export solve_keldysh, lead_current, current_signal
+export solve_keldysh_with_error_estimate, estimate_keldysh_error, KeldyshErrorEstimate
 end

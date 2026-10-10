@@ -32,6 +32,9 @@ solve_dyson
 solve_keldysh
 estimate_discretization_error
 DiscretizationErrorEstimate
+solve_keldysh_with_error_estimate
+estimate_keldysh_error
+KeldyshErrorEstimate
 ```
 
 ## Operators

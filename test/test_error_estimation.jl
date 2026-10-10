@@ -108,3 +108,89 @@ end
     order = log(norms[1] / norms[3]) / log(4)
     @test order > 1.8   # second-order convergence of the estimated error
 end
+
+@testitem "keldysh full-flow error estimate: retarded branch" begin
+    using LinearAlgebra
+    mk(ax) = (RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression()),
+              RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression()),
+              AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression()))
+    for (N1, N2) in ((101, 401), (201, 801))
+        ax = range(0.0, 5.0; length=N1)
+        ax2 = range(0.0, 5.0; length=N2)
+        g, S, K = mk(ax)
+        g2, S2, K2 = mk(ax2)
+        sol = solve_keldysh(g, S, K)
+        sol2 = solve_keldysh(g2, S2, K2)
+        est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+        idx = [round(Int, 1 + (i - 1) * (N2 - 1) / (N1 - 1)) for i in 1:N1]
+        ref = Matrix(matrix(sol2.G_R))[idx, idx]
+        err_raw = maximum(abs.(Matrix(matrix(sol.G_R)) .- ref))
+        err_corr = maximum(abs.(Matrix(matrix(est.corrected.G_R)) .- ref))
+        @test est.norm_estimate > 0
+        @test abs(est.G_R.norm_estimate - err_raw) < 0.3 * err_raw    # asymptotic exactness
+        @test est.G_R.norm_bound >= err_raw                          # rigorous bound
+        @test err_corr < 0.5 * err_raw                                # correction improves
+        @test est.norm_bound >= est.norm_estimate
+    end
+end
+
+@testitem "keldysh full-flow error estimate: kinetic branch and correction" begin
+    using LinearAlgebra
+    mk(ax) = (RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression()),
+              RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression()),
+              AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression()))
+    N1, N2 = 101, 401
+    ax = range(0.0, 5.0; length=N1)
+    ax2 = range(0.0, 5.0; length=N2)
+    g, S, K = mk(ax)
+    g2, S2, K2 = mk(ax2)
+    sol = solve_keldysh(g, S, K)
+    sol2 = solve_keldysh(g2, S2, K2)
+    est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+    idx = [round(Int, 1 + (i - 1) * (N2 - 1) / (N1 - 1)) for i in 1:N1]
+    ref = Matrix(matrix(sol2.G_K))[idx, idx]
+    err_raw = maximum(abs.(Matrix(matrix(sol.G_K)) .- ref))
+    err_corr = maximum(abs.(Matrix(matrix(est.corrected.G_K)) .- ref))
+    @test est.G_K.norm_estimate > 0
+    @test abs(est.G_K.norm_estimate - err_raw) < 0.5 * err_raw    # leading-order estimate
+    @test est.G_K.norm_bound >= err_raw                           # rigorous bound
+    @test err_corr < err_raw                                      # correction improves
+    # the corrected Green functions are valid kernels usable downstream
+    I_corr = current_signal(lead_current(est.corrected.G_R, est.corrected.G_K, S, K))
+    I_raw = current_signal(lead_current(sol.G_R, sol.G_K, S, K))
+    @test length(I_corr) == length(I_raw) == N1
+end
+
+@testitem "solve_keldysh_with_error_estimate consistency" begin
+    using LinearAlgebra
+    ax = range(0.0, 5.0; length=101)
+    g = RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression())
+    S = RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression())
+    K = AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression())
+    sol = solve_keldysh(g, S, K)
+    sol_est = solve_keldysh_with_error_estimate(g, S, K)
+    @test Matrix(matrix(sol_est.G_R)) == Matrix(matrix(sol.G_R))
+    @test Matrix(matrix(sol_est.G_K)) == Matrix(matrix(sol.G_K))
+    @test sol_est.error isa KeldyshErrorEstimate
+    est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+    @test Matrix(matrix(sol_est.error.corrected.G_R)) ≈ Matrix(matrix(est.corrected.G_R))
+    @test Matrix(matrix(sol_est.error.corrected.G_K)) ≈ Matrix(matrix(est.corrected.G_K))
+    @test sol_est.error.norm_bound >= sol_est.error.norm_estimate
+end
+
+@testitem "keldysh full-flow estimate: O(dt^2) scaling" begin
+    using LinearAlgebra
+    mk(ax) = (RetardedKernel(ax, TwoTime((t, tp) -> exp(-1im * (t - tp))); compression=NONCompression()),
+              RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2 * (t - tp))); compression=NONCompression()),
+              AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2)); compression=NONCompression()))
+    norms = Float64[]
+    for N in (2^6 + 1, 2^7 + 1, 2^8 + 1)
+        ax = range(0.0, 5.0; length=N)
+        g, S, K = mk(ax)
+        sol = solve_keldysh(g, S, K)
+        est = estimate_keldysh_error(g, S, K, sol.G_R, sol.G_K)
+        push!(norms, est.G_R.norm_estimate)
+    end
+    order = log(norms[1] / norms[3]) / log(4)
+    @test order > 1.8   # second-order convergence of the estimated retarded error
+end
