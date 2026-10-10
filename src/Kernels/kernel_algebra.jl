@@ -48,12 +48,8 @@ function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::Abstra
     return make_similar(left, result)
 end
 
-"""
-    _mul_blocks(dl, dr, α)
-
-Blockwise product of two block-diagonal block sets: block `k` of the result
-is `α * dl[:, :, k] * dr[:, :, k]`.
-"""
+# Blockwise product of two block-diagonal block sets: block `k` of the
+# result is `α * dl[:, :, k] * dr[:, :, k]`.
 function _mul_blocks(dl::AbstractArray{T,3}, dr::AbstractArray{T,3}, α) where {T}
     r = similar(dl)
     for k in 1:size(dl, 3)
