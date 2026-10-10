@@ -194,3 +194,39 @@ end
     order = log(norms[1] / norms[3]) / log(4)
     @test order > 1.8   # second-order convergence of the estimated retarded error
 end
+
+@testitem "keldysh estimate with contact (local) self-energies" begin
+    using LinearAlgebra
+    ax = range(0.0, 12.0; length=121)
+    cpr = NONCompression()
+    g = RetardedKernel(ax, TwoTime((t, tp) -> -1.0im * exp(-1im * 0.0 * (t - tp))); compression=cpr)
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-0.5im); compression=cpr)
+    ρ = AcausalKernel(ax, TwoTime((t, tp) -> ComplexF64(exp(-((t - tp) / 0.8)^2))); compression=cpr)
+    cl = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=cpr)
+    cr = LocalKernel(ax, t -> sqrt(0.5) * exp(1im * 2.0 * t); compression=cpr)
+    Σ_K = -2im * (cl' * ρ * cl + cr' * ρ * cr)
+    sol = solve_keldysh_with_error_estimate(g, Σ_R, Σ_K)
+    @test sol.error isa KeldyshErrorEstimate
+    @test sol.error.norm_estimate > 0
+    @test sol.error.norm_bound >= sol.error.norm_estimate
+    # contact Σ_R has zero formation defect: the retarded estimate must match
+    # estimate_discretization_error on the same solve
+    K = g * Σ_R
+    est = estimate_discretization_error(g, K, sol.G_R)
+    @test abs(sol.error.G_R.norm_estimate - est.norm_estimate) < 1e-12
+    # correction improves the kinetic branch against a refined reference
+    ax2 = range(0.0, 12.0; length=481)
+    g2 = RetardedKernel(ax2, TwoTime((t, tp) -> -1.0im); compression=cpr)
+    Σ_R2 = LocalKernel(ax2, t -> ComplexF64(-0.5im); compression=cpr)
+    ρ2 = AcausalKernel(ax2, TwoTime((t, tp) -> ComplexF64(exp(-((t - tp) / 0.8)^2))); compression=cpr)
+    cl2 = LocalKernel(ax2, t -> ComplexF64(sqrt(0.5)); compression=cpr)
+    cr2 = LocalKernel(ax2, t -> sqrt(0.5) * exp(1im * 2.0 * t); compression=cpr)
+    Σ_K2 = -2im * (cl2' * ρ2 * cl2 + cr2' * ρ2 * cr2)
+    ref = solve_keldysh(g2, Σ_R2, Σ_K2)
+    idx = [round(Int, 1 + (i - 1) * (481 - 1) ÷ (121 - 1)) for i in 1:121]
+    refK = Matrix(matrix(ref.G_K))[idx, idx]
+    err_raw = maximum(abs.(Matrix(matrix(sol.G_K)) .- refK))
+    err_corr = maximum(abs.(Matrix(matrix(sol.error.corrected.G_K)) .- refK))
+    @test err_corr < err_raw
+    @test sol.error.G_K.norm_bound >= err_raw
+end

@@ -133,29 +133,55 @@ time-discretization error of the whole flow can be estimated a posteriori at
 negligible cost — no refined grid, no second problem, no interpolation — and
 the estimate doubles as a **correction** that improves the solution.
 
+As a demo, take a classic transient: a single resonant level at `ε = 0`
+coupled to two leads (`Γ_l = Γ_r = 0.5`, wideband contact self-energies), and
+a **voltage quench** — a bias `V = 2` applied to the right lead at `t = 0`
+through the tunneling phase `φ_r(t) = V·t`. The current shoots up to a peak
+`I ≈ 0.67` at `t ≈ 0.8` and then relaxes to its steady value `I_∞ ≈ 0.227`.
+
 The one-call entry point is
 [`solve_keldysh_with_error_estimate`](@ref):
 
 ```julia
 using NonEquilibriumGreenFunction, LinearAlgebra
 
-# A single level coupled to leads: g(t) = -i e^{-iεt}, smooth self-energies
-mk(ax) = (
-    RetardedKernel(ax, TwoTime((t, tp) -> -1.0im * exp(-1im * 0.3 * (t - tp)));
-    compression=NONCompression()),
-    RetardedKernel(ax, TwoTime((t, tp) -> -0.5im * exp(-2(t - tp)));
-    compression=NONCompression()),
-    AcausalKernel(ax, TwoTime((t, tp) -> 1.0im * exp(-(t - tp)^2));
-    compression=NONCompression()),
-)
+struct Demo; eps; Gl; Gr; V; sigma; end
 
-ax = range(0.0, 5.0; length=101)
-g, Σ_R, Σ_K = mk(ax)
-sol = solve_keldysh_with_error_estimate(g, Σ_R, Σ_K)
+function build(d::Demo, ax)
+    cpr = NONCompression()
+    # bare retarded Green function of the isolated level: g(t) = -i e^{-iεt}
+    g = RetardedKernel(ax, TwoTime((t, tp) -> -1.0im * exp(-1im * d.eps * (t - tp)));
+                       compression=cpr)
+    # wideband retarded self-energy: contact term, applied exactly
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-0.5im * (d.Gl + d.Gr)); compression=cpr)
+    # smooth lead occupation kernel
+    ρ = AcausalKernel(ax, TwoTime((t, tp) -> ComplexF64(exp(-((t - tp) / d.sigma)^2)));
+                      compression=cpr)
+    cl = LocalKernel(ax, t -> ComplexF64(sqrt(d.Gl)); compression=cpr)
+    cr = LocalKernel(ax, t -> sqrt(d.Gr) * exp(1im * d.V * t); compression=cpr)
+    Σ_K = -2im * (cl' * ρ * cl + cr' * ρ * cr)
+    # lead-only self-energies for the observable
+    Σ_R_l = LocalKernel(ax, t -> ComplexF64(-0.5im * d.Gl); compression=cpr)
+    Σ_K_l = -2im * cl' * ρ * cl
+    return (; g, Σ_R, Σ_K, Σ_R_l, Σ_K_l)
+end
+
+d = Demo(0.0, 0.5, 0.5, 2.0, 0.8)         # ε, Γ_l, Γ_r, V, smoothing
+ax = range(0.0, 12.0; length=241)         # δt = 0.05
+sys = build(d, ax)
+sol = solve_keldysh_with_error_estimate(sys.g, sys.Σ_R, sys.Σ_K)
 
 sol.error                    # KeldyshErrorEstimate (prints the estimate and bound)
 sol.error.G_R.norm_estimate # estimated ‖G_R - G_R^exact‖_max
 sol.error.G_K.norm_bound    # rigorous bound on the kinetic branch
+```
+
+which prints (at δt = 0.05):
+
+```
+KeldyshErrorEstimate:
+  Estimated error (‖E‖_max):   0.000709
+  Rigorous bound:              0.543
 ```
 
 The raw solution is `(sol.G_R, sol.G_K)`; the *corrected* one is
@@ -163,38 +189,42 @@ The raw solution is `(sol.G_R, sol.G_K)`; the *corrected* one is
 added back. Feed it to the observables exactly like the raw one:
 
 ```julia
-I_raw = current_signal(lead_current(sol.G_R, sol.G_K, Σ_R, Σ_K))
+I_raw  = current_signal(lead_current(sol.G_R, sol.G_K, sys.Σ_R_l, sys.Σ_K_l))
 I_corr = current_signal(lead_current(sol.error.corrected.G_R,
-                                     sol.error.corrected.G_K, Σ_R, Σ_K))
+                                     sol.error.corrected.G_K, sys.Σ_R_l, sys.Σ_K_l))
 ```
 
-What the estimate covers, and how accurate it is on this demo (measured
-against a 4×-refined reference solve on the same model):
+Both give the same physics — the current peaks at `I ≈ 0.67` around `t ≈ 0.8`
+and settles to `I_∞ ≈ 0.227` — but compared to a 4×-refined reference solve,
+the *corrected* current is closer to the reference than the raw one
+(`3.1e-4` vs `5.1e-4` max deviation), and on the Green functions themselves:
 
-| N | ‖G_R − G_R^ref‖ | estimate | corrected | ‖G_K − G_K^ref‖ | estimate | corrected | K bound |
-|---|---|---|---|---|---|---|---|
-| 101 | 3.4e-4 | 3.3e-4 | 2.4e-5 | 1.9e-3 | 2.5e-3 | 8.6e-4 | 1.8e-2 |
-| 201 | 8.5e-5 | 8.6e-5 | 2.7e-6 | 4.9e-4 | 6.8e-4 | 2.6e-4 | 4.7e-3 |
-| 401 | 2.1e-5 | 2.2e-5 | 8.9e-7 | 1.2e-4 | 1.8e-4 | 6.9e-5 | 1.2e-3 |
+| N | ‖G_R − G_R^ref‖ | estimate | corrected | ‖G_K − G_K^ref‖ | estimate | corrected |
+|---|---|---|---|---|---|---|
+| 241 | 1.4e-4 | 1.5e-4 | 1.4e-4 | 6.3e-4 | 7.1e-4 | 2.3e-4 |
 
-Three things to read off the table:
+(Here `Σ_R` is a contact term — applied exactly, no defect — so the whole
+retarded estimate comes from the `solve_dyson` scheme; the kinetic branch
+collects the dressing-product defects, and the correction cuts that error
+by ~3×.)
+
+Three things to read off:
 
 - **The retarded estimate is asymptotically exact** (effectivity ≈ 1). This is
   the `solve_dyson` scheme defect, recovered from the already computed matrices
   via the Euler–Maclaurin correction of the trapezoid rule.
-- **The correction is worth a grid refinement or two**: adding
-  `error.corrected` back reduces the error by an order of magnitude on both
-  branches — for free, since the estimate is already computed.
-- **Everything scales as O(δt²)**: both branches, the estimate and the bound.
-  If the bound is not small enough for your accuracy target, halve δt (or just
-  use the corrected solution).
+- **The correction is free**: it is the estimate itself, added back — no extra
+  solve — and it improves the kinetic branch by ~3× on this demo.
+- **The error scales as O(δt²)**: if `norm_estimate` is too large for your
+  accuracy target, halve δt (or just use the corrected solution).
 
-The estimate covers every discretization step of the flow: the formation of the
-kernel `K = g·Σ_R` (itself a quadrature product), the implicit-trapezoid
-scheme of `solve_dyson`, and the two kernel products of the kinetic dressing
-`G_K = G_R Σ_K G_R'`, with the retarded error propagated through the dressing at
-first order. The per-branch *rigorous* bounds use a discrete-Gronwall constant,
-so `norm_bound ≥ ‖error‖` is guaranteed (up to compression error, which must be
+The estimate covers every discretization step of the flow: the formation of
+the kernel `K = g·Σ_R` (a quadrature product; zero defect when `Σ_R` is a
+contact term), the implicit-trapezoid scheme of `solve_dyson`, and the two
+kernel products of the kinetic dressing `G_K = G_R Σ_K G_R'`, with the retarded
+error propagated through the dressing at first order. The per-branch
+*rigorous* bounds use a discrete-Gronwall constant, so
+`norm_bound ≥ ‖error‖` is guaranteed (up to compression error, which must be
 added separately when relevant).
 
 If you already solved with [`solve_keldysh`](@ref), call

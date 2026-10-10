@@ -5,7 +5,7 @@ using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
     adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar
 import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature
-import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange
+import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange, scalartype
 import ..NonEquilibriumGreenFunction: extract_blockdiag as _extract_blockdiag
 import ..NonEquilibriumGreenFunction: Retarded, Advanced, Acausal
 import Base: *
@@ -274,6 +274,16 @@ function _dressing_defect(left::Kernel, right::Kernel, prod::Kernel)
         return _left_rule_defect(left, right, prod)
     end
     return _euler_maclaurin_defect(left, right, prod)
+end
+
+# Products involving a Local (contact) factor are applied exactly by the
+# operator algebra (block-diagonal multiplication, no quadrature): their
+# discretization defect is zero. The zero carries the product's causality.
+function _dressing_defect(left, right, prod)
+    bs = blocksize(prod)
+    n = length(axis(prod))
+    Z = zeros(scalartype(prod), bs * n, bs * n)
+    return make_similar(prod, compression(prod)(Z))
 end
 
 function _euler_maclaurin_defect(left::Kernel, right::Kernel, prod::Kernel)
