@@ -101,17 +101,36 @@ function simulate_junction(p::Parameters; cpr=default_compression())
     Σ_R_left = LocalKernel(axis(p), t -> -1im * p.Γl, compression=cpr)
     Σ_R = Σ_R_left + Σ_R_right
     g = RetardedKernel(axis(p), Stationary(τ -> ComplexF64(-2im)), compression=cpr)
-    G_R = solve_dyson(g, g * Σ_R)
     #kinetic
-    ρ = AcausalKernel(axis(p), Stationary(τ -> thermal_kernel(τ, p.β) .|> ComplexF64),
+    # the thermal core -i/β csch(πτ/β) is singular at τ = 0: the Singular map
+    # discretizes it with product-integration weights (exact hat-function
+    # integrals), which keeps second-order convergence of the products below
+    ρ = AcausalKernel(axis(p), Singular(τ -> thermal_kernel(τ, p.β) .|> ComplexF64),
         compression=cpr)
     coupling_left = LocalKernel(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
     coupling_right = LocalKernel(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
     Σ_K_left = -2im * coupling_left' * ρ * coupling_left
     Σ_K_right = -2im * coupling_right' * ρ * coupling_right
     Σ_K = Σ_K_left + Σ_K_right
-    G_K = G_R * Σ_K * G_R'
+    G_R, G_K = solve_keldysh(g, Σ_R, Σ_K)
     return (; G_R, G_K, Σ_R_left, Σ_K_left, Σ_R_right, Σ_K_right)
+end
+
+function simulate_junction_with_error_estimate(p::Parameters; cpr=default_compression())
+    #retarded
+    Σ_R_right = LocalKernel(axis(p), t -> -1im * p.Γr, compression=cpr)
+    Σ_R_left = LocalKernel(axis(p), t -> -1im * p.Γl, compression=cpr)
+    Σ_R = Σ_R_left + Σ_R_right
+    g = RetardedKernel(axis(p), Stationary(τ -> ComplexF64(-2im)), compression=cpr)
+    #kinetic
+    ρ = AcausalKernel(axis(p), Singular(τ -> thermal_kernel(τ, p.β) .|> ComplexF64),
+        compression=cpr)
+    coupling_left = LocalKernel(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
+    coupling_right = LocalKernel(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
+    Σ_K_left = -2im * coupling_left' * ρ * coupling_left
+    Σ_K_right = -2im * coupling_right' * ρ * coupling_right
+    Σ_K = Σ_K_left + Σ_K_right
+    return solve_keldysh_with_error_estimate(g, Σ_R, Σ_K)
 end
 
 function compute_average_current(results)
@@ -297,4 +316,37 @@ end
 
 f = plot_results(iavr, Ul, Ur)
 save(joinpath(@__DIR__, "average_current_QD.svg"), f)
+f
+
+# ## Discretization error estimate and correction
+#
+# The same simulation can be run with `solve_keldysh_with_error_estimate`: it
+# returns the raw solution together with an a-posteriori estimate of the
+# time-discretization error of the whole flow — the `solve_dyson` scheme, the
+# formation of the kernel `g·Σ_R` (here a contact term, applied exactly, so
+# this part vanishes), and the dressing products of the kinetic branch —
+# and the *corrected* Green functions with the estimated error added back.
+# `norm_estimate` is the estimated error of `G_R` and `G_K`; `norm_bound` is
+# a rigorous bound (a discrete-Gronwall constant, loose at strong coupling).
+# On this wideband metal setup the `Singular` product-integration of the
+# thermal core keeps the current well converged already, and the correction
+# mostly improves the Green functions themselves.
+
+sol = Junction.simulate_junction_with_error_estimate(p, cpr=HssCompression());
+err = sol.error
+iavr_corrected = Junction.compute_average_current((; sol.error.corrected...,
+    Σ_R_left=results[:Σ_R_left], Σ_K_left=results[:Σ_K_left]))
+
+function plot_current_with_error(p, iavr, iavr_corrected)
+    f = Figure()
+    f_ax = Axis(f[1, 1], title="Average current: raw vs error-corrected",
+        xlabel=L"t", ylabel=L"\propto <I_L>(t)")
+    ax = Junction.axis(p) |> collect
+    lines!(f_ax, ax, real.(iavr), label="raw")
+    lines!(f_ax, ax, real.(iavr_corrected), label="corrected")
+    axislegend(position=:rb)
+    f
+end
+f = plot_current_with_error(p, iavr, iavr_corrected)
+save(joinpath(@__DIR__, "current_error_estimate.svg"), f)
 f

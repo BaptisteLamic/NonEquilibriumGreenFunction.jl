@@ -60,6 +60,7 @@ export RetardedKernel, AdvancedKernel, AcausalKernel
 export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality
 export solve_dyson
+export estimate_discretization_error, DiscretizationErrorEstimate
 export adjoint
 export norm
 export BlockCirculantMatrix
@@ -74,6 +75,7 @@ export scalartype
 export make_similar
 export thermal_kernel, theq_lesser_time_kernel
 export solve_keldysh, lead_current, current_signal
+export solve_keldysh_with_error_estimate, estimate_keldysh_error, KeldyshErrorEstimate
 export same_time, keldysh_trace
 
 end

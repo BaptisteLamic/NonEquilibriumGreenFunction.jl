@@ -25,6 +25,7 @@ import LinearAlgebra: norm, adjoint
 include("operators.jl")
 include("Kernels/kernel_maps.jl")
 include("Kernels/kernels.jl")
+include("Kernels/error_estimation.jl")
 
 export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, LocalKernel, SumOperator
 export locality, islocal, AbstractLocality, Local, Smooth
@@ -33,6 +34,7 @@ export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace
 export solve_dyson
+export estimate_discretization_error, DiscretizationErrorEstimate
 export compress!, make_similar
 
 end
