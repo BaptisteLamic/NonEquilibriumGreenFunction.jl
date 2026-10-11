@@ -1,6 +1,6 @@
 module Physics
 
-using LinearAlgebra: diagm, I
+using LinearAlgebra: diagm, I, mul!
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
     adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar, _solve_scheme
@@ -330,6 +330,14 @@ _sum_terms(x::SumOperator) = Iterators.flatten((_sum_terms(x.left), _sum_terms(x
 
 function _dressing_defect(left::Kernel, right::Kernel, prod::Kernel)
     q = quadrature(left)
+    cl, cr = causality(left), causality(right)
+    if q != RectangleQuadrature() && !islocal(left) && !islocal(right)
+        if cl isa Retarded && cr isa Acausal
+            return _em_defect_retarded_acausal(left, right, prod)
+        elseif cl isa Acausal && cr isa Advanced
+            return _em_defect_acausal_advanced(left, right, prod)
+        end
+    end
     if q == RectangleQuadrature()
         return _rectangle_defect(left, right, prod)
     end
@@ -346,6 +354,88 @@ function _dressing_defect(left, right, prod)
     return make_similar(prod, compression(prod)(Z))
 end
 
+# Euler-Maclaurin defect of one product, organized for speed: for fixed row
+# block i the integrand samples are F(s) = L(i,s) R(s,j) and the interval
+# [lo, hi] comes from the causality table. The one-sided 3-point differences
+# at the interval ends are linear in the R rows (lo..lo+2) and (hi-2..hi),
+# so the row's defect is computed against a (3bs x bs*n) slice of R in two
+# small GEMMs per row instead of per-entry closures. The lo end is
+# j-independent for every causality pair used by the dressing (lo = 1 or
+# lo = j+1); the hi end is i-dependent only, so both ends hoist cleanly.
+# Fast paths: for the causality pairs whose integration interval has a
+# j-independent low end and an i-dependent high end (Retarded x Acausal:
+# [1, i]; Acausal x Advanced: [1, j] has a *j*-dependent high end but its
+# stencil rows are the column's own diagonal band), the 3-point endpoint
+# differences reduce to block-diagonal row scalings and one GEMM:
+#   dF_lo(i,:) = L[i, lo..lo+2] * Mr[lo..lo+2, :]   (one GEMM, all i)
+#   dF_hi(i,:) = 3 L_ii Mr[i,:] - 4 L_i,i-1 Mr[i-1,:] + L_i,i-2 Mr[i-2,:]
+# where each term is a bs x bs block times a bs x n*bs row-block — a
+# batched row scaling, O(n) GEMMs of bs x bs x bs*n total (vs O(n^2)
+# per-entry products of the generic loop).
+function _em_defect_retarded_acausal(left::Kernel, right::Kernel, prod::Kernel)
+    bs = blocksize(prod)
+    dt = step(prod)
+    Ml = to_cpu(matrix(left))
+    Mr = to_cpu(matrix(right))
+    T = eltype(Ml)
+    n = length(axis(prod))
+    D = zeros(T, bs * n, bs * n)
+    c = -(dt^2 / 12) / (2dt)
+    # lo = 1 stencil: one GEMM of L(:, 1:3bs) x (weight-scaled Mr(1:3bs, :))
+    k = min(3, n) * bs
+    Llo = view(Ml, :, 1:k)
+    Rlo = convert(Matrix{T}, Mr[1:k, :])
+    for (w, r) in zip((-3, 4, -1), 1:min(3, n))
+        Rlo[blockrange(r, bs), :] .*= w
+    end
+    Slo = zeros(T, bs * n, bs * n)
+    mul!(Slo, Llo, Rlo)
+    # hi = i stencil: batched row-block scaling
+    Shi = zeros(T, bs * n, bs * n)
+    for i in 3:n
+        ri = blockrange(i, bs)
+        mul!(view(Shi, ri, :), view(Ml, ri, blockrange(i, bs)), view(Mr, ri, :), 3, 0)
+        mul!(view(Shi, ri, :), view(Ml, ri, blockrange(i - 1, bs)), view(Mr, blockrange(i - 1, bs), :), -4, 1)
+        mul!(view(Shi, ri, :), view(Ml, ri, blockrange(i - 2, bs)), view(Mr, blockrange(i - 2, bs), :), 1, 1)
+    end
+    @inbounds for i in 3:n
+        ri = blockrange(i, bs)
+        D[ri, :] .= c .* (view(Shi, ri, :) .- view(Slo, ri, :))
+    end
+    return make_similar(prod, compression(prod)(D))
+end
+
+# Acausal x Advanced fast path: interval [1, j] per column j, so
+#   dF_lo(:, j) = L(:, 1:3) . weights . Mr[1:3, j]   (tiny fixed block)
+#   dF_hi(:, j) = L(:, j-2:j) . weights . Mr[j-2:j, j] (banded, per column)
+# Both are (bs*n x 3bs) x (3bs x bs) products per column — O(n^2 bs^2)
+# flops total with no per-entry closures.
+function _em_defect_acausal_advanced(left::Kernel, right::Kernel, prod::Kernel)
+    bs = blocksize(prod)
+    dt = step(prod)
+    Ml = to_cpu(matrix(left))
+    Mr = to_cpu(matrix(right))
+    T = eltype(Ml)
+    n = length(axis(prod))
+    D = zeros(T, bs * n, bs * n)
+    c = -(dt^2 / 12) / (2dt)
+    k = min(3, n) * bs
+    @inbounds for j in 3:n
+        rj = blockrange(j, bs)
+        # hi end (hi = j): 3 Mr[j] - 4 Mr[j-1] + Mr[j-2] scaled rows of Ml
+        acc = zeros(T, bs * n, bs)
+        mul!(acc, view(Ml, :, blockrange(j, bs)), view(Mr, blockrange(j, bs), rj), 3, 0)
+        mul!(acc, view(Ml, :, blockrange(j - 1, bs)), view(Mr, blockrange(j - 1, bs), rj), -4, 1)
+        mul!(acc, view(Ml, :, blockrange(j - 2, bs)), view(Mr, blockrange(j - 2, bs), rj), 1, 1)
+        # lo end (lo = 1): -3 Mr[1] + 4 Mr[2] - Mr[3]
+        mul!(acc, view(Ml, :, 1:bs), view(Mr, 1:bs, rj), 3, 1)
+        mul!(acc, view(Ml, :, bs+1:2bs), view(Mr, bs+1:2bs, rj), -4, 1)
+        mul!(acc, view(Ml, :, 2bs+1:k), view(Mr, 2bs+1:k, rj), 1, 1)
+        D[:, rj] .= c .* acc
+    end
+    return make_similar(prod, compression(prod)(D))
+end
+
 function _euler_maclaurin_defect(left::Kernel, right::Kernel, prod::Kernel)
     bs = blocksize(prod)
     dt = step(prod)
@@ -354,18 +444,33 @@ function _euler_maclaurin_defect(left::Kernel, right::Kernel, prod::Kernel)
     T = eltype(Ml)
     n = length(axis(prod))
     D = zeros(T, bs * n, bs * n)
+    cl, cr = causality(left), causality(right)
+    c = -(dt^2 / 12) / (2dt)
+    # lo stencil applied to Mr rows (lo..lo+2) — lo may depend on j
+    # hi stencil applied to Mr rows (hi-2..hi) — hi may depend on j
+    # We sweep columns j: the lo/hi rows needed for column j are fixed, and
+    # the L factors depend on (i, j). Accumulate per (i, j) but with
+    # precomputed stencil weights: still O(n^2) small products, but each
+    # product is a straight GEMM of contiguous slices (no closure, no
+    # per-sample indexing).
+    Wlo = (-3.0, 4.0, -1.0)
+    Whi = (3.0, -4.0, 1.0)
     @inbounds for j in 1:n
         rj = blockrange(j, bs)
         for i in 1:n
-            ri = blockrange(i, bs)
-            # integration interval along the contraction variable of the
-            # (i, j) entry depends on the causalities of the factors
-            lo, hi = _interval(causality(left), causality(right), i, j, n)
+            lo, hi = _interval(cl, cr, i, j, n)
             (isnothing(lo) || hi - lo < 2) && continue
-            F(s) = Ml[ri, blockrange(s, bs)] * Mr[blockrange(s, bs), rj]
-            dF_lo = (-3F(lo) + 4F(lo + 1) - F(lo + 2)) / (2dt)
-            dF_hi = (3F(hi) - 4F(hi - 1) + F(hi - 2)) / (2dt)
-            D[ri, rj] = -(dt^2 / 12) .* (dF_hi - dF_lo)
+            ri = blockrange(i, bs)
+            acc = zeros(T, bs, bs)
+            # hi end: 3F(hi) - 4F(hi-1) + F(hi-2)
+            for (w, s) in zip(Whi, (hi, hi - 1, hi - 2))
+                acc .+= w .* view(Ml, ri, blockrange(s, bs)) * view(Mr, blockrange(s, bs), rj)
+            end
+            # lo end: -( -3F(lo) + 4F(lo+1) - F(lo+2) )
+            for (w, s) in zip(Wlo, (lo, lo + 1, lo + 2))
+                acc .-= w .* view(Ml, ri, blockrange(s, bs)) * view(Mr, blockrange(s, bs), rj)
+            end
+            D[ri, rj] .= c .* acc
         end
     end
     return make_similar(prod, compression(prod)(D))

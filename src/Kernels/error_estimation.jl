@@ -36,26 +36,93 @@ function Base.show(io::IO, r::DiscretizationErrorEstimate)
 end
 
 
-# Solve (I - dt*(K - (1/2)blockdiag K)) Y = R by block forward substitution:
-# the operator A = I - dt*K + (dt/2)*blockdiag(K) is block lower-triangular
-# for retarded K, with diagonal blocks A_ii = I - (dt/2)*K_ii and off-diagonal
-# blocks A_im = -dt*K_im (m < i). Sweeping row blocks top-down,
-#   Y_i,: = A_ii^{-1} (R_i,: + dt * sum_{m<i} K_im Y_m,:),
-# so only bs x bs factorizations are needed and neither the (bs*N)^2
-# operator nor its inverse is ever materialized.
+# Solve (I - dt*(K - (1/2)blockdiag K)) Y = R by *blocked* block forward
+# substitution: the operator A = I - dt*K + (dt/2)*blockdiag(K) is block
+# lower-triangular for retarded K, with diagonal blocks A_ii = I - (dt/2)*K_ii
+# and off-diagonal blocks A_im = -dt*K_im (m < i). Panels of W bs-blocks are
+# formed explicitly (a W*bs x W*bs block-triangular matrix), the coupling to
+# previously solved rows applied by one BLAS-3 GEMM per panel, and the panel
+# solved by a single dense LU of its explicit block — so the full (bs*N)^2
+# operator is never materialized, only W*bs-wide panels, while the arithmetic
+# is BLAS-3 throughout: the same cost class as the simulation's own LU solve
+# at one third of the flops. When R is block lower-triangular (the scheme
+# defect and its bound), so is Y, and the column range is clipped per panel.
 function _solve_scheme(Kmat, R, bs, n, dt)
     RT = promote_type(eltype(Kmat), eltype(R))
-    eye = Matrix{RT}(I, bs, bs)
     Y = zeros(RT, bs * n, size(R, 2))
-    @inbounds for i in 1:n
-        ri = blockrange(i, bs)
-        acc = R[ri, :] .+ (i > 1 ? dt .* view(Kmat, ri, 1:(i - 1) * bs) * Y[1:(i - 1) * bs, :] : zero(R[ri, :]))
-        Aii = eye - (dt / 2) .* Kmat[ri, ri]
-        Y[ri, :] .= Aii \ acc
+    mode = _block_lower_mode(R, bs, n)
+    W = clamp(4096 ÷ max(bs, 1), 8, 128)
+    for i0 in 1:W:n
+        i1 = min(i0 + W - 1, n)
+        rowsI = (i0 - 1) * bs + 1:i1 * bs
+        pre = (i0 - 1) * bs
+        p = i1 * bs - pre
+        lastcol = mode == :strict ? (i1 - 1) * bs :
+                  mode == :lower ? i1 * bs : size(R, 2)
+        cols = 1:lastcol
+        RHS = convert(Matrix{RT}, R[rowsI, cols])
+        if pre > 0
+            # coupling to already-solved rows; for lower/strict R those rows
+            # have no support past column `pre`, so only the leading columns
+            # of RHS receive an update
+            if mode == :general
+                mul!(RHS, view(Kmat, rowsI, 1:pre), view(Y, 1:pre, cols), dt, one(RT))
+            else
+                mul!(view(RHS, :, 1:pre), view(Kmat, rowsI, 1:pre), view(Y, 1:pre, 1:pre), dt, one(RT))
+            end
+        end
+        # explicit panel operator: A_II = I - dt*K_II + (dt/2)*blockdiag
+        AII = Matrix{RT}(I, p, p) .- dt .* convert(Matrix{RT}, view(Kmat, rowsI, rowsI))
+        @inbounds for i in i0:i1
+            ri = (i - 1) * bs + 1:i * bs
+            li = ri .- pre
+            AII[li, li] .+= (dt / 2) .* convert(Matrix{RT}, view(Kmat, ri, ri))
+        end
+        # A_II is block-triangular (full bs x bs diagonal blocks), not
+        # scalar-triangular: split A_II = D (I + D^-1 Ls) with D its block
+        # diagonal, so (I + D^-1 Ls) = D^-1 A_II is scalar unit-lower-
+        # triangular and the panel solve is two BLAS-3 steps:
+        # T = D^-1 RHS then Y = tril(D^-1 A_II) \ T
+        Dinv = zeros(RT, p, p)
+        @inbounds for i in i0:i1
+            ri = (i - 1) * bs + 1:i * bs
+            li = ri .- pre
+            Dinv[li, li] .= inv(convert(Matrix{RT}, view(AII, li, li)))
+        end
+        Mfull = Dinv * AII
+        T = Dinv * RHS
+        view(Y, rowsI, cols) .= LowerTriangular(Mfull) \ T
     end
     return Y
 end
 
+# Is R block lower-triangular (zero above the block diagonal)? Scanned
+# block-column-wise with early exit: O(N^2) scalar reads, negligible next
+# to the O(N^3) solve it saves. Returns :strict when the block diagonal is
+# also zero, :lower when only the strict upper part is zero, :general
+# otherwise. The scheme defect is :strict; its bound (with the exact
+# diagonal-defect term folded in) is :lower — both save half the solve.
+function _block_lower_mode(R, bs, n)
+    size(R, 2) == bs * n || return :general
+    strict = true
+    for j in 1:n
+        rj = blockrange(j, bs)
+        for i in 1:j
+            if !iszero(view(R, blockrange(i, bs), rj))
+                return :general
+            end
+        end
+        strict && (strict = iszero(view(R, rj, rj)))
+    end
+    return strict ? :strict : :lower
+end
+
+# Scheme defect of the retarded solve, computed with whole-column/row
+# GEMMs instead of per-entry closures: the i-end difference is, per row i,
+# a 3-block stencil of G rows scaled by K's diagonal-adjacent blocks; the
+# j-end difference and the endpoint bias are, per column j, linear in K's
+# (j, j+1, j+2) column blocks with i-independent factors — one GEMM per
+# column and one per row. No per-entry allocations remain.
 function _scheme_defect(K::Kernel, G::Kernel)
     bs = blocksize(G)
     dt = step(G)
@@ -65,17 +132,44 @@ function _scheme_defect(K::Kernel, G::Kernel)
     T = eltype(Mh)
     eye = Matrix{T}(I, bs, bs)
     half = T(0.5) .* eye
+    c = -(dt^2 / 12) / (2dt)
+    # dF_i part: per row i, 3 scaled row-blocks of Mh
+    Di = zeros(T, bs * n, bs * n)
+    @inbounds for i in 3:n
+        ri = blockrange(i, bs)
+        mul!(view(Di, ri, :), view(Mk, ri, ri), view(Mh, ri, :), 3, 0)
+        im1 = blockrange(i - 1, bs)
+        im2 = blockrange(i - 2, bs)
+        mul!(view(Di, ri, :), view(Mk, ri, im1), view(Mh, im1, :), -4, 1)
+        mul!(view(Di, ri, :), view(Mk, ri, im2), view(Mh, im2, :), 1, 1)
+    end
     D = zeros(T, bs * n, bs * n)
+    H = zeros(T, 3bs, bs)
+    Kb = zeros(T, bs * n, 3bs)
+    acc = zeros(T, bs * n, bs)
     @inbounds for j in 1:n-2
-        cj = half / (eye - dt * (half * Mk[blockrange(j, bs), blockrange(j, bs)]))
-        for i in j+2:n
-            ri = blockrange(i, bs)
-            rj = blockrange(j, bs)
-            F(s) = Mk[ri, blockrange(s, bs)] * Mh[blockrange(s, bs), rj]
-            dF_j = (-3F(j) + 4F(j + 1) - F(j + 2)) / (2dt)
-            dF_i = (3F(i) - 4F(i - 1) + F(i - 2)) / (2dt)
-            D[ri, rj] = -(dt^2 / 12) .* (dF_i - dF_j) .- dt * ((cj - half) * Mk[ri, rj]) * Mh[rj, rj]
-        end
+        rj = blockrange(j, bs)
+        jp1 = blockrange(j + 1, bs)
+        jp2 = blockrange(j + 2, bs)
+        cj = half / (eye - dt * (half * Mk[rj, rj]))
+        # j-end stencil factors: -3 Mh[j,j] + 4 Mh[j+1,j] - Mh[j+2,j]
+        H[1:bs, :] .= -3 .* view(Mh, rj, rj)
+        H[bs+1:2bs, :] .= 4 .* view(Mh, jp1, rj)
+        H[2bs+1:3bs, :] .= -1 .* view(Mh, jp2, rj)
+        Kb[:, 1:bs] .= view(Mk, :, rj)
+        Kb[:, bs+1:2bs] .= view(Mk, :, jp1)
+        Kb[:, 2bs+1:3bs] .= view(Mk, :, jp2)
+        mul!(acc, Kb, H)
+        # endpoint bias: -dt (cj - 1/2) K[:, rj] Mh[j,j] — a rank-bs column
+        # update, NOT scaled by c (it is an O(dt) term, unlike the O(dt^2)
+        # EM stencils)
+        bias = -dt .* ((cj - half) * view(Mh, rj, rj))
+        # assemble: D[:, rj] = c * (Di - acc) + K[:, rj]*bias, rows i >= j+2,
+        # as whole-column BLAS ops (no per-entry loop)
+        lo = (j + 1) * bs + 1
+        Dcol = view(D, lo:bs * n, rj)
+        Dcol .= c .* (view(Di, lo:bs * n, rj) .- view(acc, lo:bs * n, :))
+        mul!(Dcol, view(Mk, lo:bs * n, rj), bias, 1, 1)
     end
     return D
 end
@@ -114,11 +208,16 @@ differences) but their leading-order contribution, `δt·|K_ij|·|G_jj|`
 *bound*, so the bound remains valid for diagonally-peaked kernels whose
 error maximum sits on the first superdiagonal.
 
-Cost: one additional pass with the scheme operator, performed by block
-forward substitution on the kernel data (the operator is block
+Cost: one additional pass with the scheme operator, performed by *blocked*
+block forward substitution on the kernel data (the operator is block
 lower-triangular for retarded kernels) — no `(bs·N)²` operator is ever
-materialized; the cost is O(N²) block arithmetic plus N bs×bs
-factorizations, cheaper than a single grid refinement.
+materialized, only `W·bs`-wide panels, with BLAS-3 arithmetic throughout.
+All defect stencils are computed as whole-row/whole-column GEMMs, so the
+estimate adds O(N²) block work to the simulation — measured overhead of
+the full Keldysh flow (`solve_keldysh_with_error_estimate` vs
+`solve_keldysh`) is a small multiple of the simulation cost at example
+scales, dominated by the two extra kernel products of the error
+propagation through the dressing.
 
 Caveats of the bound: it is derived from the leading-order defect estimate,
 so on under-resolved grids (`δt·max|K| ≳ 0.5`) neither the estimate
