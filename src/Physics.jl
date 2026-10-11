@@ -3,7 +3,7 @@ module Physics
 using LinearAlgebra: diagm, I
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
-    adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar
+    adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar, _solve_scheme
 import ..NonEquilibriumGreenFunction.Kernels: SumOperator
 import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange, scalartype
@@ -231,10 +231,7 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     n = length(axis(G_R))
     dt = step(G_R)
     MkK = to_cpu(matrix(K))
-    T = eltype(MkK)
-    diag_K = _extract_blockdiag(MkK, bs)
-    left = Matrix{T}(I, bs * n, bs * n) .- dt .* (MkK .- 0.5 .* Matrix(diag_K))
-    E_form = left \ to_cpu(matrix(Dform * G_R))
+    E_form = _solve_scheme(MkK, to_cpu(matrix(Dform * G_R)), bs, n, dt)
     for j in 1:n
         E_form[blockrange(j, bs), blockrange(j, bs)] .= 0
     end
@@ -262,7 +259,7 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     # retarded error; the dressing propagation is submultiplicative via
     # the weighted column-sum operator norms.
     dform = maximum(abs, to_cpu(matrix(Dform * G_R)))
-    bound_R = est_R.norm_bound + maximum(abs, inv(left) * (abs.(to_cpu(matrix(Dform * G_R)))))
+    bound_R = est_R.norm_bound + maximum(abs, _solve_scheme(MkK, abs.(to_cpu(matrix(Dform * G_R))), bs, n, dt))
     bound_K = bound_R * (
         _weighted_colsum_norm(Σ_K * G_R') + _weighted_colsum_norm(G_R * Σ_K)
     ) + maximum(abs, to_cpu(matrix(D1))) + maximum(abs, to_cpu(matrix(D2)))

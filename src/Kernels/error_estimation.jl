@@ -35,6 +35,27 @@ function Base.show(io::IO, r::DiscretizationErrorEstimate)
     println(io, "  Error bound:                 $(r.norm_bound)")
 end
 
+
+# Solve (I - dt*(K - (1/2)blockdiag K)) Y = R by block forward substitution:
+# the operator A = I - dt*K + (dt/2)*blockdiag(K) is block lower-triangular
+# for retarded K, with diagonal blocks A_ii = I - (dt/2)*K_ii and off-diagonal
+# blocks A_im = -dt*K_im (m < i). Sweeping row blocks top-down,
+#   Y_i,: = A_ii^{-1} (R_i,: + dt * sum_{m<i} K_im Y_m,:),
+# so only bs x bs factorizations are needed and neither the (bs*N)^2
+# operator nor its inverse is ever materialized.
+function _solve_scheme(Kmat, R, bs, n, dt)
+    RT = promote_type(eltype(Kmat), eltype(R))
+    eye = Matrix{RT}(I, bs, bs)
+    Y = zeros(RT, bs * n, size(R, 2))
+    @inbounds for i in 1:n
+        ri = blockrange(i, bs)
+        acc = R[ri, :] .+ (i > 1 ? dt .* view(Kmat, ri, 1:(i - 1) * bs) * Y[1:(i - 1) * bs, :] : zero(R[ri, :]))
+        Aii = eye - (dt / 2) .* Kmat[ri, ri]
+        Y[ri, :] .= Aii \ acc
+    end
+    return Y
+end
+
 function _scheme_defect(K::Kernel, G::Kernel)
     bs = blocksize(G)
     dt = step(G)
@@ -93,12 +114,11 @@ differences) but their leading-order contribution, `δt·|K_ij|·|G_jj|`
 *bound*, so the bound remains valid for diagonally-peaked kernels whose
 error maximum sits on the first superdiagonal.
 
-Cost: the estimate requires one additional solve with the operator `A`.
-Unlike `solve_dyson`, which can exploit HSS compression via `ldiv`, this
-solve uses a dense `(bs·N)²` matrix and is therefore O(N³) — for the
-compressed path the estimate can be asymptotically more expensive than the
-solve it diagnoses. For `NONCompression` it remains cheaper than a single
-grid refinement.
+Cost: one additional pass with the scheme operator, performed by block
+forward substitution on the kernel data (the operator is block
+lower-triangular for retarded kernels) — no `(bs·N)²` operator is ever
+materialized; the cost is O(N²) block arithmetic plus N bs×bs
+factorizations, cheaper than a single grid refinement.
 
 Caveats of the bound: it is derived from the leading-order defect estimate,
 so on under-resolved grids (`δt·max|K| ≳ 0.5`) neither the estimate
@@ -112,27 +132,25 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     n = length(axis(G))
     D = _scheme_defect(K, G)
     Mk = to_cpu(matrix(K))
-    T = eltype(Mk)
-    diag_K = extract_blockdiag(Mk, bs)
-    left = Matrix{T}(I, bs * n, bs * n) .- dt .* (Mk .- 0.5 .* Matrix(diag_K))
-    E = left \ D
+    E = _solve_scheme(Mk, D, bs, n, dt)
     for j in 1:n
         E[blockrange(j, bs), blockrange(j, bs)] .= 0
     end
-    # Rigorous componentwise bound: |e| = |A⁻¹| |D| is exact for the
-    # *estimated* defect, so max|A⁻¹ D| is a tight upper bound of the error
-    # caused by that defect (no phase-cancellation loss, unlike the previous
-    # discrete-Gronwall constant exp(‖K‖_T), which overestimated by up to
-    # ~1e64 for unitary kernels). The superdiagonal entries (i = j+1) are
+    # Rigorous bound: the error obeys e = A⁻¹D for the true defect. The
+    # inflated defect bound Dabs below is propagated through the *signed*
+    # scheme operator by one block forward substitution (no operator or
+    # inverse ever materialized), preserving phase cancellation — unlike
+    # the previous discrete-Gronwall constant exp(‖K‖_T)‖D‖_max, which
+    # overestimated unitary kernels by up to ~1e64. The superdiagonal entries (i = j+1) are
     # excluded from the estimate; their single-panel defect is bounded by
     # the exact triangle inequality: the true panel integral is within
     # δt·|K_ij|·|G_jj| of both endpoints' contributions, and the scheme
     # uses δt·|K_ij|·|c_j|·|g_jj| on the right-hand side, so the defect is
     # at most δt·|K_ij|·(|G_jj| + |c_j|·|g_jj|) — all coarse data.
-    Ainv = inv(left)
     Dabs = abs.(D)
     Mh = to_cpu(matrix(G))
     Mg = to_cpu(matrix(g))
+    T = eltype(Mk)
     eye = Matrix{T}(I, bs, bs)
     half = T(0.5) .* eye
     for j in 1:n
@@ -151,7 +169,7 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
             dt .* abs.(Mk[blockrange(j + 1, bs), rj]) .*
             (abs.(Mh[rj, rj]) .+ cj .* abs.(Mg[rj, rj]))
     end
-    prod = abs.(Ainv * Dabs)
+    prod = abs.(_solve_scheme(Mk, Dabs, bs, n, dt))
     for j in 1:n
         prod[blockrange(j, bs), blockrange(j, bs)] .= 0
     end
