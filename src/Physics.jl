@@ -1,6 +1,6 @@
 module Physics
 
-using LinearAlgebra: diagm
+using LinearAlgebra: diagm, Matrix, I, Diagonal, diag
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isacausal,
     adjoint, keldysh_trace
@@ -8,6 +8,7 @@ import ..NonEquilibriumGreenFunction: islocal
 import Base: *
 
 include("Physics/physics.jl")
+include("Physics/self_energy.jl")
 
 """
     solve_keldysh(g, Σ_R, Σ_K; check=true)
@@ -92,4 +93,6 @@ current_signal(op) = keldysh_trace(op)
 
 
 export solve_keldysh, lead_current, current_signal
+
+export second_born_self_energy, hartree_fock_self_energy, lesser_greater
 end
