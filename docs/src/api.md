@@ -32,6 +32,14 @@ solve_dyson
 solve_keldysh
 ```
 
+## Self-energies
+
+```@docs
+second_born_self_energy
+hartree_fock_self_energy
+lesser_greater
+```
+
 ## Operators
 
 ```@docs
