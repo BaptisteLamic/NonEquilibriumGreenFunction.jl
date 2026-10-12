@@ -1,11 +1,12 @@
 module Physics
 
 using LinearAlgebra: diagm, I, mul!
+using SparseArrays: sparse
 using ..NonEquilibriumGreenFunction: polygamma
 import ..NonEquilibriumGreenFunction.Kernels: Kernel, solve_dyson, causality, isretarded, isadvanced, isacausal,
-    adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar, _solve_scheme
+    adjoint, keldysh_trace, estimate_discretization_error, DiscretizationErrorEstimate, make_similar
 import ..NonEquilibriumGreenFunction.Kernels: SumOperator
-import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature
+import ..NonEquilibriumGreenFunction: islocal, to_cpu, quadrature, TrapezoidQuadrature, RectangleQuadrature, ldiv
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, compression, step, blockrange, scalartype
 import ..NonEquilibriumGreenFunction: extract_blockdiag as _extract_blockdiag
 import ..NonEquilibriumGreenFunction: Retarded, Advanced, Acausal
@@ -226,15 +227,17 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     est_R = estimate_discretization_error(g, K, G_R)
     E_R = est_R.estimate
     # first-order propagation of the formation defect through the solve:
-    # A e = Dform * G_R at leading order
+    # A e = Dform * G_R at leading order, through the same compressed
+    # operator the simulation builds (near-linear under HSS)
     bs = blocksize(G_R)
     n = length(axis(G_R))
     dt = step(G_R)
-    MkK = to_cpu(matrix(K))
-    E_form = _solve_scheme(MkK, to_cpu(matrix(Dform * G_R)), bs, n, dt)
-    for j in 1:n
-        E_form[blockrange(j, bs), blockrange(j, bs)] .= 0
-    end
+    cpR = compression(G_R)
+    eyeR = cpR(sparse(scalartype(K)(1) * I, bs * n, bs * n))
+    diagK = _extract_blockdiag(matrix(K), bs)
+    leftR = cpR(eyeR - scalartype(K)(dt) * (matrix(K) - cpR(1 // 2 * diagK)))
+    E_form = ldiv(leftR, cpR(to_cpu(matrix(Dform * G_R))))
+    E_form = E_form - cpR(_extract_blockdiag(E_form, bs))
     E_R_total = make_similar(G_R, compression(G_R)(to_cpu(matrix(E_R)) .+ E_form))
     # defect of the dressing itself: the two kernel products G_R * Σ_K and
     # (G_R * Σ_K) * G_R' are discretized by the quadrature rule; their
@@ -245,21 +248,16 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
     # first-order propagation of the retarded error through the dressing:
     # δG_K = E_R Σ_K G_R' + G_R Σ_K E_R' (+ dressing defect)
     E_K = E_R_total * Σ_K * G_R' + G_R * Σ_K * E_R_total'
-    # total defect of the kinetic branch, in matrix form
-    Mk = zeros(eltype(to_cpu(matrix(G_K))), bs * n, bs * n)
-    Mk .+= to_cpu(matrix(E_K))
-    Mk .+= to_cpu(matrix(D1 * G_R'))
-    Mk .+= to_cpu(matrix(D2))
-    cp = compression(G_K)
-    E_K_full = make_similar(G_K, cp(Mk))
+    # total defect of the kinetic branch, assembled in the *compressed*
+    # kernel algebra (no dense (bs*N)^2 round-trip)
+    E_K_full = E_K + D1 * G_R' + D2
     # rigorous bound: the componentwise retarded bound propagated through
     # the dressing, plus the dressing and formation defects. The formation
     # defect propagates through the same operator A (componentwise, no
     # Gronwall constant): |A⁻¹| (|Dform·G_R|) bounds its contribution to the
     # retarded error; the dressing propagation is submultiplicative via
     # the weighted column-sum operator norms.
-    dform = maximum(abs, to_cpu(matrix(Dform * G_R)))
-    bound_R = est_R.norm_bound + maximum(abs, _solve_scheme(MkK, abs.(to_cpu(matrix(Dform * G_R))), bs, n, dt))
+    bound_R = est_R.norm_bound + maximum(abs, to_cpu(ldiv(leftR, cpR(convert(Matrix{scalartype(K)}, abs.(to_cpu(matrix(Dform * G_R))))))))
     bound_K = bound_R * (
         _weighted_colsum_norm(Σ_K * G_R') + _weighted_colsum_norm(G_R * Σ_K)
     ) + maximum(abs, to_cpu(matrix(D1))) + maximum(abs, to_cpu(matrix(D2)))
@@ -272,7 +270,7 @@ function estimate_keldysh_error(g::Kernel, Σ_R, Σ_K, G_R, G_K; check=true)
         est_R_full,
         DiscretizationErrorEstimate(
             E_K_full,
-            cp(Mk),
+            E_K_full,
             norm_estimate_K,
             bound_K,
         ),

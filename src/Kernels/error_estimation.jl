@@ -36,87 +36,6 @@ function Base.show(io::IO, r::DiscretizationErrorEstimate)
 end
 
 
-# Solve (I - dt*(K - (1/2)blockdiag K)) Y = R by *blocked* block forward
-# substitution: the operator A = I - dt*K + (dt/2)*blockdiag(K) is block
-# lower-triangular for retarded K, with diagonal blocks A_ii = I - (dt/2)*K_ii
-# and off-diagonal blocks A_im = -dt*K_im (m < i). Panels of W bs-blocks are
-# formed explicitly (a W*bs x W*bs block-triangular matrix), the coupling to
-# previously solved rows applied by one BLAS-3 GEMM per panel, and the panel
-# solved by a single dense LU of its explicit block — so the full (bs*N)^2
-# operator is never materialized, only W*bs-wide panels, while the arithmetic
-# is BLAS-3 throughout: the same cost class as the simulation's own LU solve
-# at one third of the flops. When R is block lower-triangular (the scheme
-# defect and its bound), so is Y, and the column range is clipped per panel.
-function _solve_scheme(Kmat, R, bs, n, dt)
-    RT = promote_type(eltype(Kmat), eltype(R))
-    Y = zeros(RT, bs * n, size(R, 2))
-    mode = _block_lower_mode(R, bs, n)
-    W = clamp(4096 ÷ max(bs, 1), 8, 128)
-    for i0 in 1:W:n
-        i1 = min(i0 + W - 1, n)
-        rowsI = (i0 - 1) * bs + 1:i1 * bs
-        pre = (i0 - 1) * bs
-        p = i1 * bs - pre
-        lastcol = mode == :strict ? (i1 - 1) * bs :
-                  mode == :lower ? i1 * bs : size(R, 2)
-        cols = 1:lastcol
-        RHS = convert(Matrix{RT}, R[rowsI, cols])
-        if pre > 0
-            # coupling to already-solved rows; for lower/strict R those rows
-            # have no support past column `pre`, so only the leading columns
-            # of RHS receive an update
-            if mode == :general
-                mul!(RHS, view(Kmat, rowsI, 1:pre), view(Y, 1:pre, cols), dt, one(RT))
-            else
-                mul!(view(RHS, :, 1:pre), view(Kmat, rowsI, 1:pre), view(Y, 1:pre, 1:pre), dt, one(RT))
-            end
-        end
-        # explicit panel operator: A_II = I - dt*K_II + (dt/2)*blockdiag
-        AII = Matrix{RT}(I, p, p) .- dt .* convert(Matrix{RT}, view(Kmat, rowsI, rowsI))
-        @inbounds for i in i0:i1
-            ri = (i - 1) * bs + 1:i * bs
-            li = ri .- pre
-            AII[li, li] .+= (dt / 2) .* convert(Matrix{RT}, view(Kmat, ri, ri))
-        end
-        # A_II is block-triangular (full bs x bs diagonal blocks), not
-        # scalar-triangular: split A_II = D (I + D^-1 Ls) with D its block
-        # diagonal, so (I + D^-1 Ls) = D^-1 A_II is scalar unit-lower-
-        # triangular and the panel solve is two BLAS-3 steps:
-        # T = D^-1 RHS then Y = tril(D^-1 A_II) \ T
-        Dinv = zeros(RT, p, p)
-        @inbounds for i in i0:i1
-            ri = (i - 1) * bs + 1:i * bs
-            li = ri .- pre
-            Dinv[li, li] .= inv(convert(Matrix{RT}, view(AII, li, li)))
-        end
-        Mfull = Dinv * AII
-        T = Dinv * RHS
-        view(Y, rowsI, cols) .= LowerTriangular(Mfull) \ T
-    end
-    return Y
-end
-
-# Is R block lower-triangular (zero above the block diagonal)? Scanned
-# block-column-wise with early exit: O(N^2) scalar reads, negligible next
-# to the O(N^3) solve it saves. Returns :strict when the block diagonal is
-# also zero, :lower when only the strict upper part is zero, :general
-# otherwise. The scheme defect is :strict; its bound (with the exact
-# diagonal-defect term folded in) is :lower — both save half the solve.
-function _block_lower_mode(R, bs, n)
-    size(R, 2) == bs * n || return :general
-    strict = true
-    for j in 1:n
-        rj = blockrange(j, bs)
-        for i in 1:j
-            if !iszero(view(R, blockrange(i, bs), rj))
-                return :general
-            end
-        end
-        strict && (strict = iszero(view(R, rj, rj)))
-    end
-    return strict ? :strict : :lower
-end
-
 # Scheme defect of the retarded solve, computed with whole-column/row
 # GEMMs instead of per-entry closures: the i-end difference is, per row i,
 # a 3-block stencil of G rows scaled by K's diagonal-adjacent blocks; the
@@ -230,11 +149,19 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     dt = step(G)
     n = length(axis(G))
     D = _scheme_defect(K, G)
-    Mk = to_cpu(matrix(K))
-    E = _solve_scheme(Mk, D, bs, n, dt)
-    for j in 1:n
-        E[blockrange(j, bs), blockrange(j, bs)] .= 0
-    end
+    # solve A E = D through the *same compressed operator* the simulation
+    # itself builds (kernel_solver.jl): all in compressed arithmetic, with
+    # matrix(K) kept in its compressed storage (no dense round-trip), so the
+    # solve is near-linear under HSS exactly like the simulation's own.
+    cp = compression(g)
+    eye = cp(sparse(scalartype(K)(1) * I, bs * n, bs * n))
+    diag_K = extract_blockdiag(K |> matrix, bs)
+    left = cp(eye - scalartype(K)(dt) * (matrix(K) - cp(1 // 2 * diag_K)))
+    E = ldiv(left, cp(D))
+    # zero the block diagonal exactly (e(j,j) = 0 by the scheme's diagonal
+    # correction), with the same HSS-safe algebra as solve_dyson:
+    # E + cp(-extract_blockdiag(E))
+    E = cp(E - cp(extract_blockdiag(E, bs)))
     # Rigorous bound: the error obeys e = A⁻¹D for the true defect. The
     # inflated defect bound Dabs below is propagated through the *signed*
     # scheme operator by one block forward substitution (no operator or
@@ -246,12 +173,16 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
     # δt·|K_ij|·|G_jj| of both endpoints' contributions, and the scheme
     # uses δt·|K_ij|·|c_j|·|g_jj| on the right-hand side, so the defect is
     # at most δt·|K_ij|·(|G_jj| + |c_j|·|g_jj|) — all coarse data.
-    Dabs = abs.(D)
-    Mh = to_cpu(matrix(G))
-    Mg = to_cpu(matrix(g))
-    T = eltype(Mk)
+    # the bound needs only diagonal-adjacent blocks of K, G, g — extracted
+    # block-by-block from the compressed storage (O(N) tiny getindexes,
+    # no dense (bs*N)^2 round-trip)
+    Kbl = same_time_blocks(K |> matrix, bs)
+    Gbl = same_time_blocks(G |> matrix, bs)
+    gbl = same_time_blocks(g |> matrix, bs)
+    T = eltype(Kbl[1])
     eye = Matrix{T}(I, bs, bs)
     half = T(0.5) .* eye
+    Dabs = abs.(D)
     for j in 1:n
         rj = blockrange(j, bs)
         # the defect of the true solution is nonzero on the diagonal:
@@ -259,20 +190,18 @@ function estimate_discretization_error(g::Kernel, K::Kernel, G::Kernel)
         # support kills all other terms), and e = A^-1 D - C with the
         # diagonal correction C makes e(j,j) = 0 exactly; the bound below
         # takes the max over off-diagonal entries only.
-        Dabs[rj, rj] .= abs.((half - dt .* (Mk[rj, rj] ./ 2)) * Mg[rj, rj])
+        Dabs[rj, rj] .= abs.((half - dt .* (Kbl[j] ./ 2)) * gbl[j])
     end
     for j in 1:n-1
         rj = blockrange(j, bs)
-        cj = abs.(half / (eye - dt * (half * Mk[rj, rj])))
+        Ksj = matrix(K)[blockrange(j + 1, bs), rj]
+        cj = abs.(half / (eye - dt * (half * Kbl[j])))
         Dabs[blockrange(j + 1, bs), rj] .+=
-            dt .* abs.(Mk[blockrange(j + 1, bs), rj]) .*
-            (abs.(Mh[rj, rj]) .+ cj .* abs.(Mg[rj, rj]))
+            dt .* abs.(Ksj) .* (abs.(Gbl[j]) .+ cj .* abs.(gbl[j]))
     end
-    prod = abs.(_solve_scheme(Mk, Dabs, bs, n, dt))
-    for j in 1:n
-        prod[blockrange(j, bs), blockrange(j, bs)] .= 0
-    end
-    bound = maximum(prod)
+    pb = ldiv(left, cp(convert(Matrix{scalartype(K)}, Dabs)))
+    pb = pb - cp(extract_blockdiag(pb, bs))
+    bound = maximum(abs.(to_cpu(pb)))
     cp = compression(g)
     return DiscretizationErrorEstimate(
         make_similar(g, cp(E)),
