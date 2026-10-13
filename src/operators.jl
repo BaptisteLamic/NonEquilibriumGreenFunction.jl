@@ -227,7 +227,7 @@ function LocalKernel(axis, f; compression::AbstractCompression=HssCompression())
     end
     matrix = build_blockdiag(δ, compression=compression)
     return LocalKernel(
-        TrapzDiscretisation(
+        UniformDiscretisation(
             axis,
             matrix,
             bs,
@@ -339,7 +339,7 @@ Compare two SumOperators for equality based on their left and right components.
 ==(A::SumOperator,B::SumOperator) = A.left == B.left && A.right == B.right
 
 """
-    _discretize_uniformScaling(discretization::TrapzDiscretisation, I::UniformScaling)
+    _discretize_uniformScaling(discretization::UniformDiscretisation, I::UniformScaling)
 
 Create a block-diagonal discretization from a UniformScaling operator.
 
@@ -348,9 +348,9 @@ Create a block-diagonal discretization from a UniformScaling operator.
 - `I`: UniformScaling operator
 
 # Returns
-A TrapzDiscretisation representing the identity scaled by I.λ.
+A UniformDiscretisation representing the identity scaled by I.λ.
 """
-function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
+function _discretize_uniformScaling(discretization::UniformDiscretisation, I)
     bs = blocksize(discretization)
     ax = axis(discretization)
     T = scalartype(discretization)
@@ -360,7 +360,7 @@ function _discretize_uniformScaling(discretization::TrapzDiscretisation, I)
         δ[:, :, i] = block_mat
     end
     matrix = build_blockdiag(δ, compression=compression(discretization))
-    return TrapzDiscretisation(
+    return UniformDiscretisation(
         ax,
         matrix,
         bs,
