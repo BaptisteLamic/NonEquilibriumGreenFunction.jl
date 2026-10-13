@@ -27,13 +27,13 @@ function *(left::Kernel, right::Kernel)
     )
 end
 
-function _dressing(g::TrapzDiscretisation, d::AbstractArray{T,3}) where {T}
+function _dressing(g::UniformDiscretisation, d::AbstractArray{T,3}) where {T}
      # d holds the equal-time blocks: build the half-weighted block-diagonal
      # directly in the compression family (exact for HSS, no recompression)
      blocks = d .* T(1 // 2)
      return matrix(g) - compression(g)(blocks)
 end
-function _biased_mul(::C, ::C, gl::TrapzDiscretisation, gr::TrapzDiscretisation) where {C<:Union{Retarded,Advanced}}
+function _biased_mul(::C, ::C, gl::UniformDiscretisation, gr::UniformDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
     dl = blockdiag_blocks(matrix(gl), bs)
     dr = blockdiag_blocks(matrix(gr), bs)

@@ -1,6 +1,6 @@
 module Kernels
 
-using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression, TrapzDiscretisation,
+using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression, UniformDiscretisation,
     HssCompression, causality_of_sum, causality_of_prod,
     Retarded, Advanced, Acausal, AbstractCausality,
     AbstractLocality, Local, Smooth, locality_of_sum, locality_of_prod,
