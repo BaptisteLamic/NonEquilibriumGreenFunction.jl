@@ -264,6 +264,21 @@ function NonEquilibriumGreenFunction.recompress_inplace!(c::HssCompression, tab:
 end
 
 """
+    (Compression::HssCompression)(blocks::AbstractArray{T,3})
+
+Build a block-diagonal HssMatrix with the `bs×bs` block `blocks[:, :, k]` on
+diagonal block `k`, exactly and directly in the HSS family via
+`HssMatrices.hss_blkdiag` (no randomized recompression and no lossy
+round-trip: the result represents the blocks bit-for-bit).
+"""
+function (Compression::HssCompression)(blocks::AbstractArray{T,3}) where {T}
+    @assert size(blocks, 1) == size(blocks, 2) "Blocks must be square matrices"
+    n = size(blocks, 1) * size(blocks, 3)
+    cc = bisection_cluster(n, leafsize=Compression.leafsize)
+    return hss_blkdiag(_blockdiag_sparse(blocks), cc, cc)
+end
+
+"""
     ldiv(left::HssMatrix, right::HssMatrix)
 
 Solve `left * X = right` using the in-place HSS solver.
@@ -564,5 +579,22 @@ end
             end
             @test norm(matrix(K) - K_ref) < tol
         end
+    end
+end
+@testitem "HSS block-diagonal constructor is exact" begin
+    using SparseArrays
+    using LinearAlgebra
+    using HssMatrices
+    for (bs, N) in [(1, 16), (2, 32), (3, 7)]
+        T = ComplexF64
+        blocks = [T(i + 10 * j + 100 * blk) for i in 1:bs, j in 1:bs, blk in 1:N]
+        cp = HssCompression()
+        m = cp(blocks)
+        @test m isa HssMatrix
+        ref = zeros(T, N * bs, N * bs)
+        for blk in 1:N
+            ref[blockrange(blk, bs), blockrange(blk, bs)] .= blocks[:, :, blk]
+        end
+        @test Matrix(m) == ref
     end
 end

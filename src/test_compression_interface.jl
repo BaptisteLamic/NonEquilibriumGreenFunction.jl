@@ -114,6 +114,16 @@ function test_compression_interface(cpr::AbstractCompression;
                     compress!(k3)
                     _assert_matrices_approx_equal(matrix(k3), matrix(k), atol)
                 end
+                @testset "block-diagonal constructor" begin
+                    blocks = [T(i + 10 * j + 100 * blk) for i in 1:bs, j in 1:bs, blk in 1:N]
+                    m = cpr(blocks)
+                    @test size(m) == (N * bs, N * bs)
+                    ref = zeros(T, N * bs, N * bs)
+                    for blk in 1:N
+                        ref[blockrange(blk, bs), blockrange(blk, bs)] .= blocks[:, :, blk]
+                    end
+                    _assert_matrices_approx_equal(m, ref, atol)
+                end
             end
         end
     end

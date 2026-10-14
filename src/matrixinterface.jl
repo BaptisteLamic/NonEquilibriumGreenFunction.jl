@@ -11,6 +11,8 @@
 # - `c(m::AbstractMatrix)` (re)compresses a matrix (dense or sparse) into the
 #   family; must be pure.
 # - optionally `c(axis, f, g)` for separable kernels (optimization hook).
+# - optionally `c(blocks::AbstractArray{T,3})` for block-diagonal matrices
+#   (optimization hook; default: compress the sparse form).
 # - `Base.:(==)` between instances (free for plain immutables).
 # - `recompress_inplace!(c, m)` for in-place recompression (default: no-op).
 #
@@ -67,3 +69,22 @@ The default is a no-op returning `m`; compressions that support in-place
 recompression (e.g. `HssCompression` on an `HssMatrix`) should extend it.
 """
 recompress_inplace!(::AbstractCompression, m) = m
+
+"""
+    (c::AbstractCompression)(blocks::AbstractArray{T,3})
+
+Build the block-diagonal matrix with the `bs×bs` block `blocks[:, :, k]` on
+diagonal block `k`, in the family of the compression `c`. Generic fallback:
+build the sparse form and compress it. Compressions with an exact native
+block-diagonal representation (e.g. `HssCompression` via `hss_blkdiag`)
+should specialize this to avoid the lossy recompression round-trip.
+"""
+function (c::AbstractCompression)(blocks::AbstractArray{T,3}) where {T}
+    bs = size(blocks, 1)
+    @assert size(blocks, 1) == size(blocks, 2) "Blocks must be square matrices"
+    N = size(blocks, 3)
+    I = [(t - 1) * bs + i for i in 1:bs, j in 1:bs, t in 1:N]
+    J = [(t - 1) * bs + j for i in 1:bs, j in 1:bs, t in 1:N]
+    sp = SparseArrays.sparse(I[:], J[:], blocks[:], N * bs, N * bs)
+    return c(sp)
+end
