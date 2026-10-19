@@ -10,20 +10,24 @@ documented in [Custom compression](custom_compression.md).
 
 ## Overview
 
+The DAG is the **only evaluation path of the package**. Every numeric
+operation - kernel algebra (`+`, `-`, `*`, scalar scaling, `adjoint`),
+`solve_dyson`, the local-kernel fast paths - builds an expression DAG
+and evaluates it with the compression's backend:
+
 ```
-Semantic tier  (package-interpreted: quadrature, dressing, support)   [design, not yet migrated]
-        |
-        |  lower(b, graph)
+Kernel `*`, `+`, `-`, adjoint, solve_dyson        (user-facing, semantic tier:
+        |                                         quadrature weighting, dressing,
+        |                                         causality - package-owned)
         v
-Numeric tier   (this page: implemented)
-    CompressedLeaf ⊗ op_add/op_sub/op_scale/op_mul/op_adjoint + solve_node
+op_add / op_sub / op_scale / op_mul / op_adjoint / SolveNode   (numeric tier)
         |
-        |  evaluate(b, ex)      default in-family interpreter, or a backend override
-        v
+        |  evaluate(cpr, ex)      default in-family interpreter, or a backend
+        v                          override (HSS: balanced chains)
 AbstractCompressedOperator
 ```
 
-The numeric tier is what backends implement. Its two rules:
+Two rules govern the numeric tier:
 
 1. **Everything is in-family.** Operations on compressed operators of a
    backend's family produce operators of the same family. There is no
@@ -31,6 +35,27 @@ The numeric tier is what backends implement. Its two rules:
 2. **The backend owns configuration.** Working eltype, device and
    threading live on the backend (`AbstractCompressionBackend`), never
    on the stored matrices.
+
+### Semantic vs numeric tier in practice
+
+Kernel products are **not** pure matrix products: each pairwise product
+applies the quadrature rule's weighting (semantic tier, package-owned).
+A chain `G_R * Σ_K * G_R'` at the kernel level therefore applies the
+trapezoid dressing at *each* product - writing it as a raw variadic
+`op_mul` over the matrices would compute something different (no
+dressing). Use kernel `*` for physics; use the explicit `op_mul` DAG
+nodes only for raw matrix chains inside one family. Since the kernel
+operators evaluate through the DAG internally, the DAG remains the only
+evaluation path in both cases.
+
+### Legacy compressions evaluate through backends
+
+`AbstractCompression` objects (dense `NONCompression`, `HssCompression`,
+`JLArrayCompression`, custom ones) are bridged: `backend(c)` returns
+their evaluation backend (`MatrixFamilyBackend` by default,
+`HssMatricesBackend` for `HssCompression`). `evaluate(c, ex)` evaluates
+a DAG with it, so all existing code and compressions reach the DAG
+world unchanged.
 
 ## The DAG
 
@@ -129,6 +154,17 @@ end
 children, so outer task fan-outs (e.g. Negf.jl evaluating several kernel
 products concurrently) compose with backend-internal parallelism without
 oversubscription.
+
+## The matrix-family reference backend
+
+`MatrixFamilyBackend{T}` is the reference backend for any family built on
+`AbstractMatrix` with standard Base operations: dense `Matrix`, HSS
+matrices, GPU-style arrays whose family implements the Base ops. It is
+the default bridge for legacy `AbstractCompression` objects without a
+dedicated backend. Its primitives are the generic `AbstractMatrix`
+methods of the contract (`+`, `-`, scalar `*`, `*`, `adjoint`, `norm`,
+`\`), which stay in-family for every matrix family - this is not a dense
+fallback, since nothing ever converts between families.
 
 ## The reference HSS backend
 

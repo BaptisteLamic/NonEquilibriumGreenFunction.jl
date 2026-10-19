@@ -119,6 +119,11 @@ function simulate_junction(p::Parameters; cpr=default_compression())
     Σ_K_left = coupling_left' * g_lead_kinetic * coupling_left
     Σ_K_right = coupling_right' * g_lead_kinetic * coupling_right
     Σ_K = Σ_K_left + Σ_K_right
+    # Kinetic branch. Kernel products carry the quadrature weighting
+    # (semantic tier), so the chain is expressed with kernel `*`; every
+    # numeric operation inside (dressing, products, sums) evaluates
+    # through the expression DAG (numeric tier) with the compression's
+    # backend - the DAG is the only evaluation path of the package.
     G_K = G_R * Σ_K * G_R'
     return (; results_GR..., G_K, Σ_K_left, Σ_K_right)
 end
@@ -131,6 +136,9 @@ end
 
 function compute_average_current(results)
     function f(G_R, G_K, Σ_R, Σ_K)
+        # Concurrent kernel products under a shared thread budget; each
+        # product evaluates as a DAG op_mul capped at the ambient budget.
+        with_thread_budget(Threads.nthreads()) do
         _Σ_R_time_G_R = Threads.@spawn Σ_R * G_R
         _G_R_time_Σ_R = Threads.@spawn G_R * Σ_R
         _G_R_time_Σ_K = Threads.@spawn G_R * Σ_K
@@ -146,6 +154,7 @@ function compute_average_current(results)
         return -((1 // 2) * ((adjoint(Σ_R_time_G_R)) - Σ_R_time_G_R) + G_R_time_Σ_K +
                  G_K_time_adjoint_Σ_R + -(Σ_K_time_adjoint_G_R + Σ_R_time_G_K) +
                  (3 // 2) * (G_R_time_Σ_R - adjoint(G_R_time_Σ_R)))
+        end
     end
     I_avr_op = f(results[:G_R], results[:G_K], results[:Σ_R_left], results[:Σ_K_left])
     dg = diag(matrix(I_avr_op))

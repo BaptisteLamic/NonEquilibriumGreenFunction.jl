@@ -98,9 +98,14 @@ A new SimpleOperator of the same type as `op` but with the new matrix.
 """
 function make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,UniformScaling})
     new_dis = make_similar(discretization(op), new_matrix)
-    # Reconstruct the operator with the new discretization
-    # This works for SimpleOperator subtypes that have a similar constructor
-    return typeof(op)(new_dis)
+    # Let the discretization decide the concrete container: a widened
+    # matrix (e.g. Float64 -> ComplexF64 through the DAG's eltype
+    # promotion) upgrades a LocalKernel's block-diagonal storage to a
+    # UniformDiscretisation instead of failing to fit the new eltype.
+    if typeof(new_dis) == typeof(discretization(op))
+        return typeof(op)(new_dis)
+    end
+    return Kernel(new_dis, causality(op))
 end
 
 """
@@ -163,7 +168,7 @@ end
 
 -(op::AbstractOperator) = -1 * op
 
-*(λ::Number, op::SimpleOperator) = make_similar(op, λ * matrix(op))
+*(λ::Number, op::SimpleOperator) = make_similar(op, evaluate(compression(op), op_scale(λ, CompressedLeaf(matrix(op)))))
 *(op::SimpleOperator, λ::Number) = λ * op
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
@@ -287,21 +292,21 @@ end
 
 Multiply two LocalKernels.
 """
-*(left::LocalKernel, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
+*(left::LocalKernel, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     *(left::LocalKernel, right::SimpleOperator)
 
 Multiply a LocalKernel with a SimpleOperator.
 """
-*(left::LocalKernel, right::SimpleOperator) = make_similar(right, matrix(left) * matrix(right))
+*(left::LocalKernel, right::SimpleOperator) = make_similar(right, evaluate(compression(right), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     *(left::SimpleOperator, right::LocalKernel)
 
 Multiply a SimpleOperator with a LocalKernel.
 """
-*(left::SimpleOperator, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
+*(left::SimpleOperator, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     adjoint(op::LocalKernel)

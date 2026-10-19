@@ -18,6 +18,8 @@ using TestItems
 
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step, compression, make_similar
 import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!
+import ..NonEquilibriumGreenFunction: op_add, op_sub, op_scale, op_mul, op_adjoint, evaluate, CompressedLeaf
+import ..NonEquilibriumGreenFunction: SolveNode, DirectSolve, backend
 
 import Base: +, -, *, ==, adjoint, step, getindex, size, sum, prod
 import LinearAlgebra: norm, adjoint

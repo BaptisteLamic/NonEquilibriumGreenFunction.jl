@@ -31,6 +31,10 @@ include("utils.jl")
 include("quadrature.jl")
 include("discretizations.jl")
 
+include("backend_interface.jl")
+include("hss_backend.jl")
+include("backend_interface_tests.jl")
+
 include("Kernels.jl")
 using .Kernels
 
@@ -39,9 +43,6 @@ using .Physics
 include("test_compression_interface.jl")
 
 include("AdaptiveRichardson.jl")
-include("backend_interface.jl")
-include("hss_backend.jl")
-include("backend_interface_tests.jl")
 
 export Kernels, Physics
 export singular_weights

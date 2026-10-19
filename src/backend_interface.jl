@@ -95,6 +95,26 @@ The scalar type the backend works in: drives `scalartype` and the
 """
 function working_eltype end
 
+"""
+    MatrixFamilyBackend{T} <: AbstractCompressionBackend
+
+Reference backend for any matrix family built on `AbstractMatrix` with
+the standard Base operations (dense `Matrix`, HSS, GPU-style arrays
+whose family implements Base ops). It is the bridge for the legacy
+compressions: `NONCompression` and any `AbstractCompression` that has
+not been ported to a dedicated backend evaluate through it. The
+primitives are the generic `AbstractMatrix` methods defined below, so
+the family stays in-family (dense+dense stays dense, HSS+HSS stays HSS);
+structured backends (`HssMatricesBackend`) specialize the same
+generic functions for in-family wins (e.g. balanced chains).
+"""
+struct MatrixFamilyBackend{T<:Number} <: AbstractCompressionBackend end
+
+MatrixFamilyBackend(::Type{T}=ComplexF64) where {T<:Number} = MatrixFamilyBackend{T}()
+
+working_eltype(::MatrixFamilyBackend{T}) where {T<:Number} = T
+
+
 # ---------------------------------------------------------------------------
 # Compressed operators (opaque; NOT an AbstractMatrix)
 # ---------------------------------------------------------------------------
@@ -200,6 +220,33 @@ fixed and optimizes coefficients (backend-owned iteration). Replaces
 function solve end
 
 # ---------------------------------------------------------------------------
+# Generic matrix-family primitives (reference implementations)
+#
+# In-family for every AbstractMatrix-based family: operations between two
+# members of the family produce a member of the family. These serve the
+# MatrixFamilyBackend directly and act as the reference that structured
+# backends specialize (e.g. HssMatricesBackend specializes op_mul for its
+# balanced-chain evaluator). This is NOT a dense fallback: nothing ever
+# converts between families.
+# ---------------------------------------------------------------------------
+
+op_add(A::AbstractMatrix, B::AbstractMatrix) = A + B
+op_sub(A::AbstractMatrix, B::AbstractMatrix) = A - B
+op_scale(alpha::Number, A::AbstractMatrix) = alpha * A
+op_mul(A::AbstractMatrix, B::AbstractMatrix) = A * B
+op_adjoint(A::AbstractMatrix) = adjoint(A)
+op_norm(A::AbstractMatrix) = norm(A)
+apply(A::AbstractMatrix, x) = A * x
+structure(A::AbstractMatrix) = nothing
+
+function solve(b::AbstractCompressionBackend, left::AbstractMatrix, right::AbstractMatrix;
+    strategy::AbstractSolveStrategy=DirectSolve())
+    strategy isa DirectSolve || throw(ArgumentError(
+        "strategy $(typeof(strategy)) not supported by backend $(typeof(b))"))
+    return ldiv(left, right)
+end
+
+# ---------------------------------------------------------------------------
 # Expression DAG (numeric tier; semantic tier nodes are added in migration
 # step 5 - quadrature/dressing/integration stay package-owned)
 # ---------------------------------------------------------------------------
@@ -266,3 +313,37 @@ function evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
     throw(ArgumentError("unsupported node type: $(typeof(ex))"))
 end
 evaluate(b::AbstractCompressionBackend, m::AbstractCompressedOperator) = m
+
+# ---------------------------------------------------------------------------
+# Legacy compression bridge: every AbstractCompression evaluates through a
+# backend (MatrixFamilyBackend by default). This is the single evaluation
+# entry point of the package: kernel algebra, solver and observables all
+# build DAGs and call evaluate.
+# ---------------------------------------------------------------------------
+
+"""
+    backend(c::AbstractCompression)
+
+The backend a legacy compression evaluates through. Defaults to
+`MatrixFamilyBackend` (the generic AbstractMatrix family reference
+backend); structured compressions override this to return their
+dedicated backend.
+"""
+backend(::AbstractCompression) = MatrixFamilyBackend{ComplexF64}()
+
+"""
+    evaluate(c::AbstractCompression, ex::AbstractOpNode)
+
+Evaluate a DAG with the backend of a legacy compression. This is how
+existing `AbstractCompression` objects (dense, HSS, JLArrays, ...) reach
+the DAG world without changes at call sites.
+"""
+evaluate(c::AbstractCompression, ex::AbstractOpNode) = evaluate(backend(c), ex)
+
+"""
+    evaluate(c::AbstractCompression, m::AbstractMatrix)
+
+Single-leaf convenience: evaluate a compressed operator in the
+compression's family.
+"""
+evaluate(c::AbstractCompression, m::AbstractMatrix) = m

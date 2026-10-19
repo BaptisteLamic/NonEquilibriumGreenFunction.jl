@@ -247,7 +247,7 @@ end
 Return the adjoint of a UniformDiscretisation.
 """
 function adjoint(dis::UniformDiscretisation)
-    return make_similar(dis, dis |> matrix |> adjoint)
+    return make_similar(dis, evaluate(compression(dis), op_adjoint(CompressedLeaf(matrix(dis)))))
 end
 
 """
@@ -255,4 +255,4 @@ end
 
 Negate a discretization's matrix.
 """
--(discretization::AbstractDiscretisation) = make_similar(discretization, -matrix(discretization))
+-(discretization::AbstractDiscretisation) = make_similar(discretization, evaluate(compression(discretization), op_scale(-1, CompressedLeaf(matrix(discretization)))))

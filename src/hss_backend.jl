@@ -35,14 +35,40 @@ working_eltype(::HssMatricesBackend{T}) where {T} = T
 # ---------------------------------------------------------------------------
 
 op_add(A::HssMatrix, B::HssMatrix) = A + B
-op_sub(A::HssMatrix, B::HssMatrix) = A + (-1) * B
-op_scale(alpha::Number, A::HssMatrix) = alpha * A
+op_sub(A::HssMatrix, B::HssMatrix) = A + op_scale(-1, B)
+# promote through a scalar-mul that widens the matrix eltype when the
+# scalar is more general (HssMatrices' own `alpha * A` cannot promote:
+# Complex{Int} * HssMatrix{Float64} throws)
+op_scale(alpha::Number, A::HssMatrix) = _scale_promote(alpha, A)
+
+function _scale_promote(alpha::Number, A::HssMatrix{T}) where {T}
+    R = typeof(zero(T) * alpha)
+    R == T && return alpha * A
+    return alpha * _widen_eltype(R, A)
+end
+
+# widen an HssMatrix to eltype R by rebuilding the tree with converted
+# coefficient matrices (HssMatrices has no convert across eltypes)
+function _widen_eltype(::Type{R}, m::HssMatrix{T}) where {R,T}
+    if m.leafnode
+        return HssMatrix(convert(Matrix{R}, m.D), convert(Matrix{R}, m.U), convert(Matrix{R}, m.V), m.rootnode)
+    end
+    return HssMatrix(_widen_eltype(R, m.A11), _widen_eltype(R, m.A22),
+        convert(Matrix{R}, m.B12), convert(Matrix{R}, m.B21),
+        convert(Matrix{R}, m.R1), convert(Matrix{R}, m.W1),
+        convert(Matrix{R}, m.R2), convert(Matrix{R}, m.W2), m.rootnode)
+end
 op_adjoint(A::HssMatrix) = adjoint(A)
 op_norm(A::HssMatrix) = computeMatrixNorm(A)
 apply(A::HssMatrix, x::AbstractMatrix) = A * x
 
-function op_mul(A::HssMatrix, B::HssMatrix)
-    return A * B
+function op_mul(A::HssMatrix{TA}, B::HssMatrix{TB}) where {TA,TB}
+    # widen to the promoted eltype: HssMatrices cannot multiply across
+    # eltypes (e.g. ComplexF64 x Float64)
+    R = promote_type(TA, TB)
+    Aw = TA == R ? A : _widen_eltype(R, A)
+    Bw = TB == R ? B : _widen_eltype(R, B)
+    return Aw * Bw
 end
 
 """
@@ -139,3 +165,13 @@ end
 # ---------------------------------------------------------------------------
 
 evaluate(b::AbstractCompressionBackend, m::HssMatrix) = m
+
+# ---------------------------------------------------------------------------
+# Legacy bridge: HssCompression evaluates through HssMatricesBackend, so
+# all kernel algebra built on HSS matrices gets the optimized (balanced
+# chain) DAG evaluation.
+# ---------------------------------------------------------------------------
+
+function backend(c::HssCompression)
+    return HssMatricesBackend{ComplexF64}(c.atol, c.rtol, c.kest, c.leafsize)
+end
