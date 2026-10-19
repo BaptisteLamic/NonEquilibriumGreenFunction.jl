@@ -39,6 +39,8 @@ using .Physics
 include("test_compression_interface.jl")
 
 include("AdaptiveRichardson.jl")
+include("backend_interface.jl")
+include("backend_interface_tests.jl")
 
 export Kernels, Physics
 export singular_weights
