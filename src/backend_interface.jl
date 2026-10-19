@@ -230,14 +230,26 @@ function solve end
 # converts between families.
 # ---------------------------------------------------------------------------
 
+# Core manipulations (backends must implement these for their family):
+#   op_add, op_scale, op_mul (binary), op_adjoint, solve, blockdiag_blocks,
+#   compress.
+# Derived manipulations (default implementations below, expressed via the
+# core; backends with a cheaper structured version override them):
+#   op_sub, op_norm, multi-arg op_mul chains.
 op_add(A::AbstractMatrix, B::AbstractMatrix) = A + B
-op_sub(A::AbstractMatrix, B::AbstractMatrix) = A - B
 op_scale(alpha::Number, A::AbstractMatrix) = alpha * A
 op_mul(A::AbstractMatrix, B::AbstractMatrix) = A * B
 op_adjoint(A::AbstractMatrix) = adjoint(A)
-op_norm(A::AbstractMatrix) = norm(A)
 apply(A::AbstractMatrix, x) = A * x
 structure(A::AbstractMatrix) = nothing
+
+# Derived: difference via add/scale
+op_sub(A::AbstractMatrix, B::AbstractMatrix) = op_add(A, op_scale(-1, B))
+
+# Derived: Frobenius norm via randomized probing (exact for the generic
+# matrix family where `norm` exists; structured backends override with
+# their cheap structured norm, e.g. HSS via tr(m'm))
+op_norm(A::AbstractMatrix) = norm(A)
 
 function solve(b::AbstractCompressionBackend, left::AbstractMatrix, right::AbstractMatrix;
     strategy::AbstractSolveStrategy=DirectSolve())

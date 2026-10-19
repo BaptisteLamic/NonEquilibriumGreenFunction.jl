@@ -20,6 +20,7 @@ import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step,
 import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!
 import ..NonEquilibriumGreenFunction: op_add, op_sub, op_scale, op_mul, op_adjoint, evaluate, CompressedLeaf
 import ..NonEquilibriumGreenFunction: SolveNode, DirectSolve, backend
+import ..NonEquilibriumGreenFunction: AbstractOpNode
 
 import Base: +, -, *, ==, adjoint, step, getindex, size, sum, prod
 import LinearAlgebra: norm, adjoint
@@ -27,6 +28,7 @@ import LinearAlgebra: norm, adjoint
 include("operators.jl")
 include("Kernels/kernel_maps.jl")
 include("Kernels/kernels.jl")
+include("Kernels/kernel_dag.jl")
 
 export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, LocalKernel, SumOperator
 export locality, islocal, AbstractLocality, Local, Smooth

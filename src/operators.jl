@@ -418,6 +418,13 @@ Returns the compression method of a SumOperator (both components must have the s
 # Throws
 AssertionError if left and right operators have different compression methods.
 """
+axis(op::SumOperator) = axis(op.left)
+step(op::SumOperator) = step(op.left)
+blocksize(op::SumOperator) = blocksize(op.left)
+scalartype(op::SumOperator) = promote_type(scalartype(op.left), scalartype(op.right))
+quadrature(op::SumOperator) = quadrature(op.left)
+discretization(op::SumOperator) = discretization(op.left)
+matrix(op::SumOperator) = matrix(materialize(op))
 function compression(op::SumOperator)
     cl = compression(op.left)
     cr = compression(op.right)

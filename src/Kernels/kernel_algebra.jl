@@ -20,19 +20,27 @@ function -(left::D, right::D) where {D<:AbstractDiscretisation}
     make_similar(left, _ev(left, op_sub(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 end
 
+# Kernel product is a lazy kernel-level DAG construct: the physics
+# (causality of the result, quadrature) is fixed here, the concrete
+# matrix manipulation is deferred to `lower` + `materialize` (see
+# kernel_dag.jl). Laziness matters: the decomposition of the *next*
+# product depends on this product's causality, and a whole chain lowers
+# to ONE concrete DAG that the backend can evaluate as a single
+# (possibly fused) graph.
 function *(left::Kernel, right::Kernel)
+    @assert quadrature(left) == quadrature(right) "kernel product requires matching quadrature rules"
     prod_causality = causality_of_prod(left |> causality, right |> causality)
-    @assert quadrature(left) == quadrature(right) "kernel product requires matching quadrature rules, got $(typeof(quadrature(left))) × $(typeof(quadrature(right)))"
-    result_dis = prod(
-        left |> causality,
-        right |> causality,
-        left |> discretization,
-        right |> discretization
-    )
-    return Kernel(
-        result_dis,
-        prod_causality
-    )
+    return KernelProd(left, right, quadrature(left), prod_causality)
+end
+
+# Local fast paths stay concrete (exact block-diagonal products, no
+# dressing): they are their own lowering. Local is the algebra unit, so
+# the product keeps the non-Local operand's causality.
+function *(left::Kernel, right::LocalKernel)
+    return materialize(KernelProd(left, right, quadrature(left), causality(left)))
+end
+function *(left::LocalKernel, right::Kernel)
+    return materialize(KernelProd(left, right, quadrature(right), causality(right)))
 end
 
 function _dressing(g::UniformDiscretisation, d::AbstractArray{T,3}) where {T}

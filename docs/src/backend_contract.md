@@ -10,43 +10,71 @@ documented in [Custom compression](custom_compression.md).
 
 ## Overview
 
-The DAG is the **only evaluation path of the package**. Every numeric
-operation - kernel algebra (`+`, `-`, `*`, scalar scaling, `adjoint`),
-`solve_dyson`, the local-kernel fast paths - builds an expression DAG
-and evaluates it with the compression's backend:
+Evaluation has **three layers**, two of which are DAGs:
 
 ```
-Kernel `*`, `+`, `-`, adjoint, solve_dyson        (user-facing, semantic tier:
-        |                                         quadrature weighting, dressing,
-        |                                         causality - package-owned)
-        v
-op_add / op_sub / op_scale / op_mul / op_adjoint / SolveNode   (numeric tier)
+Kernel-level DAG   (physics constructs, lazy - package-owned)
+    KernelProd nodes: kernel `*`, adjoint; traits (causality, locality,
+    blocksize, quadrature) computed at construction
         |
-        |  evaluate(cpr, ex)      default in-family interpreter, or a backend
-        v                          override (HSS: balanced chains)
+        |  lower(op)              the decomposition pass: emits concrete
+        v                        DAG nodes for exactly the operations the
+Concrete DAG       (matrix manipulation - the backend contract)
+    op_add / op_sub / op_scale / op_mul / op_adjoint / SolveNode
+        |
+        |  evaluate(cpr, ex)      default in-family interpreter, or a
+        v                        backend override (HSS: balanced chains)
 AbstractCompressedOperator
 ```
 
-Two rules govern the numeric tier:
+The split is deliberate: **the backend DAG contains only concrete matrix
+manipulation**; physics (quadrature weighting, dressing, edge
+corrections, causality) lives in the kernel-level DAG and the lowering
+pass, which are package-owned. Backends never see physics.
 
-1. **Everything is in-family.** Operations on compressed operators of a
+### Kernel products are lazy constructs
+
+`A * B` between kernels returns a lazy `KernelProd` node - nothing is
+computed. The whole chain `G_R * Σ_K * G_R'` is a tree of `KernelProd`
+nodes carrying its traits. It materializes only at a **forcing point**:
+`matrix(op)`, `solve_dyson`, the observables (`same_time`,
+`keldysh_trace`), `norm`, or `compress!`. At that point the tree
+lowers to ONE concrete DAG (all dressings, weights and corrections
+included) and the backend evaluates it as a single graph - so a backend
+with a fused `evaluate` sees the whole weighted chain, not per-product
+fragments.
+
+Products with `LocalKernel` operands stay concrete (exact block-diagonal
+fast paths), and `SumOperator`s containing lazy parts materialize their
+parts through the same lowering.
+
+Two rules govern the concrete DAG:
+
+1. **Everything is in-family.** Operations between operators of a
    backend's family produce operators of the same family. There is no
    dense fallback; an unsupported operation is a `MethodError`.
 2. **The backend owns configuration.** Working eltype, device and
    threading live on the backend (`AbstractCompressionBackend`), never
    on the stored matrices.
 
-### Semantic vs numeric tier in practice
+### Core and derived manipulations
 
-Kernel products are **not** pure matrix products: each pairwise product
-applies the quadrature rule's weighting (semantic tier, package-owned).
-A chain `G_R * Σ_K * G_R'` at the kernel level therefore applies the
-trapezoid dressing at *each* product - writing it as a raw variadic
-`op_mul` over the matrices would compute something different (no
-dressing). Use kernel `*` for physics; use the explicit `op_mul` DAG
-nodes only for raw matrix chains inside one family. Since the kernel
-operators evaluate through the DAG internally, the DAG remains the only
-evaluation path in both cases.
+Backends implement a small **core**; other operations have default
+implementations expressed through the core (staying in-family by
+construction) and exist only as override points for backends with
+cheaper structured versions:
+
+| Core (implement) | Derived (default implementation) |
+|---|---|
+| `op_add`, `op_scale`, `op_mul` (binary), `op_adjoint`, `solve`, `blockdiag_blocks`, `compress` | `op_sub` (= `op_add(a, op_scale(-1, b))`), multi-arg `op_mul` chains (left fold), `op_norm`, `apply` |
+
+### The `evaluate` override is optional
+
+Backends may expose their own DAG evaluation (`evaluate(b, ex)`) for
+fusion/reassociation/joint optimization; otherwise the default
+in-family interpreter is used. `HssMatricesBackend` overrides it with
+balanced-chain `op_mul` evaluation; `MatrixFamilyBackend` uses the
+default.
 
 ### Legacy compressions evaluate through backends
 
@@ -105,24 +133,26 @@ tolerance. The default interpreter:
 Backends may override `evaluate` to reassociate or fuse (any order is
 valid if the result matches the left fold within tolerance).
 
-## The mandatory primitive set
+## The primitive set
 
-A backend is an `AbstractCompressionBackend` subtype implementing:
+A backend is an `AbstractCompressionBackend` subtype implementing the
+**core** manipulations; derived manipulations have in-family default
+implementations and are override points:
 
-| Primitive | Meaning |
-|---|---|
-| `working_eltype(b)` | the scalar type assembly and solve work in |
-| `op_add(a, b)` | in-family sum |
-| `op_sub(a, b)` | in-family difference |
-| `op_scale(alpha, a)` | in-family scalar scaling |
-| `op_mul(a, b)` | in-family binary product (the variadic chain reduces to it unless the backend overrides `evaluate`) |
-| `op_adjoint(a)` | in-family adjoint |
-| `op_norm(a)` | in-family norm (mandatory) |
-| `apply(a, x)` | operator action on a dense block of vectors |
-| `structure(a)` | the structure of `a` (`nothing` if not exposed) |
-| `empty_like(a)` | zero-coefficient operator with the same structure |
-| `solve(b, left, right; strategy)` | in-family solve (see strategies) |
-| `blockdiag_blocks(a, bs)` | `bs×bs×N` equal-time blocks (the observables/solver boundary) |
+| Primitive | Core/derived | Meaning |
+|---|---|---|
+| `working_eltype(b)` | core | the scalar type assembly and solve work in |
+| `op_add(a, b)` | core | in-family sum |
+| `op_scale(alpha, a)` | core | in-family scalar scaling |
+| `op_mul(a, b)` | core | in-family binary product (variadic chains left-fold to it unless the backend overrides `evaluate`) |
+| `op_adjoint(a)` | core | in-family adjoint |
+| `solve(b, left, right; strategy)` | core | in-family solve (see strategies) |
+| `blockdiag_blocks(a, bs)` | core | `bs×bs×N` equal-time blocks (the observables/solver boundary) |
+| `op_sub(a, b)` | derived | `op_add(a, op_scale(-1, b))` |
+| `op_norm(a)` | derived | norm (generic families use `norm`; structured backends override with the cheap structured version, e.g. HSS `tr(m'm)`) |
+| `apply(a, x)` | derived | operator action |
+| `structure(a)` | optional | the structure of `a` (`nothing` default) |
+| `empty_like(a)` | optional | zero-coefficient operator with the same structure |
 
 Optional: `evaluate(b, ex)` (whole-graph optimization).
 
