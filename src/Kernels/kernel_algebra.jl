@@ -6,15 +6,10 @@
 _ev(dis, ex) = evaluate(compression(dis), ex)
 _ev(c::AbstractCompression, ex) = evaluate(c, ex)
 
-function +(left::Kernel, right::Kernel)
-    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
-end
+# Kernel +/- are owned by the kernel-level DAG: the generic AbstractOperator methods build SumOperator nodes (the DAG's sum construct), lowered+evaluated at the forcing points.
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
     make_similar(left, _ev(left, op_add(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
-end
-function -(left::Kernel, right::Kernel)
-    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
 end
 function -(left::D, right::D) where {D<:AbstractDiscretisation}
     make_similar(left, _ev(left, op_sub(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))

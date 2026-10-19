@@ -32,21 +32,33 @@ manipulation**; physics (quadrature weighting, dressing, edge
 corrections, causality) lives in the kernel-level DAG and the lowering
 pass, which are package-owned. Backends never see physics.
 
-### Kernel products are lazy constructs
+### The whole computation lives in the kernel-level DAG
 
-`A * B` between kernels returns a lazy `KernelProd` node - nothing is
-computed. The whole chain `G_R * Σ_K * G_R'` is a tree of `KernelProd`
-nodes carrying its traits. It materializes only at a **forcing point**:
-`matrix(op)`, `solve_dyson`, the observables (`same_time`,
-`keldysh_trace`), `norm`, or `compress!`. At that point the tree
-lowers to ONE concrete DAG (all dressings, weights and corrections
+Every kernel-level operation is a lazy construct - products, sums,
+differences, scalar scaling, adjoints:
+
+- `A * B` returns a lazy `KernelProd` node carrying its traits
+  (causality, locality, blocksize, quadrature);
+- `A + B` / `A - B` return `SumOperator` nodes - the DAG's sum
+  construct - with `I + K` supported via `UniformScaling` children;
+- `λ * op`, `adjoint(op)` distribute onto the tree without evaluating.
+
+Nothing is computed at construction. The entire expression - e.g. all of
+`lead_current`'s `(1/2)((Σ_R G_R)' - Σ_R G_R) + G_R Σ_K + ...` - is a
+lazy tree. It materializes only at a **forcing point**: `matrix(op)`,
+`solve_dyson`, the observables (`same_time`, `keldysh_trace`), `norm`,
+`==`, or `compress!`. At that point the whole tree lowers to ONE
+concrete DAG (all dressings, weights, edge corrections and sums
 included) and the backend evaluates it as a single graph - so a backend
-with a fused `evaluate` sees the whole weighted chain, not per-product
+with a fused `evaluate` sees the entire computation, not per-operation
 fragments.
 
+Equality of lazy operators is **by value** (the materialized matrices),
+consistent with `Kernel` equality: different trees representing the same
+operator compare equal.
+
 Products with `LocalKernel` operands stay concrete (exact block-diagonal
-fast paths), and `SumOperator`s containing lazy parts materialize their
-parts through the same lowering.
+fast paths); these are their own lowering and never reach the lazy tree.
 
 Two rules govern the concrete DAG:
 

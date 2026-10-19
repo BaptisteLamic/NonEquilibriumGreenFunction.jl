@@ -341,7 +341,10 @@ locality(op::SumOperator) = locality_of_sum(locality(op.left), locality(op.right
 
 Compare two SumOperators for equality based on their left and right components.
 """
-==(A::SumOperator,B::SumOperator) = A.left == B.left && A.right == B.right
+# SumOperator equality is by value (like Kernel equality): lazy DAG nodes
+# carrying different trees may represent the same operator, so compare
+# the materialized matrices.
+==(A::SumOperator, B::SumOperator) = matrix(A) == matrix(B)
 
 """
     _discretize_uniformScaling(discretization::UniformDiscretisation, I::UniformScaling)
