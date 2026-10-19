@@ -1,10 +1,17 @@
 # Backend Interface Design (draft)
 
-Status: proposal. This document specifies the rework of the compression
-system into a **backend interface** in preparation for a new HSS backend
-that performs compression on GPU and CPU, runs in mixed precision, is
-multithreaded, and supports structure-known / coefficient-optimized
-solving strategies.
+Status: proposal, first stage implemented. This document specifies the
+rework of the compression system into a **backend interface** in
+preparation for a new HSS backend that performs compression on GPU and
+CPU, runs in mixed precision, is multithreaded, and supports
+structure-known / coefficient-optimized solving strategies.
+
+The first stage is merged: the numeric-tier skeleton
+(`src/backend_interface.jl`) defines the types, the mandatory primitive
+set, the thread-budget facility and the default DAG interpreter, and the
+reference HSS backend (`src/hss_backend.jl`) implements the contract with
+an optimized whole-graph `evaluate`. See the *Backend contract* page for
+the user-facing reference of what is implemented today.
 
 ## Motivation
 
@@ -136,6 +143,27 @@ Optional override:
 | Override | Meaning |
 |---|---|
 | `evaluate(b, ex)` | whole-graph evaluation (fusion, reassociation, joint coefficient optimization, per-node precision) |
+
+### The reference HSS implementation
+
+`HssMatricesBackend` (`src/hss_backend.jl`) is the reference
+implementation of the contract and the first optimized DAG consumer:
+
+- all primitives map to native in-family HssMatrices operations (`A + B`,
+  `A * B`, `adjoint`, `alpha * A`, the structured Frobenius norm, the
+  ULV solve for `DirectSolve`),
+- `structure(m)` returns the `HssMatrix` itself (its cluster tree and
+  rank profile are the structure),
+- `empty_like(m)` zeroes the coefficients (`D`, `B12`, `B21`) while
+  keeping the full generator structure (`U`, `V`, `R`, `W` bases) - the
+  seed for coefficient optimization with fixed structure,
+- `evaluate` overrides the default interpreter with **balanced-chain**
+  `op_mul` evaluation: a chain `A*B*C*D` is evaluated as `(A*B)*(C*D)`
+  instead of the left fold `((A*B)*C)*D`. This halves the depth of
+  sequential HSS products (`log2(k)` vs `k-1` steps), which bounds
+  intermediate rank growth and accumulates less compression error per
+  step. All other nodes fall through to the default interpreter, which is
+  exact for the family.
 
 Precision configuration lives on the backend:
 

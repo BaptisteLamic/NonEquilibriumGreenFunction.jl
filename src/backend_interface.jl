@@ -207,9 +207,9 @@ function solve end
 """Numeric DAG node. Flat and acyclic over compressed leaves."""
 abstract type AbstractOpNode end
 
-"""Leaf: an already-compressed operator."""
-struct CompressedLeaf <: AbstractOpNode
-    op::AbstractCompressedOperator
+"""Leaf: an already-compressed operator of the backend's family."""
+struct CompressedLeaf{O} <: AbstractOpNode
+    op::O
 end
 
 struct AddNode <: AbstractOpNode

@@ -46,6 +46,37 @@ adjoint
 norm
 ```
 
+## Backend interface and expression DAG
+
+The numeric-tier backend contract and the lazy expression DAG. See the
+[Backend contract](backend_contract.md) page for the full reference.
+
+```@docs
+AbstractCompressionBackend
+AbstractCompressedOperator
+HssMatricesBackend
+working_eltype
+structure
+empty_like
+op_add
+op_sub
+op_scale
+op_mul
+op_adjoint
+op_norm
+apply
+solve
+DirectSolve
+StructureOptimizingSolve
+CompressedLeaf
+SolveNode
+evaluate
+with_thread_budget
+current_thread_budget
+ThreadConfig
+DeviceConfig
+```
+
 ## Accessors
 
 ```@docs

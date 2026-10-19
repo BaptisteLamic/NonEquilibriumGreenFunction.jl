@@ -40,6 +40,7 @@ include("test_compression_interface.jl")
 
 include("AdaptiveRichardson.jl")
 include("backend_interface.jl")
+include("hss_backend.jl")
 include("backend_interface_tests.jl")
 
 export Kernels, Physics
@@ -66,6 +67,12 @@ export norm
 export BlockCirculantMatrix
 export NONCompression, HssCompression
 export AbstractCompression, ldiv, to_cpu, same_time_blocks, recompress_inplace!
+export AbstractCompressionBackend, AbstractCompressedOperator, AbstractOpNode
+export HssMatricesBackend
+export working_eltype, structure, empty_like
+export op_add, op_sub, op_scale, op_mul, op_adjoint, op_norm, apply, solve
+export CompressedLeaf, SolveNode, DirectSolve, StructureOptimizingSolve, evaluate
+export with_thread_budget, current_thread_budget, ThreadConfig, DeviceConfig
 export test_compression_interface
 export pauli
 export matrix

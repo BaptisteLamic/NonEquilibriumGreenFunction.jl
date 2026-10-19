@@ -54,7 +54,7 @@ Pkg.add("https://github.com/BaptisteLamic/NonEquilibriumGreenFunction.jl")
 ## Manual Outline
 
 ```@contents
-Pages = ["userguide.md", "generated/mqdm.md", "generated/sqds.md", "api.md", "backend_interface_design.md", "custom_compression.md"]
+Pages = ["userguide.md", "generated/mqdm.md", "generated/sqds.md", "api.md", "backend_contract.md", "backend_interface_design.md", "custom_compression.md"]
 Depth = 2
 ```
 

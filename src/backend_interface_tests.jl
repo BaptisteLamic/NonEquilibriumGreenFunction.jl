@@ -59,3 +59,69 @@ end
     @test NEGF.apply(A, ones(4)) ≈ A.m * ones(4)
     @test NEGF.structure(A) === nothing
 end
+
+@testitem "HSS backend: primitives and balanced-chain evaluation" begin
+    import NonEquilibriumGreenFunction as NEGF
+    import NonEquilibriumGreenFunction: HssMatricesBackend, CompressedLeaf, DirectSolve
+    using NonEquilibriumGreenFunction: HssMatricesBackend
+    using HssMatrices
+    using LinearAlgebra
+
+    b = HssMatricesBackend(atol=1e-12, rtol=1e-12, kest=20, leafsize=16)
+    @test NEGF.working_eltype(b) == ComplexF64
+
+    n = 64
+    A = hss(Matrix(randn(n, n) + im * randn(n, n)), atol=1e-12, rtol=1e-12, leafsize=16)
+    B = hss(Matrix(randn(n, n) + im * randn(n, n)), atol=1e-12, rtol=1e-12, leafsize=16)
+    C = hss(Matrix(randn(n, n) + im * randn(n, n)), atol=1e-12, rtol=1e-12, leafsize=16)
+    D = hss(Matrix(randn(n, n) + im * randn(n, n)), atol=1e-12, rtol=1e-12, leafsize=16)
+    ref(A) = Matrix(A)
+
+    # primitives stay in-family
+    S = NEGF.op_add(A, B)
+    @test S isa HssMatrix
+    @test ref(S) ≈ ref(A) + ref(B)
+    Df = NEGF.op_sub(A, B)
+    @test ref(Df) ≈ ref(A) - ref(B)
+    Sc = NEGF.op_scale(2.0 + 0im, A)
+    @test ref(Sc) ≈ 2 .* ref(A)
+    Ad = NEGF.op_adjoint(A)
+    @test ref(Ad) ≈ ref(A)'
+    @test NEGF.op_norm(A) ≈ norm(ref(A)) rtol=1e-6
+    x = randn(n, 3) .+ im .* randn(n, 3)
+    @test Matrix(NEGF.apply(A, x)) ≈ ref(A) * x
+
+    # structure / empty_like
+    @test NEGF.structure(A) === A
+    Z = NEGF.empty_like(A)
+    @test Z isa HssMatrix
+    @test norm(Matrix(Z)) == 0
+
+    # balanced-chain evaluation of a variadic op_mul
+    ex = NEGF.op_mul(CompressedLeaf(A), CompressedLeaf(B), CompressedLeaf(C), CompressedLeaf(D))
+    r = NEGF.evaluate(b, ex)
+    @test r isa HssMatrix
+    @test ref(r) ≈ ref(A) * ref(B) * ref(C) * ref(D) atol=1e-8
+
+    # balanced order must match the left fold (default interpreter) within tolerance
+    r_left = foldl(NEGF.op_mul, [A, B, C, D])
+    @test ref(r) ≈ ref(r_left) atol=1e-8
+
+    # chain of length 3: (A*B)*C balanced as (A*B)*C or A*(B*C) - result equal either way
+    ex3 = NEGF.op_mul(CompressedLeaf(A), CompressedLeaf(B), CompressedLeaf(C))
+    @test ref(NEGF.evaluate(b, ex3)) ≈ ref(A) * ref(B) * ref(C) atol=1e-8
+
+    # mixed graph: add/scale/adjoint + solve
+    ex2 = NEGF.op_sub(NEGF.op_add(CompressedLeaf(A), NEGF.op_scale(2.0 + 0im, CompressedLeaf(B))), CompressedLeaf(A))
+    @test ref(NEGF.evaluate(b, ex2)) ≈ 2 .* ref(B) atol=1e-8
+    # solve: use a compressible operator (smooth kernel) - random dense
+    # matrices do not compress and HSS solves of them are meaningless
+    M = [exp(-abs(i - j) / 8.0) * (1.0 + 1im) for i in 1:n, j in 1:n]
+    As = hss(Matrix(M), atol=1e-12, rtol=1e-12, leafsize=16)
+    R = Matrix(randn(n, n) .+ im .* randn(n, n))
+    Bs = hss(copy(R), atol=1e-12, rtol=1e-12, leafsize=16)
+    exs = NEGF.SolveNode(b, CompressedLeaf(As), CompressedLeaf(Bs), DirectSolve())
+    X = ref(NEGF.evaluate(b, exs))
+    Xref = ref(As) \ R
+    @test norm(X - Xref) / norm(Xref) < 1e-6
+end
