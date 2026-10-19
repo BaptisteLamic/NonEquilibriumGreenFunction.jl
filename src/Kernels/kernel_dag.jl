@@ -30,12 +30,18 @@ lowering pass (`lower`), which emits backend-DAG nodes (dressing,
 quadrature-weighted products, edge corrections) and is triggered at the
 forcing points (`matrix`, `solve_dyson`, observables).
 """
-struct KernelProd{L<:AbstractOperator,R<:AbstractOperator,Q<:AbstractQuadrature,C<:AbstractCausality} <: AbstractLazyOperator
+mutable struct KernelProd{L<:AbstractOperator,R<:AbstractOperator,Q<:AbstractQuadrature,C<:AbstractCausality} <: AbstractLazyOperator
     left::L
     right::R
     quadrature::Q
     causality::C
+    # materialization cache: a DAG is evaluated at most once. Shared
+    # child nodes are cached once for every parent tree.
+    materialized::Any
 end
+
+KernelProd(left::L, right::R, quadrature::Q, causality::C) where {L,R,Q,C} =
+    KernelProd{L,R,Q,C}(left, right, quadrature, causality, nothing)
 
 causality(op::KernelProd) = op.causality
 locality(op::KernelProd) = locality_of_prod(locality(op.left), locality(op.right))
@@ -182,11 +188,14 @@ evaluate it in the compression family. Returns a concrete `Kernel` with
 the lazily computed traits.
 """
 function materialize(op::AbstractLazyOperator)
+    isdefined(op, :materialized) && op.materialized !== nothing && return op.materialized::Kernel
     cpr = compression(op)
     m = evaluate(cpr, lower(op))
     dis = UniformDiscretisation(axis(op), m, blocksize(op), cpr;
         quadrature=quadrature(op))
-    return Kernel(dis, causality(op))
+    k = Kernel(dis, causality(op))
+    op.materialized = k
+    return k
 end
 
 matrix(op::AbstractLazyOperator) = matrix(materialize(op))
@@ -250,8 +259,12 @@ function _sum_context(op::SumOperator)
         op.left isa UniformScaling ? op.right : op.left
     return o
 end
-_sum_child(op::AbstractLazyOperator, ctx) = lower(op)
-_sum_child(op::SumOperator, ctx) = lower(op)
+# Children materialize through their caches: a node is evaluated at most
+# once, and a shared child is reused (as a leaf) by every parent. The
+# fusion boundary is therefore the node boundary - each node's own
+# lowering is still one fused concrete DAG.
+_sum_child(op::AbstractLazyOperator, ctx) = CompressedLeaf(matrix(materialize(op)))
+_sum_child(op::SumOperator, ctx) = CompressedLeaf(matrix(materialize(op)))
 _sum_child(op::SimpleOperator, ctx) = CompressedLeaf(matrix(op))
 function _sum_child(op::UniformScaling, ctx)
     bs = blocksize(ctx)
@@ -267,9 +280,12 @@ function _sum_child(op::UniformScaling, ctx)
 end
 
 function materialize(op::SumOperator)
+    op.materialized !== nothing && return op.materialized::Kernel
     cpr = compression(_sum_context(op))
     m = evaluate(cpr, lower(op))
     ctx = _sum_context(op)
     dis = UniformDiscretisation(axis(ctx), m, blocksize(ctx), cpr; quadrature=quadrature(ctx))
-    return Kernel(dis, causality(op))
+    k = Kernel(dis, causality(op))
+    op.materialized = k
+    return k
 end

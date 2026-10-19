@@ -57,6 +57,24 @@ Equality of lazy operators is **by value** (the materialized matrices),
 consistent with `Kernel` equality: different trees representing the same
 operator compare equal.
 
+### A DAG is evaluated at most once (materialization cache)
+
+Every lazy node (`KernelProd`, `SumOperator`) caches its materialized
+result on the node itself. Consequences:
+
+- repeated forcing (`matrix` twice, then `same_time`, `keldysh_trace`,
+  `norm`, `==`) reuses the cached result - identical objects, zero
+  re-evaluation;
+- a child shared by several trees is evaluated once and reused as a leaf
+  by every parent (the fusion boundary is the node boundary: each
+  node's own lowering is still one fused concrete DAG);
+- a new tree built from already-evaluated children only evaluates its
+  new nodes.
+
+The cache lives on the nodes (not in global state): it is garbage
+collected with the tree, and building a fresh expression from the same
+kernels evaluates fresh.
+
 Products with `LocalKernel` operands stay concrete (exact block-diagonal
 fast paths); these are their own lowering and never reach the lazy tree.
 

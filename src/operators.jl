@@ -324,10 +324,15 @@ An operator representing the sum of two operators.
 - `left::L`: Left operator in the sum
 - `right::R`: Right operator in the sum
 """
-struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
+mutable struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
+    # materialization cache: the DAG sum node is evaluated at most once
+    materialized::Any
 end
+
+SumOperator(left::L, right::R) where {L<:AbstractOperator,R<:AbstractOperator} =
+    SumOperator{L,R}(left, right, nothing)
 
 """
     locality(op::SumOperator)

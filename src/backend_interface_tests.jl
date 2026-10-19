@@ -125,3 +125,50 @@ end
     Xref = ref(As) \ R
     @test norm(X - Xref) / norm(Xref) < 1e-6
 end
+
+@testitem "DAG evaluated at most once (materialization cache)" begin
+    import NonEquilibriumGreenFunction as NEGF
+    using NonEquilibriumGreenFunction
+    using LinearAlgebra
+
+    # counting evaluate: wraps a real compression, counts backend calls
+    struct CountingCompression <: AbstractCompression
+        inner::NONCompression
+        count::Base.RefValue{Int}
+    end
+    # bypass: evaluation goes through evaluate(c, ex)
+    function NEGF.evaluate(c::CountingCompression, ex::NEGF.AbstractOpNode)
+        c.count[] += 1
+        return NEGF.evaluate(c.inner, ex)
+    end
+    # construction interface: delegate everything else
+    (c::CountingCompression)(args...; kw...) = c.inner(args...; kw...)
+    (c::CountingCompression)(blocks::AbstractArray{T,3}) where {T} = c.inner(blocks)
+
+    cnt = Base.RefValue(0)
+    cpr = CountingCompression(NONCompression(), cnt)
+    ax = 0:0.1:1.0
+    A = RetardedKernel(ax, Stationary(τ -> ComplexF64(exp(-τ))), compression=cpr)
+    B = RetardedKernel(ax, Stationary(τ -> ComplexF64(cos(τ))), compression=cpr)
+    P = A * B
+    T = P + A
+    # force the same tree through several forcing points
+    m1 = matrix(T)
+    m2 = matrix(T)
+    st = same_time(T)
+    kt = keldysh_trace(T)
+    n1 = norm(T)
+    @test m1 === m2
+    # every node evaluated exactly once (P's product node + T's sum node)
+    @test cnt[] == 2
+    # forcing the child separately must not re-evaluate it
+    mP = matrix(P)
+    @test cnt[] == 2
+    # a NEW tree sharing the child: only the new sum node evaluates
+    T2 = P + B
+    mT2 = matrix(T2)
+    @test cnt[] == 3
+    # values still correct
+    ref = matrix(A * B) + matrix(A)
+    @test norm(m1 - ref) / norm(ref) < 1e-12
+end
