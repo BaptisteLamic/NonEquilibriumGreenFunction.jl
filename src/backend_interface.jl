@@ -16,8 +16,9 @@ parallelism at `min(config.max_threads, current_thread_budget())`.
 Defaults to `Threads.nthreads()` when no ambient budget is set.
 """
 function current_thread_budget()
-    n = get(task_local_storage, :negf_thread_budget, 0)::Int
-    return n > 0 ? n : Threads.nthreads()
+    tls = task_local_storage()
+    n = haskey(tls, :negf_thread_budget) ? tls[:negf_thread_budget] : 0
+    return (n isa Integer && n > 0) ? Int(n) : Threads.nthreads()
 end
 
 """
@@ -30,12 +31,18 @@ Callers running several backend calls concurrently (e.g. Negf.jl-style
 total parallelism.
 """
 function with_thread_budget(f::Function, n::Integer)
-    old = get(task_local_storage, :negf_thread_budget, 0)
+    tls = task_local_storage()
+    had = haskey(tls, :negf_thread_budget)
+    old = had ? tls[:negf_thread_budget] : nothing
     task_local_storage(:negf_thread_budget, Int(n))
     try
         return f()
     finally
-        task_local_storage(:negf_thread_budget, old)
+        if had
+            task_local_storage(:negf_thread_budget, old)
+        else
+            pop!(tls, :negf_thread_budget)
+        end
     end
 end
 
@@ -248,7 +255,7 @@ fusion, reassociation and joint coefficient optimization.
 """
 function evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
     ex isa CompressedLeaf && return ex.op
-    ex isa AddNode && return +(map(a -> evaluate(b, a), ex.args)...)
+    ex isa AddNode && return foldl(op_add, map(a -> evaluate(b, a), ex.args))
     ex isa ScaleNode && return op_scale(ex.alpha, evaluate(b, ex.arg))
     ex isa AdjointNode && return op_adjoint(evaluate(b, ex.arg))
     ex isa MulNode && begin
