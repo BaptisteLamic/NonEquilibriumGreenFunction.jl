@@ -235,11 +235,41 @@ _adjoint_causality(::Acausal) = Acausal()
 # sum/difference lowers to op_add/op_sub nodes evaluated in the
 # compression family (Kernel-specific +/- already produce concrete
 # Kernels; this covers SumOperators with lazy parts).
+# lowering is recursive over the whole kernel-level DAG: lazy sums lower
+# to op_add over the lowered children (NOT per-part evaluation), so the
+# backend evaluates one fused graph for the entire expression. A
+# UniformScaling child (e.g. `I + K`) lowers to a scaled identity block
+# built from the sibling's geometry.
+function lower(op::SumOperator)
+    ctx = _sum_context(op)
+    return op_add(_sum_child(op.left, ctx), _sum_child(op.right, ctx))
+end
+function _sum_context(op::SumOperator)
+    o = op.left isa SumOperator ? _sum_context(op.left) :
+        op.right isa SumOperator ? _sum_context(op.right) :
+        op.left isa UniformScaling ? op.right : op.left
+    return o
+end
+_sum_child(op::AbstractLazyOperator, ctx) = lower(op)
+_sum_child(op::SumOperator, ctx) = lower(op)
+_sum_child(op::SimpleOperator, ctx) = CompressedLeaf(matrix(op))
+function _sum_child(op::UniformScaling, ctx)
+    bs = blocksize(ctx)
+    N = length(axis(ctx))
+    T = scalartype(ctx)
+    return CompressedLeaf(op.λ * (Matrix{T}(I, bs, bs) |> m -> begin
+        M = zeros(T, bs * N, bs * N)
+        for i in 1:N
+            M[blockrange(i, bs), blockrange(i, bs)] .= m
+        end
+        M
+    end))
+end
+
 function materialize(op::SumOperator)
-    l = op.left isa AbstractLazyOperator ? materialize(op.left) : op.left
-    r = op.right isa AbstractLazyOperator ? materialize(op.right) : op.right
-    cpr = compression(l)
-    m = evaluate(cpr, op_add(CompressedLeaf(matrix(l)), CompressedLeaf(matrix(r))))
-    dis = UniformDiscretisation(axis(l), m, blocksize(l), cpr; quadrature=quadrature(l))
-    return Kernel(dis, causality_of_sum(causality(l), causality(r)))
+    cpr = compression(_sum_context(op))
+    m = evaluate(cpr, lower(op))
+    ctx = _sum_context(op)
+    dis = UniformDiscretisation(axis(ctx), m, blocksize(ctx), cpr; quadrature=quadrature(ctx))
+    return Kernel(dis, causality(op))
 end
