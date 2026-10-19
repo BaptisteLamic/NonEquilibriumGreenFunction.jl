@@ -75,6 +75,46 @@ The cache lives on the nodes (not in global state): it is garbage
 collected with the tree, and building a fresh expression from the same
 kernels evaluates fresh.
 
+### Equality of lazy operators
+
+Comparisons use a three-tier scheme that never evaluates unnecessarily:
+
+1. **node identity** (`A === B`): true, zero cost, no evaluation;
+2. **cheap traits** (causality, axis, blocksize): mismatched trees fail
+   fast *without* materializing;
+3. **value comparison** (materialized matrices) as the last resort -
+   through the node caches, so each tree is evaluated at most once ever;
+   repeated comparisons are free.
+
+### Common-subexpression elimination on the lowered graph
+
+The kernel-level cache guarantees a *tree* is never evaluated twice, but
+a single lowered concrete graph can still contain the same subgraph at
+several positions (e.g. a shared product used directly and inside an
+adjoint). `cse` extracts every subgraph occurring more than once:
+
+```julia
+AB  = op_mul(CompressedLeaf(A), CompressedLeaf(B))
+ex  = op_add(op_mul(AB, CompressedLeaf(C)), op_scale(2.0, AB))
+
+bindings, root = cse(ex)      # 1 binding: cse_1 = A*B
+result = evaluate_cse(b, bindings, root)   # A*B computed once
+```
+
+- `cse(ex) -> (bindings, root)`: returns the topologically ordered
+  bindings (a binding body only refers to leaves and earlier bindings)
+  and the rewritten root referencing them through `BindingNode` leaves.
+- `evaluate_cse(b, bindings, root)`: the reference evaluation - each
+  binding is computed exactly once, then the root consumes them.
+- The **default `evaluate` applies CSE automatically**, so every backend
+  without its own `evaluate` gets it for free; backends with a fused
+  `evaluate` should run `cse` first and schedule the bindings (e.g.
+  batching them, placing them on a device, or interleaving them with
+  their consumers).
+
+Two subgraphs are common iff structurally equal over identical leaf
+objects; leaves themselves are never extracted (cheap references).
+
 Products with `LocalKernel` operands stay concrete (exact block-diagonal
 fast paths); these are their own lowering and never reach the lazy tree.
 

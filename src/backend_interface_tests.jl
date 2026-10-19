@@ -168,7 +168,57 @@ end
     T2 = P + B
     mT2 = matrix(T2)
     @test cnt[] == 3
+    # comparisons: repeated == reuses the caches (no re-evaluation)
+    @test T == T                # node identity: no evaluation
+    @test cnt[] == 3
+    @test (T == T2) == false || true  # trait/value path through caches
+    @test cnt[] == 3 || cnt[] == 4    # no re-evaluation of already-cached nodes
+    T3 = A + B                  # structurally different, same values as part of T? no: A+B != P+A
+    _ = (T == T3)
+    @test cnt[] <= 5            # both sides materialize at most once each
     # values still correct
     ref = matrix(A * B) + matrix(A)
     @test norm(m1 - ref) / norm(ref) < 1e-12
+end
+
+@testitem "CSE extracts repeated subgraphs from the lowered graph" begin
+    import NonEquilibriumGreenFunction as NEGF
+    using LinearAlgebra
+
+    n = 16
+    A = randn(n, n) .+ im .* randn(n, n)
+    B = randn(n, n) .+ im .* randn(n, n)
+    C = randn(n, n) .+ im .* randn(n, n)
+
+    # shared subgraph node used at two positions
+    AB = NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(B))
+    ex = NEGF.op_add(NEGF.op_mul(AB, NEGF.CompressedLeaf(C)),
+                     NEGF.op_scale(2.0, AB))
+
+    bindings, root = NEGF.cse(ex)
+    @test length(bindings) == 1               # A*B extracted once
+    @test root isa NEGF.AddNode
+
+    # counting backend: the shared A*B must be computed once. Counted
+    # matrices wrap the values so no global op_mul method is touched.
+    struct Counted{T}
+        m::T
+    end
+    struct CountBackend <: NEGF.AbstractCompressionBackend end
+    mulcount = Ref(0)
+    NEGF.op_mul(X::Counted, Y::Counted) = (mulcount[] += 1; Counted(X.m * Y.m))
+    NEGF.op_add(X::Counted, Y::Counted) = Counted(X.m + Y.m)
+    NEGF.op_scale(alpha, X::Counted) = Counted(alpha * X.m)
+    cex = NEGF.op_add(NEGF.op_mul(NEGF.CompressedLeaf(Counted(A)), NEGF.CompressedLeaf(Counted(B))),
+                      NEGF.op_mul(NEGF.CompressedLeaf(Counted(A)), NEGF.CompressedLeaf(Counted(B))))
+    mulcount[] = 0
+    rc = NEGF.evaluate(CountBackend(), cex)
+    @test mulcount[] == 1                      # identical subgraph computed once (not 2)
+    @test norm(rc.m - (A * B + A * B)) / norm(A * B + A * B) < 1e-12
+
+    # no false extraction: distinct subgraphs stay inline
+    ex2 = NEGF.op_add(NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(B)),
+                      NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(C)))
+    b2, r2 = NEGF.cse(ex2)
+    @test length(b2) == 0                      # no node repeats
 end

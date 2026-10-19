@@ -71,6 +71,9 @@ StructureOptimizingSolve
 CompressedLeaf
 SolveNode
 evaluate
+cse
+evaluate_cse
+BindingNode
 with_thread_budget
 current_thread_budget
 ThreadConfig

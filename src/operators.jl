@@ -346,10 +346,19 @@ locality(op::SumOperator) = locality_of_sum(locality(op.left), locality(op.right
 
 Compare two SumOperators for equality based on their left and right components.
 """
-# SumOperator equality is by value (like Kernel equality): lazy DAG nodes
-# carrying different trees may represent the same operator, so compare
-# the materialized matrices.
-==(A::SumOperator, B::SumOperator) = matrix(A) == matrix(B)
+# Equality semantics for lazy DAG nodes. The DAG cache is embedded in the
+# nodes (no global state): materialization results live on the nodes and
+# are GC'd with the tree. Comparisons therefore proceed in three tiers:
+# 1. node identity (A === B): true, zero cost, no evaluation;
+# 2. cheap trait checks (axis, blocksize, causality): mismatched trees
+#    fail fast WITHOUT forcing materialization;
+# 3. value comparison (matrices) as the last resort - materialization
+#    goes through the node caches, so each tree is evaluated at most
+#    once ever; repeated comparisons are free.
+==(A::SumOperator, B::SumOperator) =
+    A === B ||
+    (causality(A) == causality(B) && axis(A) == axis(B) &&
+     blocksize(A) == blocksize(B) && matrix(A) == matrix(B))
 
 """
     _discretize_uniformScaling(discretization::UniformDiscretisation, I::UniformScaling)

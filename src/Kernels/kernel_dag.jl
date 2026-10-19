@@ -222,6 +222,22 @@ end
 *(left::LocalKernel, right::AbstractLazyOperator) =
     materialize(KernelProd(left, right, quadrature(right), causality(right)))
 
+# Equality of lazy vs concrete operators and between lazy nodes:
+# same tiered semantics - node identity, then cheap traits, then cached
+# value comparison.
+==(A::AbstractLazyOperator, B::AbstractLazyOperator) =
+    A === B ||
+    (causality(A) == causality(B) && axis(A) == axis(B) &&
+     blocksize(A) == blocksize(B) && matrix(A) == matrix(B))
+==(A::AbstractLazyOperator, B::SimpleOperator) =
+    A === B ||
+    (causality(A) == causality(B) && axis(A) == axis(B) &&
+     blocksize(A) == blocksize(B) && matrix(A) == matrix(B))
+==(A::SimpleOperator, B::AbstractLazyOperator) =
+    B === A ||
+    (causality(A) == causality(B) && axis(A) == axis(B) &&
+     blocksize(A) == blocksize(B) && matrix(A) == matrix(B))
+
 # adjoint of a lazy product: (A*B)' = B' * A' stays lazy
 function adjoint(op::KernelProd)
     return KernelProd(adjoint(op.right), adjoint(op.left), op.quadrature, _adjoint_causality(op.causality))

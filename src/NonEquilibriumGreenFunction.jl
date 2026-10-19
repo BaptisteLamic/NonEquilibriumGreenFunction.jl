@@ -74,6 +74,7 @@ export working_eltype, structure, empty_like
 export op_add, op_sub, op_scale, op_mul, op_adjoint, op_norm, apply, solve
 export CompressedLeaf, SolveNode, DirectSolve, StructureOptimizingSolve, evaluate
 export with_thread_budget, current_thread_budget, ThreadConfig, DeviceConfig
+export cse, evaluate_cse, BindingNode
 export test_compression_interface
 export pauli
 export matrix

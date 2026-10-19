@@ -312,18 +312,7 @@ primitives (left fold for `op_mul`), which makes it correct for every
 backend that implements the primitive set. Backends may override for
 fusion, reassociation and joint coefficient optimization.
 """
-function evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
-    ex isa CompressedLeaf && return ex.op
-    ex isa AddNode && return foldl(op_add, map(a -> evaluate(b, a), ex.args))
-    ex isa ScaleNode && return op_scale(ex.alpha, evaluate(b, ex.arg))
-    ex isa AdjointNode && return op_adjoint(evaluate(b, ex.arg))
-    ex isa MulNode && begin
-        vals = map(a -> evaluate(b, a), ex.args)
-        return foldl(op_mul, vals)
-    end
-    ex isa SolveNode && return solve(b, evaluate(b, ex.left), evaluate(b, ex.right); strategy=ex.strategy)
-    throw(ArgumentError("unsupported node type: $(typeof(ex))"))
-end
+# (default evaluate moved to the CSE section at the end of this file)
 evaluate(b::AbstractCompressionBackend, m::AbstractCompressedOperator) = m
 
 # ---------------------------------------------------------------------------
@@ -359,3 +348,164 @@ Single-leaf convenience: evaluate a compressed operator in the
 compression's family.
 """
 evaluate(c::AbstractCompression, m::AbstractMatrix) = m
+
+# ---------------------------------------------------------------------------
+# Common-subexpression elimination (CSE) on lowered concrete DAGs
+#
+# The kernel-level DAG already caches materialization per node (a DAG is
+# never evaluated twice), but a single lowered graph can still contain
+# the same concrete subgraph at several positions - e.g. `lead_current`
+# uses `Σ_R * G_R` both directly and inside an adjoint, and a chain with
+# a repeated factor repeats the shared prefix. `cse` extracts every
+# subgraph that occurs more than once into named bindings, evaluated
+# exactly once by `evaluate_cse`.
+# ---------------------------------------------------------------------------
+
+"""DAG leaf referring to a named binding produced by `cse`."""
+struct BindingNode <: AbstractOpNode
+    name::Symbol
+end
+
+"""
+    cse(ex::AbstractOpNode) -> (bindings, ex′)
+
+Common-subexpression elimination on a lowered concrete DAG. Returns the
+ordered `bindings` (`Vector{Pair{Symbol,AbstractOpNode}}`, topologically
+sorted: a binding's body only refers to leaves and earlier bindings) and
+the rewritten root `ex′` in which every repeated subgraph is replaced by
+a `BindingNode` leaf. Each binding is evaluated exactly once per
+`evaluate_cse` call - the repeated subgraph is computed once, not once
+per occurrence.
+
+Two subgraphs are common iff they are structurally equal over identical
+leaf objects (leaf identity by `===` on the stored operators). Leaves
+are never extracted: they are cheap references.
+"""
+function cse(ex::AbstractOpNode)
+    counts = Dict{UInt,Int}()
+    _cse_count(ex, counts)
+    names = IdDict{AbstractOpNode,Symbol}()
+    bindings = Pair{Symbol,AbstractOpNode}[]
+    root = _cse_build(ex, counts, names, bindings)
+    return bindings, root
+end
+
+# structural key: identical operations over identical leaves. Scalars
+# are keyed by value (hash), matrices by object identity.
+_cse_key(ex::CompressedLeaf) = objectid(ex.op)
+_cse_key(ex::BindingNode) = hash(:binding, ex.name)
+function _cse_key(ex::AddNode)
+    h = hash(:add)
+    for a in ex.args
+        h = hash(h, _cse_key(a))
+    end
+    return h
+end
+function _cse_key(ex::ScaleNode)
+    return hash(:scale, hash(ex.alpha, _cse_key(ex.arg)))
+end
+function _cse_key(ex::MulNode)
+    h = hash(:mul)
+    for a in ex.args
+        h = hash(h, _cse_key(a))
+    end
+    return h
+end
+_cse_key(ex::AdjointNode) = hash(:adj, _cse_key(ex.arg))
+_cse_key(ex::SolveNode) = hash(:solve, hash(_cse_key(ex.left), _cse_key(ex.right)))
+
+function _cse_count(ex::AbstractOpNode, counts)
+    k = _cse_key(ex)
+    counts[k] = get(counts, k, 0) + 1
+    for c in _cse_children(ex)
+        _cse_count(c, counts)
+    end
+    return nothing
+end
+
+_cse_children(::CompressedLeaf) = ()
+_cse_children(::BindingNode) = ()
+_cse_children(ex::AddNode) = ex.args
+_cse_children(ex::ScaleNode) = (ex.arg,)
+_cse_children(ex::MulNode) = ex.args
+_cse_children(ex::AdjointNode) = (ex.arg,)
+_cse_children(ex::SolveNode) = (ex.left, ex.right)
+
+# bottom-up rebuild: children are bound before the parent, so a binding
+# body only refers to leaves and earlier bindings (topological order)
+function _cse_build(ex::CompressedLeaf, counts, names, bindings)
+    return ex
+end
+function _cse_build(ex::AbstractOpNode, counts, names, bindings)
+    k = _cse_key(ex)
+    if get(counts, k, 0) >= 2
+        # repeated subgraph: bind once, reference everywhere
+        if !haskey(names, ex)
+            new_children = map(c -> _cse_build(c, counts, names, bindings), _cse_children(ex))
+            body = _rebuild_like(ex, new_children)
+            name = Symbol(:cse_, length(bindings) + 1)
+            push!(bindings, name => body)
+            names[ex] = name
+        end
+        return BindingNode(names[ex])
+    end
+    new_children = map(c -> _cse_build(c, counts, names, bindings), _cse_children(ex))
+    return _rebuild_like(ex, new_children)
+end
+
+function _rebuild_like(ex::AddNode, children)
+    return AddNode(Tuple(children))
+end
+function _rebuild_like(ex::ScaleNode, children)
+    return ScaleNode(ex.alpha, children[1])
+end
+function _rebuild_like(ex::MulNode, children)
+    return MulNode(Tuple(children))
+end
+function _rebuild_like(ex::AdjointNode, children)
+    return AdjointNode(children[1])
+end
+function _rebuild_like(ex::SolveNode, children)
+    return SolveNode(ex.backend, children[1], children[2], ex.strategy)
+end
+
+"""
+    evaluate_cse(b, bindings, ex)
+
+Evaluate a CSE-lowered graph: each binding is evaluated exactly once, in
+topological order, then the root `ex` is evaluated with the binding
+values available as leaves. Backends with a fused `evaluate` may instead
+schedule the bindings themselves (e.g. batching or device-placing them);
+this function is the reference semantics.
+"""
+function evaluate_cse(b::AbstractCompressionBackend, bindings, ex)
+    env = Dict{Symbol,Any}()
+    for (name, node) in bindings
+        env[name] = _eval_with(b, node, env)
+    end
+    return _eval_with(b, ex, env)
+end
+
+function _eval_with(b::AbstractCompressionBackend, ex::AbstractOpNode, env)
+    ex isa CompressedLeaf && return ex.op
+    ex isa BindingNode && return env[ex.name]
+    ex isa AddNode && return foldl(op_add, map(a -> _eval_with(b, a, env), ex.args))
+    ex isa ScaleNode && return op_scale(ex.alpha, _eval_with(b, ex.arg, env))
+    ex isa AdjointNode && return op_adjoint(_eval_with(b, ex.arg, env))
+    ex isa MulNode && return foldl(op_mul, map(a -> _eval_with(b, a, env), ex.args))
+    ex isa SolveNode && return solve(b, _eval_with(b, ex.left, env), _eval_with(b, ex.right, env); strategy=ex.strategy)
+    throw(ArgumentError("unsupported node type: $(typeof(ex))"))
+end
+
+"""
+    evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
+
+Evaluate a numeric DAG with backend `b`. The default implementation is
+the in-family interpreter; it first applies CSE so repeated subgraphs
+are computed once. Backends may override for fusion/reassociation (and
+typically want to run `cse` first as well).
+"""
+function evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
+    bindings, root = cse(ex)
+    return evaluate_cse(b, bindings, root)
+end
