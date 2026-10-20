@@ -255,6 +255,18 @@ children, so outer task fan-outs (e.g. Negf.jl evaluating several kernel
 products concurrently) compose with backend-internal parallelism without
 oversubscription.
 
+### Thread safety of lazy nodes
+
+The materialization caches embedded in the kernel-level DAG nodes
+(`KernelProd`, `SumOperator`) are **not synchronized**. Concurrent
+forcing is supported only over *disjoint* trees: each task must build
+and force its own nodes (as the examples' `@spawn` product fan-outs do).
+Forcing the *same* lazy node from two tasks races on the check-then-set
+cache and can interleave writes on a non-thread-safe backend
+(HssMatrices); materialize shared subtrees before handing them to
+several tasks. Synchronization is planned for the threading stage of
+the backend rework.
+
 ## The matrix-family reference backend
 
 `MatrixFamilyBackend{T}` is the reference backend for any family built on

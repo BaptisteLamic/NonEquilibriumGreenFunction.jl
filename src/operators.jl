@@ -95,6 +95,12 @@ Create a new SimpleOperator with a modified matrix.
 
 # Returns
 A new SimpleOperator of the same type as `op` but with the new matrix.
+
+When the new matrix forces a different discretization container (e.g.
+eltype promotion widening a `LocalKernel`'s block-diagonal storage to a
+`UniformDiscretisation`), the operator is rebuilt as a plain `Kernel`
+keeping only its causality; subtype-specific information (locality,
+subtype `isa` dispatch) is not preserved.
 """
 function make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,UniformScaling})
     new_dis = make_similar(discretization(op), new_matrix)

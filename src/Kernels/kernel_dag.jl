@@ -13,6 +13,17 @@
 #
 # Forcing points (laziness ends here):
 #   matrix(op), solve_dyson, same_time/keldysh_trace, compress!(op).
+#
+# THREAD-SAFETY CONTRACT: the materialization caches embedded in
+# KernelProd/SumOperator nodes are not synchronized. Distinct tasks must
+# not force the *same* lazy node concurrently: racing check-then-set
+# materialization can double-evaluate (benign) or interleave writes on a
+# non-thread-safe backend (e.g. HssMatrices). Concurrent fan-outs are
+# supported only over *disjoint* trees (each task builds and forces its
+# own nodes, as in the examples' `@spawn` product fan-outs); shared
+# subtrees must be materialized before being handed to several tasks.
+# Synchronization is planned for the threading stage of the backend
+# rework (see docs/src/backend_interface_design.md).
 
 """Operator whose value is a lazy kernel-level DAG node."""
 # Lazy operators behave like SimpleOperators for every accessor

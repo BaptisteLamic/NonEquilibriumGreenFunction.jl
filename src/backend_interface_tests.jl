@@ -171,13 +171,19 @@ end
     # comparisons: repeated == reuses the caches (no re-evaluation)
     @test T == T                # node identity: no evaluation
     @test cnt[] == 3
-    @test (T == T2) == false || true  # trait/value path through caches
-    @test cnt[] == 3 || cnt[] == 4    # no re-evaluation of already-cached nodes
-    T3 = A + B                  # structurally different, same values as part of T? no: A+B != P+A
-    _ = (T == T3)
-    @test cnt[] <= 5            # both sides materialize at most once each
-    # values still correct
+    # trait/value path through caches: both sides already cached, no
+    # re-evaluation; values differ (P+A vs P+B)
+    @test (T == T2) == false
+    @test cnt[] == 3
+    # a structurally different tree materializes exactly once on first
+    # comparison (T is cached), and compares unequal by value
+    T3 = A + B
+    @test (T == T3) == false
+    @test cnt[] == 4
+    # values still correct; the reference product is a NEW node, so it
+    # evaluates exactly once more
     ref = matrix(A * B) + matrix(A)
+    @test cnt[] == 5
     @test norm(m1 - ref) / norm(ref) < 1e-12
 end
 
@@ -221,4 +227,29 @@ end
                       NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(C)))
     b2, r2 = NEGF.cse(ex2)
     @test length(b2) == 0                      # no node repeats
+end
+
+@testitem "CSE is safe under hash collisions" begin
+    import NonEquilibriumGreenFunction as NEGF
+    using LinearAlgebra
+    # A forced hash collision between two *distinct* MulNodes: the
+    # pre-filter key must never merge subgraphs that are not `===`.
+    n = 8
+    A = randn(n, n) .+ im .* randn(n, n)
+    B = randn(n, n) .+ im .* randn(n, n)
+    C = randn(n, n) .+ im .* randn(n, n)
+    X = NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(B))
+    Y = NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(C))
+    ex = NEGF.op_add(X, Y)
+    # sabotage only the key used for bucketing: both nodes hash equal
+    NEGF._cse_key(::NEGF.MulNode) = 0x0000000000000001
+    b, root = NEGF.cse(ex)
+    @test length(b) == 0          # distinct subgraphs: no extraction despite equal keys
+    m = NEGF.evaluate(NEGF.MatrixFamilyBackend{ComplexF64}(), ex)
+    @test norm(m - (A * B + A * C)) / norm(A * B + A * C) < 1e-12
+    # and the identical-subgraph win still works with a colliding key
+    Z = NEGF.op_mul(NEGF.CompressedLeaf(A), NEGF.CompressedLeaf(B))
+    ex2 = NEGF.op_add(X, Z)
+    b2, _ = NEGF.cse(ex2)
+    @test length(b2) == 1         # X === Z structurally: extracted once
 end

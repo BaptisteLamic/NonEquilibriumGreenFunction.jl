@@ -92,6 +92,13 @@ abstract type AbstractCompressionBackend end
 
 The scalar type the backend works in: drives `scalartype` and the
 `solve_dyson` assembly. Not derived from any stored matrix.
+
+**Advisory in stage 1**: the generic `AbstractMatrix` primitives never
+consult it (eltype promotion happens naturally through Base), and the
+legacy bridge's `backend(c)` defaults to `ComplexF64` regardless of the
+stored matrices' eltype. Backends that actually work in a different
+precision (mixed-precision backends) must consume it; until then it is
+carried but inert.
 """
 function working_eltype end
 
@@ -203,6 +210,11 @@ and fixed; the coefficients are optimized by the backend until the
 residual meets `tol` (at most `maxiter` iterations). The iteration is
 entirely backend-owned; the package only supplies `structure(left)`,
 `empty_like`, and the residual closure.
+
+**Defined but not yet implemented**: no backend in this package accepts
+this strategy yet (every `solve` currently throws an `ArgumentError`
+for it). It is part of the stage-1 contract so that backends can start
+implementing it without a breaking change.
 """
 struct StructureOptimizingSolve <: AbstractSolveStrategy
     maxiter::Int
@@ -327,8 +339,10 @@ evaluate(b::AbstractCompressionBackend, m::AbstractCompressedOperator) = m
 
 The backend a legacy compression evaluates through. Defaults to
 `MatrixFamilyBackend` (the generic AbstractMatrix family reference
-backend); structured compressions override this to return their
-dedicated backend.
+backend, working in `ComplexF64`); structured compressions override this
+to return their dedicated backend. Precision is not yet derived from the
+compression's stored matrices (the eltype is inert for the generic
+family; see `working_eltype`).
 """
 backend(::AbstractCompression) = MatrixFamilyBackend{ComplexF64}()
 
@@ -380,13 +394,19 @@ per occurrence.
 Two subgraphs are common iff they are structurally equal over identical
 leaf objects (leaf identity by `===` on the stored operators). Leaves
 are never extracted: they are cheap references.
+
+Hash collisions cannot merge distinct subgraphs: nodes are bucketed by
+`_cse_key` only as a pre-filter, and bucket members are compared by
+`===` (the exact structural equality `_cse_key` approximates) before
+being counted as the same subgraph.
 """
 function cse(ex::AbstractOpNode)
-    counts = Dict{UInt,Int}()
-    _cse_count(ex, counts)
+    buckets = Dict{UInt,Vector{AbstractOpNode}}()
+    counts = IdDict{AbstractOpNode,Int}()
+    _cse_count(ex, buckets, counts)
     names = IdDict{AbstractOpNode,Symbol}()
     bindings = Pair{Symbol,AbstractOpNode}[]
-    root = _cse_build(ex, counts, names, bindings)
+    root = _cse_build(ex, buckets, counts, names, bindings)
     return bindings, root
 end
 
@@ -414,11 +434,28 @@ end
 _cse_key(ex::AdjointNode) = hash(:adj, _cse_key(ex.arg))
 _cse_key(ex::SolveNode) = hash(:solve, hash(_cse_key(ex.left), _cse_key(ex.right)))
 
-function _cse_count(ex::AbstractOpNode, counts)
-    k = _cse_key(ex)
-    counts[k] = get(counts, k, 0) + 1
+# representative of `ex`'s equivalence class among the already-seen
+# nodes, or `nothing` if none is registered yet. `_cse_key` buckets;
+# `===` confirms, so hash collisions can never merge distinct subgraphs.
+function _cse_rep(ex::AbstractOpNode, buckets)
+    v = get(buckets, _cse_key(ex), nothing)
+    v === nothing && return nothing
+    for r in v
+        r === ex && return r
+    end
+    return nothing
+end
+
+function _cse_count(ex::AbstractOpNode, buckets, counts)
+    rep = _cse_rep(ex, buckets)
+    if rep === nothing
+        push!(get!(buckets, _cse_key(ex), AbstractOpNode[]), ex)
+        counts[ex] = 1
+    else
+        counts[rep] += 1
+    end
     for c in _cse_children(ex)
-        _cse_count(c, counts)
+        _cse_count(c, buckets, counts)
     end
     return nothing
 end
@@ -433,23 +470,23 @@ _cse_children(ex::SolveNode) = (ex.left, ex.right)
 
 # bottom-up rebuild: children are bound before the parent, so a binding
 # body only refers to leaves and earlier bindings (topological order)
-function _cse_build(ex::CompressedLeaf, counts, names, bindings)
+function _cse_build(ex::CompressedLeaf, buckets, counts, names, bindings)
     return ex
 end
-function _cse_build(ex::AbstractOpNode, counts, names, bindings)
-    k = _cse_key(ex)
-    if get(counts, k, 0) >= 2
+function _cse_build(ex::AbstractOpNode, buckets, counts, names, bindings)
+    rep = _cse_rep(ex, buckets)
+    if rep !== nothing && counts[rep] >= 2
         # repeated subgraph: bind once, reference everywhere
-        if !haskey(names, ex)
-            new_children = map(c -> _cse_build(c, counts, names, bindings), _cse_children(ex))
+        if !haskey(names, rep)
+            new_children = map(c -> _cse_build(c, buckets, counts, names, bindings), _cse_children(ex))
             body = _rebuild_like(ex, new_children)
             name = Symbol(:cse_, length(bindings) + 1)
             push!(bindings, name => body)
-            names[ex] = name
+            names[rep] = name
         end
-        return BindingNode(names[ex])
+        return BindingNode(names[rep])
     end
-    new_children = map(c -> _cse_build(c, counts, names, bindings), _cse_children(ex))
+    new_children = map(c -> _cse_build(c, buckets, counts, names, bindings), _cse_children(ex))
     return _rebuild_like(ex, new_children)
 end
 
