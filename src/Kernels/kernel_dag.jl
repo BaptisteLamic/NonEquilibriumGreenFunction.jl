@@ -25,10 +25,17 @@
 # Synchronization is planned for the threading stage of the backend
 # rework (see docs/src/backend_interface_design.md).
 
-"""Operator whose value is a lazy kernel-level DAG node."""
 # Lazy operators behave like SimpleOperators for every accessor
 # (axis, step, blocksize, quadrature, compression, matrix, ...): the
 # traits are carried by the node; `matrix` is the forcing point.
+"""
+    AbstractLazyOperator <: SimpleOperator
+
+Operator whose value is a lazy kernel-level DAG node (`KernelProd`,
+`SumOperator`). Traits are carried by the node; `matrix`, `solve_dyson`,
+the observables and `compress!` are the forcing points that materialize
+the tree.
+"""
 abstract type AbstractLazyOperator <: SimpleOperator end
 
 """
@@ -202,6 +209,11 @@ function materialize(op::AbstractLazyOperator)
     isdefined(op, :materialized) && op.materialized !== nothing && return op.materialized::Kernel
     cpr = compression(op)
     m = evaluate(cpr, lower(op))
+    # DAG arithmetic grows the off-diagonal generator ranks; recompress at
+    # this boundary (the lazy world's equivalent of the eager compress!),
+    # otherwise inflated generators break downstream in-family solvers
+    # (HssMatrices' ULV solver needs size(U,2) < size(D,1) at the leaves).
+    m = recompress_inplace!(cpr, m)
     dis = UniformDiscretisation(axis(op), m, blocksize(op), cpr;
         quadrature=quadrature(op))
     k = Kernel(dis, causality(op))
@@ -310,6 +322,7 @@ function materialize(op::SumOperator)
     op.materialized !== nothing && return op.materialized::Kernel
     cpr = compression(_sum_context(op))
     m = evaluate(cpr, lower(op))
+    m = recompress_inplace!(cpr, m)
     ctx = _sum_context(op)
     dis = UniformDiscretisation(axis(ctx), m, blocksize(ctx), cpr; quadrature=quadrature(ctx))
     k = Kernel(dis, causality(op))

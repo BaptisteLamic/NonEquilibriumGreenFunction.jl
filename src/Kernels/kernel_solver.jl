@@ -1,6 +1,16 @@
+# solve_dyson is a forcing point of the kernel-level DAG: a lazy
+# operand (KernelProd/SumOperator) is materialized here.
 """
-    Solve the equation  G = g + K⋅G  for G
+    solve_dyson(g, K)
+
+Solve the equation  G = g + K⋅G  for G. A lazy operand
+(`KernelProd`/`SumOperator`) is materialized at this forcing point.
 """
+solve_dyson(g::Kernel, K::AbstractOperator) = solve_dyson(g, materialize(K))
+solve_dyson(g::AbstractOperator, K::Kernel) = solve_dyson(materialize(g), K)
+solve_dyson(g::AbstractOperator, K::AbstractOperator) =
+    solve_dyson(materialize(g), materialize(K))
+
 function solve_dyson(g::Kernel, K::Kernel)
     @assert isretarded(g) & isretarded(K)
     cp = compression(g)

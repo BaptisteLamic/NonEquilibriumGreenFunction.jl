@@ -275,7 +275,11 @@ end
 # step 5 - quadrature/dressing/integration stay package-owned)
 # ---------------------------------------------------------------------------
 
-"""Numeric DAG node. Flat and acyclic over compressed leaves."""
+"""
+    AbstractOpNode
+
+Numeric DAG node. Flat and acyclic over compressed leaves.
+"""
 abstract type AbstractOpNode end
 
 """Leaf: an already-compressed operator of the backend's family."""
@@ -301,6 +305,12 @@ struct AdjointNode <: AbstractOpNode
     arg::AbstractOpNode
 end
 
+"""
+    SolveNode <: AbstractOpNode
+
+Solve node of the numeric DAG: `solve(backend, left, right; strategy)`
+as a graph node, evaluated by the backend's interpreter.
+"""
 struct SolveNode <: AbstractOpNode
     backend::AbstractCompressionBackend
     left::AbstractOpNode

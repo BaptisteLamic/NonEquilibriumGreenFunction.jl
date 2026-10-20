@@ -347,11 +347,6 @@ Locality of a sum: `Local` only if both terms are `Local`.
 """
 locality(op::SumOperator) = locality_of_sum(locality(op.left), locality(op.right))
 
-"""
-    ==(A::SumOperator, B::SumOperator)
-
-Compare two SumOperators for equality based on their left and right components.
-"""
 # Equality semantics for lazy DAG nodes. The DAG cache is embedded in the
 # nodes (no global state): materialization results live on the nodes and
 # are GC'd with the tree. Comparisons therefore proceed in three tiers:
@@ -361,6 +356,12 @@ Compare two SumOperators for equality based on their left and right components.
 # 3. value comparison (matrices) as the last resort - materialization
 #    goes through the node caches, so each tree is evaluated at most
 #    once ever; repeated comparisons are free.
+"""
+    ==(A::SumOperator, B::SumOperator)
+
+Compare two SumOperators: node identity, then cheap traits, then the
+cached materialized values (each tree is evaluated at most once).
+"""
 ==(A::SumOperator, B::SumOperator) =
     A === B ||
     (causality(A) == causality(B) && axis(A) == axis(B) &&

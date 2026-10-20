@@ -69,6 +69,7 @@ solve
 DirectSolve
 StructureOptimizingSolve
 CompressedLeaf
+AbstractOpNode
 SolveNode
 evaluate
 cse
@@ -78,6 +79,19 @@ with_thread_budget
 current_thread_budget
 ThreadConfig
 DeviceConfig
+```
+
+## Kernel-level DAG
+
+Lazy physics constructs materialized at the forcing points (`matrix`,
+`solve_dyson`, observables, `compress!`); see the
+[Backend contract](backend_contract.md) page.
+
+```@docs
+NonEquilibriumGreenFunction.Kernels.KernelProd
+NonEquilibriumGreenFunction.Kernels.AbstractLazyOperator
+NonEquilibriumGreenFunction.Kernels.materialize
+NonEquilibriumGreenFunction.Kernels.lower
 ```
 
 ## Accessors
