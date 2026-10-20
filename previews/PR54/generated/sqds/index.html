@@ -69,10 +69,18 @@ end</code></pre><pre><code class="nohighlight hljs">compute_GR (generic function
     Σ_K_left = coupling_left&#39; * g_lead_kinetic * coupling_left
     Σ_K_right = coupling_right&#39; * g_lead_kinetic * coupling_right
     Σ_K = Σ_K_left + Σ_K_right
+    #Kinetic branch. Kernel products carry the quadrature weighting
+    #(semantic tier), so the chain is expressed with kernel `*`; every
+    #numeric operation inside (dressing, products, sums) evaluates
+    #through the expression DAG (numeric tier) with the compression&#39;s
+    #backend - the DAG is the only evaluation path of the package.
     G_K = G_R * Σ_K * G_R&#39;
     return (; results_GR..., G_K, Σ_K_left, Σ_K_right)
 end</code></pre><pre><code class="nohighlight hljs">simulate_junction (generic function with 1 method)</code></pre><h2 id="Observables"><a class="docs-heading-anchor" href="#Observables">Observables</a><a id="Observables-1"></a><a class="docs-heading-anchor-permalink" href="#Observables" title="Permalink"></a></h2><p>With some post-processing, we can extract the value of any observable, here the current. The trace over the Keldysh space is taken by hand, pairing the Nambu components of the diagonal.</p><pre><code class="language-julia hljs">function compute_average_current(results)
     function f(G_R, G_K, Σ_R, Σ_K)
+        #Concurrent kernel products under a shared thread budget; each
+        #product evaluates as a DAG op_mul capped at the ambient budget.
+        with_thread_budget(Threads.nthreads()) do
         _Σ_R_time_G_R = Threads.@spawn Σ_R * G_R
         _G_R_time_Σ_R = Threads.@spawn G_R * Σ_R
         _G_R_time_Σ_K = Threads.@spawn G_R * Σ_K
@@ -88,6 +96,7 @@ end</code></pre><pre><code class="nohighlight hljs">simulate_junction (generic f
         return -((1 // 2) * ((adjoint(Σ_R_time_G_R)) - Σ_R_time_G_R) + G_R_time_Σ_K +
                  G_K_time_adjoint_Σ_R + -(Σ_K_time_adjoint_G_R + Σ_R_time_G_K) +
                  (3 // 2) * (G_R_time_Σ_R - adjoint(G_R_time_Σ_R)))
+        end
     end
     I_avr_op = f(results[:G_R], results[:G_K], results[:Σ_R_left], results[:Σ_K_left])
     dg = diag(matrix(I_avr_op))
@@ -136,4 +145,4 @@ lines!(axis(p), real.(Idc), label=L&quot;\langle I(t)\rangle&quot;)
 lines!(axis(p), filt(zpk, real.(Idc)), label=&quot;Low frequencies&quot;)
 axislegend(position=:rb)
 save(joinpath(@__DIR__, &quot;transient_current_SQDS.svg&quot;), f)
-f</code></pre><p><img src="../sqds-25.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../mqdm/">« Metal - QD - Metal junction</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Monday 19 October 2026 12:25">Monday 19 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+f</code></pre><p><img src="../sqds-25.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../mqdm/">« Metal - QD - Metal junction</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Tuesday 20 October 2026 03:05">Tuesday 20 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
