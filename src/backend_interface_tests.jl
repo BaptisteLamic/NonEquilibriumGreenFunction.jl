@@ -253,3 +253,32 @@ end
     b2, _ = NEGF.cse(ex2)
     @test length(b2) == 1         # X === Z structurally: extracted once
 end
+
+@testitem "solve_dyson materializes a lazy non-local operand" begin
+    import NonEquilibriumGreenFunction as NEGF
+    using NonEquilibriumGreenFunction
+    using LinearAlgebra
+    ax = 0:0.5:5
+    cpr = HssCompression()
+    g = RetardedKernel(ax, Stationary(τ -> ComplexF64(-1im)); compression=cpr)
+    # non-local retarded self-energy: build the KernelProd directly so it
+    # stays a lazy node (adjoint of a LocalKernel product would go through
+    # the concrete fast path), then solve through the documented pattern
+    cl = LocalKernel(ax, t -> ComplexF64(0.5); compression=cpr)
+    mid = NEGF.Kernels.KernelProd(cl', g, quadrature(g), Advanced()) |> adjoint
+    Σ = NEGF.Kernels.KernelProd(mid, cl, quadrature(g), Retarded())
+    @test Σ isa NEGF.Kernels.AbstractLazyOperator
+    # documented forcing-point pattern: solve_dyson accepts the lazy tree
+    G = solve_dyson(g, g * Σ)
+    @test G isa Kernel
+    # materialize is exported for the manual escape hatch
+    k = NEGF.materialize(g * Σ)
+    @test k isa Kernel
+    # value matches the dense reference exactly
+    gd = RetardedKernel(ax, Stationary(τ -> ComplexF64(-1im)); compression=NONCompression())
+    cld = LocalKernel(ax, t -> ComplexF64(0.5); compression=NONCompression())
+    midd = NEGF.Kernels.KernelProd(cld', gd, quadrature(gd), Advanced()) |> adjoint
+    Σd = NEGF.Kernels.KernelProd(midd, cld, quadrature(gd), Retarded())
+    Gd = solve_dyson(gd, gd * Σd)
+    @test norm(matrix(G) - matrix(Gd)) / norm(matrix(Gd)) < 1e-10
+end

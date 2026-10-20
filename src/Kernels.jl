@@ -37,6 +37,10 @@ export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace
 export solve_dyson
+# materialize is the public lazy -> concrete escape hatch of the kernel-level
+# DAG (a forcing point); downstream users hit it directly when they need a
+# concrete Kernel out of a lazy tree (e.g. solve_dyson operands elsewhere).
+export materialize
 export compress!, make_similar
 
 end
