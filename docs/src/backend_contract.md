@@ -260,12 +260,15 @@ oversubscription.
 The materialization caches embedded in the kernel-level DAG nodes
 (`KernelProd`, `SumOperator`) are **not synchronized**. Concurrent
 forcing is supported only over *disjoint* trees: each task must build
-and force its own nodes (as the examples' `@spawn` product fan-outs do).
+and force its own nodes (e.g. Negf.jl-style outer fan-outs of
+independent chains, with the forcing point inside each task).
 Forcing the *same* lazy node from two tasks races on the check-then-set
 cache and can interleave writes on a non-thread-safe backend
 (HssMatrices); materialize shared subtrees before handing them to
-several tasks. Synchronization is planned for the threading stage of
-the backend rework.
+several tasks. Note that kernel products are lazy: a spawned task that
+only *constructs* a product does no numeric work - the forcing point
+(`matrix` and friends) must run inside the task. Synchronization is
+planned for the threading stage of the backend rework.
 
 ## The matrix-family reference backend
 

@@ -1,8 +1,12 @@
-# Backend interface (DRAFT - design phase, see docs/src/backend_interface_design.md)
+# Backend interface (see docs/src/backend_interface_design.md and
+# docs/src/backend_contract.md)
 #
-# Non-breaking skeleton: these types and contracts are defined but not yet
-# consumed by the existing compression/matrix paths. Migration proceeds per
-# the plan in the design document; existing code keeps working unchanged.
+# Implemented and consumed: the expression DAG below is the only numeric
+# evaluation path of the package. Kernel algebra, solve_dyson, observables,
+# scalar/local-kernel operations and discretization adjoint/negation build
+# DAGs and evaluate them via the compression's backend; legacy
+# AbstractCompression objects are bridged through backend(c) (see the
+# legacy bridge section).
 
 # ---------------------------------------------------------------------------
 # Thread budget facility (task-local, inherited by spawned children)
@@ -226,8 +230,8 @@ end
 
 Solve `left * X = right` in the family of backend `b`. `DirectSolve` is
 the factorization path; `StructureOptimizingSolve` keeps `structure(left)`
-fixed and optimizes coefficients (backend-owned iteration). Replaces
-`ldiv` in the migration.
+fixed and optimizes coefficients (backend-owned iteration; defined but
+not yet implemented by any backend).
 """
 function solve end
 
@@ -271,8 +275,10 @@ function solve(b::AbstractCompressionBackend, left::AbstractMatrix, right::Abstr
 end
 
 # ---------------------------------------------------------------------------
-# Expression DAG (numeric tier; semantic tier nodes are added in migration
-# step 5 - quadrature/dressing/integration stay package-owned)
+# Expression DAG (numeric tier). The semantic tier (quadrature, dressing,
+# causality support) lives one level up in the lazy kernel-level DAG
+# (src/Kernels/kernel_dag.jl); its lowering pass emits the nodes below and
+# stays package-owned.
 # ---------------------------------------------------------------------------
 
 """
