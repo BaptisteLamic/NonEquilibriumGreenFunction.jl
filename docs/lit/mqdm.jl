@@ -121,26 +121,24 @@ end
 
 function compute_average_current(results)
     function f(G_R, G_K, Σ_R, Σ_K)
-        #The six independent kernel products run as concurrent tasks
-        #under a shared thread budget; each product is a DAG `op_mul`
-        #evaluation whose backend caps itself at the ambient budget.
-        with_thread_budget(Threads.nthreads()) do
-        _Σ_R_time_G_R = Threads.@spawn Σ_R * G_R
-        _G_R_time_Σ_R = Threads.@spawn G_R * Σ_R
-        _G_R_time_Σ_K = Threads.@spawn G_R * Σ_K
-        _G_K_time_adjoint_Σ_R = Threads.@spawn G_K * adjoint(Σ_R)
-        _Σ_K_time_adjoint_G_R = Threads.@spawn Σ_K * adjoint(G_R)
-        _Σ_R_time_G_K = Threads.@spawn Σ_R * G_K
-        Σ_R_time_G_R = fetch(_Σ_R_time_G_R)
-        G_R_time_Σ_R = fetch(_G_R_time_Σ_R)
-        G_R_time_Σ_K = fetch(_G_R_time_Σ_K)
-        G_K_time_adjoint_Σ_R = fetch(_G_K_time_adjoint_Σ_R)
-        Σ_K_time_adjoint_G_R = fetch(_Σ_K_time_adjoint_G_R)
-        Σ_R_time_G_K = fetch(_Σ_R_time_G_K)
+        #The six kernel products are lazy kernel-level DAG nodes: they
+        #carry no numeric work until the forcing point below materializes
+        #the whole expression, so the observable is written as the plain
+        #mathematical expression. Manual Threads.@spawn fan-outs are
+        #counter-productive here: the spawned bodies would only build
+        #nodes (microseconds) while the actual backend evaluation would
+        #still run at the forcing point. Concurrent evaluation of
+        #independent lazy siblings is the DAG scheduler's job (see the
+        #backend contract page).
+        Σ_R_time_G_R = Σ_R * G_R
+        G_R_time_Σ_R = G_R * Σ_R
+        G_R_time_Σ_K = G_R * Σ_K
+        G_K_time_adjoint_Σ_R = G_K * adjoint(Σ_R)
+        Σ_K_time_adjoint_G_R = Σ_K * adjoint(G_R)
+        Σ_R_time_G_K = Σ_R * G_K
         return -((1 // 2) * ((adjoint(Σ_R_time_G_R)) - Σ_R_time_G_R) + G_R_time_Σ_K +
                  G_K_time_adjoint_Σ_R + -(Σ_K_time_adjoint_G_R + Σ_R_time_G_K) +
                  (3 // 2) * (G_R_time_Σ_R - adjoint(G_R_time_Σ_R)))
-        end
     end
     I_avr_op = f(results[:G_R], results[:G_K], results[:Σ_R_left], results[:Σ_K_left])
     diag(matrix(I_avr_op))
