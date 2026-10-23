@@ -1,17 +1,18 @@
-# Backend Interface Design (draft)
+# Backend Interface Design
 
-Status: proposal, first stage implemented. This document specifies the
-rework of the compression system into a **backend interface** in
-preparation for a new HSS backend that performs compression on GPU and
-CPU, runs in mixed precision, is multithreaded, and supports
-structure-known / coefficient-optimized solving strategies.
+Status: implemented. The compression system has been reworked into a
+**backend interface** in preparation for a new HSS backend that performs
+compression on GPU and CPU, runs in mixed precision, is multithreaded,
+and supports structure-known / coefficient-optimized solving strategies.
 
-The first stage is merged: the numeric-tier skeleton
+The full interface is in place: the numeric-tier skeleton
 (`src/backend_interface.jl`) defines the types, the mandatory primitive
-set, the thread-budget facility and the default DAG interpreter, and the
-reference HSS backend (`src/hss_backend.jl`) implements the contract with
-an optimized whole-graph `evaluate`. See the *Backend contract* page for
-the user-facing reference of what is implemented today.
+set, the thread-budget facility and the default DAG interpreter; the
+kernel-level DAG (`src/Kernels/kernel_dag.jl`) provides the lazy physics
+tier with its package-owned lowering pass; and the reference HSS backend
+(`src/hss_backend.jl`) implements the contract with an optimized
+whole-graph `evaluate`. See the *Backend contract* page for the
+user-facing reference of what is implemented today.
 
 ## Motivation
 
@@ -202,7 +203,8 @@ Acceptance: `lead_current`'s full expression (worst chain case) under
 `@spawn` fan-out at budgets {1, nthreads, nthreads/2} produces identical
 results with no oversubscription.
 
-## Migration plan (each step keeps the suite green)
+## Migration history (each step kept the suite green; all steps are
+implemented)
 
 0. Trait system + node types (define the graph before any backend work).
 1. `AbstractCompressedOperator` + package-level op names + default
@@ -223,8 +225,8 @@ results with no oversubscription.
    every node type; chain comparisons use combined tolerances.
 7. Docs rewrite (`custom_compression.md` -> backend contract).
 
-After step 7, the new backend (GPU / mixed-precision / multithreaded HSS)
-lands as one self-contained addition: a single
+The migration is complete: the new backend (GPU / mixed-precision /
+multithreaded HSS) lands as one self-contained addition: a single
 `AbstractCompressionBackend` subtype implementing the primitives above -
 nothing else in the package changes.
 
