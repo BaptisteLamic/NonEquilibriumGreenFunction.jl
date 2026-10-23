@@ -65,6 +65,12 @@ Products and adjoints preserve causality (`Retarded × Retarded = Retarded`,
 `Retarded' = Advanced`, ...), and the discretizations use it: retarded kernels are
 compressed on their lower-triangular support only.
 
+The adjoint is taken with the prime syntax `A'` (or `adjoint(A)`): it conjugates
+and transposes the block matrices and swaps the two time arguments, mapping the
+causality accordingly (`Retarded' = Advanced`, `Acausal' = Acausal`). The typical
+workflow uses it for the kinetic branch: `G_K = G_R * Σ_K * G_R'` dresses the
+advanced side of the Dyson equation with `G_R'` (the advanced Green function).
+
 ## Discretization
 
 The time axis is discretized on a uniform grid (`UniformDiscretisation`). `N =
@@ -72,11 +78,16 @@ length(ax)` time steps produce a `bs*N × bs*N` block matrix. Continuous kernels
 integrated as
 
 ```math
-\int^{t} g(t,t_1)\Sigma(t_1,t')\,dt_1 \;\to\; \delta t \sum_k g(t,t_k)\Sigma(t_k,t')
+\int^{t} g(t,t_1)\Sigma(t_1,t')\,dt_1 \;\to\; \delta t \sum_k w_k\, g(t,t_k)\Sigma(t_k,t')
 ```
 
-and products of kernels compose this quadrature automatically — the `*` operator on
-kernels *is* the time integral, so `g * Σ` is ready to be passed to `solve_dyson`.
+with the weights `w_k` owned by the discretization's quadrature rule
+([`AbstractQuadrature`](@ref)): the default `TrapezoidQuadrature()` gives
+`w_k = 1` in the interior and `w_k = 1/2` at the two endpoints of the
+integration interval (the boundary terms of the trapezoidal rule), while the
+historical `RectangleQuadrature()` uses `w_k = 1` everywhere. Products of
+kernels compose this quadrature automatically — the `*` operator on kernels
+*is* the time integral, so `g * Σ` is ready to be passed to `solve_dyson`.
 
 ## Compression
 
