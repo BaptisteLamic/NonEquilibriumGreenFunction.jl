@@ -85,7 +85,7 @@ with the weights `w_k` owned by the discretization's quadrature rule
 ([`AbstractQuadrature`](@ref)): the default `TrapezoidQuadrature()` gives
 `w_k = 1` in the interior and `w_k = 1/2` at the two endpoints of the
 integration interval (the boundary terms of the trapezoidal rule), while the
-historical `RectangleQuadrature()` uses `w_k = 1` everywhere. Products of
+`RectangleQuadrature()` uses `w_k = 1` everywhere. Products of
 kernels compose this quadrature automatically — the `*` operator on kernels
 *is* the time integral, so `g * Σ` is ready to be passed to `solve_dyson`.
 
@@ -108,7 +108,7 @@ Two knobs matter in practice:
   at the boundary, and for every causality pairing (acausal × acausal,
   retarded × acausal, acausal × advanced; same-causality products are
   second order under both rules via the diagonal dressing).
-  `RectangleQuadrature()` is the historical first-order rule, useful
+  `RectangleQuadrature()` is the first-order rectangle rule, useful
   as a baseline. Pass a rule to any kernel constructor:
   `AcausalKernel(ax, map; compression, quadrature=RectangleQuadrature())`.
 

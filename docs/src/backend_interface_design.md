@@ -16,9 +16,9 @@ user-facing reference of what is implemented today.
 
 ## Motivation
 
-The current contract (`AbstractCompression` callable + duck-typed matrix
-family, see `docs/src/custom_compression.md`) carries several assumptions
-that the new backend cannot satisfy:
+The callable compression contract (`AbstractCompression` + duck-typed
+matrix family) carries several assumptions that the backend
+interface cannot satisfy:
 
 1. The sampling API is a raw Julia closure with no negotiation: backends
    cannot ask for batches, a different element type, a device, or their own
@@ -202,37 +202,3 @@ closure; it never iterates on coefficients itself.
 Acceptance: `lead_current`'s full expression (worst chain case) under
 `@spawn` fan-out at budgets {1, nthreads, nthreads/2} produces identical
 results with no oversubscription.
-
-## Migration history (each step kept the suite green; all steps are
-implemented)
-
-0. Trait system + node types (define the graph before any backend work).
-1. `AbstractCompressedOperator` + package-level op names + default
-   in-family interpreter; port package-internal `Threads.@threads` loops
-   to budgeted `@spawn` equivalents.
-2. `AbstractCompressionBackend`; precision/device/threads fields;
-   `scalartype` -> `working_eltype`.
-3. `solve(b, left, right; strategy)` + strategies; `ldiv` becomes a
-   deprecated shim.
-4. Port the two reference backends (dense `NONCompression`, HSS
-   `HssMatricesBackend`) onto the contract; prove the floor.
-5. Lowering pass: move `kernel_algebra.jl`/`quadrature.jl` semantics into
-   semantic nodes; `Kernel` constructors, `solve_keldysh` and
-   `lead_current` become graph builders.
-6. `test_compression_interface` becomes a contract audit: (a) semantic
-   tier checked once against the dense backend; (b) per-backend numeric
-   `evaluate` checked against the default interpreter on graphs covering
-   every node type; chain comparisons use combined tolerances.
-7. Docs rewrite (`custom_compression.md` -> backend contract).
-
-The migration is complete: the new backend (GPU / mixed-precision /
-multithreaded HSS) lands as one self-contained addition: a single
-`AbstractCompressionBackend` subtype implementing the primitives above -
-nothing else in the package changes.
-
-## Open points
-
-- `StructureOptimizingSolve` structure caching across `solve_dyson`
-  calls (changes compression equality/hash conventions) - deferred.
-- Mixed-precision direction default (low-storage/high-solve vs
-  high-sample/low-coefficients) - backend configuration, both legal.
