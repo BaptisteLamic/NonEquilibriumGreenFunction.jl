@@ -1,12 +1,5 @@
 # Custom compression methods and matrix representations
 
-> [!NOTE]
-> This page documents the **current** interface. A rework into a backend
-> contract (GPU/CPU, mixed precision, multithreaded HSS, structure-known
-> coefficient-optimized solving) is proposed in
-> [Backend Interface Design](backend_interface_design.md); this page will be
-> rewritten as part of that migration.
-
 The package programs against a small, explicit interface, so you can plug in
 your own matrix representation (dense, HSS, GPU-style arrays such as
 `JLArray`, ...) by defining a compression method and, if needed, a few

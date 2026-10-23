@@ -3,10 +3,10 @@
 This page documents the backend interface implemented today: the
 **numeric-tier contract** that compression backends implement, the
 **expression DAG** the package builds over them, and the reference HSS
-backend with its optimized DAG evaluation. The full design rationale and
-migration plan are in [Backend Interface Design](backend_interface_design.md);
-the legacy `AbstractCompression` interface still in production use is
-documented in [Custom compression](custom_compression.md).
+backend with its optimized DAG evaluation. The full design rationale is in
+[Backend Interface Design](backend_interface_design.md); custom
+compression methods are documented in
+[Custom compression](custom_compression.md).
 
 ## Overview
 
@@ -146,14 +146,13 @@ in-family interpreter is used. `HssMatricesBackend` overrides it with
 balanced-chain `op_mul` evaluation; `MatrixFamilyBackend` uses the
 default.
 
-### Legacy compressions evaluate through backends
+### Compressions evaluate through backends
 
 `AbstractCompression` objects (dense `NONCompression`, `HssCompression`,
 `JLArrayCompression`, custom ones) are bridged: `backend(c)` returns
 their evaluation backend (`MatrixFamilyBackend` by default,
 `HssMatricesBackend` for `HssCompression`). `evaluate(c, ex)` evaluates
-a DAG with it, so all existing code and compressions reach the DAG
-world unchanged.
+a DAG with it, so every compression reaches the DAG world unchanged.
 
 ## The DAG
 
@@ -267,15 +266,14 @@ cache and can interleave writes on a non-thread-safe backend
 (HssMatrices); materialize shared subtrees before handing them to
 several tasks. Note that kernel products are lazy: a spawned task that
 only *constructs* a product does no numeric work - the forcing point
-(`matrix` and friends) must run inside the task. Synchronization is
-planned for the threading stage of the backend rework.
+(`matrix` and friends) must run inside the task.
 
 ## The matrix-family reference backend
 
 `MatrixFamilyBackend{T}` is the reference backend for any family built on
 `AbstractMatrix` with standard Base operations: dense `Matrix`, HSS
 matrices, GPU-style arrays whose family implements the Base ops. It is
-the default bridge for legacy `AbstractCompression` objects without a
+the default bridge for `AbstractCompression` objects without a
 dedicated backend. Its primitives are the generic `AbstractMatrix`
 methods of the contract (`+`, `-`, scalar `*`, `*`, `adjoint`, `norm`,
 `\`), which stay in-family for every matrix family - this is not a dense
@@ -318,7 +316,7 @@ within tolerance, for chains of length 3 and 4.
 
 ## Testing a backend
 
-`test_compression_interface` (legacy path) plus the DAG contract tests
+`test_compression_interface` plus the DAG contract tests
 in `src/backend_interface_tests.jl` are the templates: a backend should
 check every primitive against a dense reference, then check its
 `evaluate` (if overridden) against the default interpreter on graphs
