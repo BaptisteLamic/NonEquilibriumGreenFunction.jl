@@ -18,6 +18,9 @@ using TestItems
 
 import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step, compression, make_similar
 import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!
+import ..NonEquilibriumGreenFunction: op_add, op_sub, op_scale, op_mul, op_adjoint, evaluate, CompressedLeaf
+import ..NonEquilibriumGreenFunction: SolveNode, DirectSolve, backend
+import ..NonEquilibriumGreenFunction: AbstractOpNode
 
 import Base: +, -, *, ==, adjoint, step, getindex, size, sum, prod
 import LinearAlgebra: norm, adjoint
@@ -25,6 +28,7 @@ import LinearAlgebra: norm, adjoint
 include("operators.jl")
 include("Kernels/kernel_maps.jl")
 include("Kernels/kernels.jl")
+include("Kernels/kernel_dag.jl")
 
 export AbstractOperator, SimpleOperator, CompositeOperator, Kernel, LocalKernel, SumOperator
 export locality, islocal, AbstractLocality, Local, Smooth
@@ -33,6 +37,10 @@ export AbstractKernelMap, Stationary, TwoTime, Separable, Singular
 export causality, isretarded, isadvanced, isacausal, discretization
 export same_time, keldysh_trace
 export solve_dyson
+# materialize is the public lazy -> concrete escape hatch of the kernel-level
+# DAG (a forcing point); downstream users hit it directly when they need a
+# concrete Kernel out of a lazy tree (e.g. solve_dyson operands elsewhere).
+export materialize
 export compress!, make_similar
 
 end

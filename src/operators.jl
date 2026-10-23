@@ -95,12 +95,23 @@ Create a new SimpleOperator with a modified matrix.
 
 # Returns
 A new SimpleOperator of the same type as `op` but with the new matrix.
+
+When the new matrix forces a different discretization container (e.g.
+eltype promotion widening a `LocalKernel`'s block-diagonal storage to a
+`UniformDiscretisation`), the operator is rebuilt as a plain `Kernel`
+keeping only its causality; subtype-specific information (locality,
+subtype `isa` dispatch) is not preserved.
 """
 function make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,UniformScaling})
     new_dis = make_similar(discretization(op), new_matrix)
-    # Reconstruct the operator with the new discretization
-    # This works for SimpleOperator subtypes that have a similar constructor
-    return typeof(op)(new_dis)
+    # Let the discretization decide the concrete container: a widened
+    # matrix (e.g. Float64 -> ComplexF64 through the DAG's eltype
+    # promotion) upgrades a LocalKernel's block-diagonal storage to a
+    # UniformDiscretisation instead of failing to fit the new eltype.
+    if typeof(new_dis) == typeof(discretization(op))
+        return typeof(op)(new_dis)
+    end
+    return Kernel(new_dis, causality(op))
 end
 
 """
@@ -163,7 +174,7 @@ end
 
 -(op::AbstractOperator) = -1 * op
 
-*(λ::Number, op::SimpleOperator) = make_similar(op, λ * matrix(op))
+*(λ::Number, op::SimpleOperator) = make_similar(op, evaluate(compression(op), op_scale(λ, CompressedLeaf(matrix(op)))))
 *(op::SimpleOperator, λ::Number) = λ * op
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
@@ -287,21 +298,21 @@ end
 
 Multiply two LocalKernels.
 """
-*(left::LocalKernel, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
+*(left::LocalKernel, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     *(left::LocalKernel, right::SimpleOperator)
 
 Multiply a LocalKernel with a SimpleOperator.
 """
-*(left::LocalKernel, right::SimpleOperator) = make_similar(right, matrix(left) * matrix(right))
+*(left::LocalKernel, right::SimpleOperator) = make_similar(right, evaluate(compression(right), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     *(left::SimpleOperator, right::LocalKernel)
 
 Multiply a SimpleOperator with a LocalKernel.
 """
-*(left::SimpleOperator, right::LocalKernel) = make_similar(left, matrix(left) * matrix(right))
+*(left::SimpleOperator, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 """
     adjoint(op::LocalKernel)
@@ -319,10 +330,15 @@ An operator representing the sum of two operators.
 - `left::L`: Left operator in the sum
 - `right::R`: Right operator in the sum
 """
-struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
+mutable struct SumOperator{L<:AbstractOperator,R<:AbstractOperator} <: CompositeOperator
     left::L
     right::R
+    # materialization cache: the DAG sum node is evaluated at most once
+    materialized::Any
 end
+
+SumOperator(left::L, right::R) where {L<:AbstractOperator,R<:AbstractOperator} =
+    SumOperator{L,R}(left, right, nothing)
 
 """
     locality(op::SumOperator)
@@ -331,12 +347,25 @@ Locality of a sum: `Local` only if both terms are `Local`.
 """
 locality(op::SumOperator) = locality_of_sum(locality(op.left), locality(op.right))
 
+# Equality semantics for lazy DAG nodes. The DAG cache is embedded in the
+# nodes (no global state): materialization results live on the nodes and
+# are GC'd with the tree. Comparisons therefore proceed in three tiers:
+# 1. node identity (A === B): true, zero cost, no evaluation;
+# 2. cheap trait checks (axis, blocksize, causality): mismatched trees
+#    fail fast WITHOUT forcing materialization;
+# 3. value comparison (matrices) as the last resort - materialization
+#    goes through the node caches, so each tree is evaluated at most
+#    once ever; repeated comparisons are free.
 """
     ==(A::SumOperator, B::SumOperator)
 
-Compare two SumOperators for equality based on their left and right components.
+Compare two SumOperators: node identity, then cheap traits, then the
+cached materialized values (each tree is evaluated at most once).
 """
-==(A::SumOperator,B::SumOperator) = A.left == B.left && A.right == B.right
+==(A::SumOperator, B::SumOperator) =
+    A === B ||
+    (causality(A) == causality(B) && axis(A) == axis(B) &&
+     blocksize(A) == blocksize(B) && matrix(A) == matrix(B))
 
 """
     _discretize_uniformScaling(discretization::UniformDiscretisation, I::UniformScaling)
@@ -413,6 +442,13 @@ Returns the compression method of a SumOperator (both components must have the s
 # Throws
 AssertionError if left and right operators have different compression methods.
 """
+axis(op::SumOperator) = axis(op.left)
+step(op::SumOperator) = step(op.left)
+blocksize(op::SumOperator) = blocksize(op.left)
+scalartype(op::SumOperator) = promote_type(scalartype(op.left), scalartype(op.right))
+quadrature(op::SumOperator) = quadrature(op.left)
+discretization(op::SumOperator) = discretization(op.left)
+matrix(op::SumOperator) = matrix(materialize(op))
 function compression(op::SumOperator)
     cl = compression(op.left)
     cr = compression(op.right)

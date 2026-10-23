@@ -1,30 +1,41 @@
-function +(left::Kernel, right::Kernel)
-    Kernel(discretization(left) + discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
-end
+# All numeric evaluation goes through the expression DAG (see
+# backend_interface.jl): the compression of a discretization provides the
+# backend, the DAG provides the operations. Quadrature weighting and the
+# edge corrections below are package-owned semantics (they *build* DAG
+# inputs); the numeric products/sums themselves are DAG evaluations.
+_ev(dis, ex) = evaluate(compression(dis), ex)
+_ev(c::AbstractCompression, ex) = evaluate(c, ex)
+
+# Kernel +/- are owned by the kernel-level DAG: the generic AbstractOperator methods build SumOperator nodes (the DAG's sum construct), lowered+evaluated at the forcing points.
 
 function +(left::D, right::D) where {D<:AbstractDiscretisation}
-    make_similar(left, matrix(left) + matrix(right))
-end
-function -(left::Kernel, right::Kernel)
-    Kernel(discretization(left) - discretization(right), causality_of_sum(left |> causality, right |> causality)) |> compress!
+    make_similar(left, _ev(left, op_add(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 end
 function -(left::D, right::D) where {D<:AbstractDiscretisation}
-    make_similar(left, matrix(left) - matrix(right))
+    make_similar(left, _ev(left, op_sub(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 end
 
+# Kernel product is a lazy kernel-level DAG construct: the physics
+# (causality of the result, quadrature) is fixed here, the concrete
+# matrix manipulation is deferred to `lower` + `materialize` (see
+# kernel_dag.jl). Laziness matters: the decomposition of the *next*
+# product depends on this product's causality, and a whole chain lowers
+# to ONE concrete DAG that the backend can evaluate as a single
+# (possibly fused) graph.
 function *(left::Kernel, right::Kernel)
+    @assert quadrature(left) == quadrature(right) "kernel product requires matching quadrature rules"
     prod_causality = causality_of_prod(left |> causality, right |> causality)
-    @assert quadrature(left) == quadrature(right) "kernel product requires matching quadrature rules, got $(typeof(quadrature(left))) × $(typeof(quadrature(right)))"
-    result_dis = prod(
-        left |> causality,
-        right |> causality,
-        left |> discretization,
-        right |> discretization
-    )
-    return Kernel(
-        result_dis,
-        prod_causality
-    )
+    return KernelProd(left, right, quadrature(left), prod_causality)
+end
+
+# Local fast paths stay concrete (exact block-diagonal products, no
+# dressing): they are their own lowering. Local is the algebra unit, so
+# the product keeps the non-Local operand's causality.
+function *(left::Kernel, right::LocalKernel)
+    return materialize(KernelProd(left, right, quadrature(left), causality(left)))
+end
+function *(left::LocalKernel, right::Kernel)
+    return materialize(KernelProd(left, right, quadrature(right), causality(right)))
 end
 
 function _dressing(g::UniformDiscretisation, d::AbstractArray{T,3}) where {T}
@@ -39,11 +50,11 @@ function _biased_mul(::C, ::C, gl::UniformDiscretisation, gr::UniformDiscretisat
     dr = blockdiag_blocks(matrix(gr), bs)
     weighted_L = _dressing(gl, dl)
     weighted_R = _dressing(gr, dr)
-    return weighted_L * weighted_R, dl, dr
+    return _ev(gl, op_mul(CompressedLeaf(weighted_L), CompressedLeaf(weighted_R))), dl, dr
 end
 function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::AbstractDiscretisation) where {C<:Union{Retarded,Advanced}}
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
-    result = biased_result - compression(left)(_mul_blocks(dl, dr, 1//4))
+    result = _ev(left, op_sub(CompressedLeaf(biased_result), CompressedLeaf(compression(left)(_mul_blocks(dl, dr, 1//4)))))
     result = step(left)*result
     return make_similar(left, result)
 end
@@ -61,8 +72,8 @@ function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::Abstra
     dr = blockdiag_blocks(matrix(right), blocksize(right))
     weighted_R = _dressing(right, dr)
     weighted_R = _acausal_advanced_edges(quadrature(left), right, weighted_R)
-    result = step(left)*matrix(left) * weighted_R
-    return make_similar(left, result)
+    result = _ev(left, op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(weighted_R)))
+    return make_similar(left, _ev(left, op_scale(step(left), CompressedLeaf(result))))
 end
 
 """
@@ -102,14 +113,14 @@ function _acausal_advanced_edges(::TrapezoidQuadrature, right, weighted_R)
     end
     half = _boundary_blockdiag(right, 0.5 * Matrix{scalartype(right)}(I, bs, bs))
     zer = _boundary_blockdiag(right, zeros(scalartype(right), bs, bs))
-    return half * weighted_R * zer
+    return _ev(right, op_mul(CompressedLeaf(half), CompressedLeaf(weighted_R), CompressedLeaf(zer)))
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
     dl = blockdiag_blocks(matrix(left), blocksize(left))
     weighted_L = _dressing(left, dl)
     weighted_L, MR = _retarded_acausal_edges(quadrature(left), left, weighted_L, matrix(right))
-    result = step(left)*weighted_L * MR
-    return make_similar(left, result)
+    result = _ev(left, op_mul(CompressedLeaf(weighted_L), CompressedLeaf(MR)))
+    return make_similar(left, _ev(left, op_scale(step(left), CompressedLeaf(result))))
 end
 
 # Rectangle rule: historical behaviour, no edge correction.
@@ -133,7 +144,8 @@ function _retarded_acausal_edges(::TrapezoidQuadrature, left, weighted_L, MR)
     end
     half = _boundary_blockdiag(left, 0.5 * Matrix{scalartype(left)}(I, bs, bs))
     zer = _boundary_blockdiag(left, zeros(scalartype(left), bs, bs))
-    return zer * weighted_L, half * MR
+    return _ev(left, op_mul(CompressedLeaf(zer), CompressedLeaf(weighted_L))),
+        _ev(left, op_mul(CompressedLeaf(half), CompressedLeaf(MR)))
 end
 """
     prod(::Acausal, ::Acausal, left, right)
@@ -169,7 +181,7 @@ function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, r
     w = step(left) .* edge_weights(q, n)
     if MR isa StridedMatrix
         # W on the contraction variable: scale the row-blocks of MR
-        return ML * _scale_rowblocks(MR, w, bs, n)
+        return _ev(left, op_mul(CompressedLeaf(ML), CompressedLeaf(_scale_rowblocks(MR, w, bs, n))))
     end
     # compressed storage does not support setindex!: apply the weights
     # through a block-diagonal matrix built in the same compression
@@ -182,11 +194,11 @@ function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, r
         blocks[:, :, i] .*= w[i] / step(left)
     end
     D = compression(left)(blocks)
-    return step(left) * ML * D * MR
+    return _ev(left, op_scale(step(left), op_mul(CompressedLeaf(ML), CompressedLeaf(D), CompressedLeaf(MR))))
 end
 
 _quadrature_prod(::RectangleQuadrature, left::AbstractDiscretisation, right::AbstractDiscretisation) =
-    step(left) * matrix(left) * matrix(right)
+    _ev(left, op_scale(step(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
 
 # Trapezoid rule: only the two domain-edge row-blocks of MR carry a half
 # weight. For dense matrices this is an O(N²) in-place block scaling; for
@@ -198,7 +210,7 @@ function _quadrature_prod(::TrapezoidQuadrature, left::AbstractDiscretisation, r
     n = length(axis(left))
     if MR isa StridedMatrix
         w = step(left) .* edge_weights(TrapezoidQuadrature(), n)
-        return ML * _scale_rowblocks(MR, w, bs, n)
+        return _ev(left, op_mul(CompressedLeaf(ML), CompressedLeaf(_scale_rowblocks(MR, w, bs, n))))
     end
     T = scalartype(left)
     blocks = Array{T,3}(undef, bs, bs, n)
@@ -208,7 +220,7 @@ function _quadrature_prod(::TrapezoidQuadrature, left::AbstractDiscretisation, r
     blocks[:, :, 1] .= 0.5 * Matrix{T}(I, bs, bs)
     blocks[:, :, n] .= 0.5 * Matrix{T}(I, bs, bs)
     D = compression(left)(blocks)
-    return step(left) * ML * D * MR
+    return _ev(left, op_scale(step(left), op_mul(CompressedLeaf(ML), CompressedLeaf(D), CompressedLeaf(MR))))
 end
 
 function _scale_rowblocks(M, w, bs, n)

@@ -46,6 +46,54 @@ adjoint
 norm
 ```
 
+## Backend interface and expression DAG
+
+The numeric-tier backend contract and the lazy expression DAG. See the
+[Backend contract](backend_contract.md) page for the full reference.
+
+```@docs
+AbstractCompressionBackend
+AbstractCompressedOperator
+HssMatricesBackend
+working_eltype
+structure
+empty_like
+op_add
+op_sub
+op_scale
+op_mul
+op_adjoint
+op_norm
+apply
+solve
+DirectSolve
+StructureOptimizingSolve
+CompressedLeaf
+AbstractOpNode
+SolveNode
+evaluate
+cse
+evaluate_cse
+BindingNode
+with_thread_budget
+current_thread_budget
+ThreadConfig
+DeviceConfig
+```
+
+## Kernel-level DAG
+
+Lazy physics constructs materialized at the forcing points (`matrix`,
+`solve_dyson`, observables, `compress!`); see the
+[Backend contract](backend_contract.md) page.
+
+```@docs
+NonEquilibriumGreenFunction.Kernels.KernelProd
+NonEquilibriumGreenFunction.Kernels.AbstractLazyOperator
+NonEquilibriumGreenFunction.Kernels.materialize
+NonEquilibriumGreenFunction.Kernels.lower
+```
+
 ## Accessors
 
 ```@docs
