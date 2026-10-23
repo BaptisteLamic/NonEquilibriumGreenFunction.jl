@@ -57,24 +57,32 @@ function simulate_junction(p::Parameters; cpr=default_compression())
     Σ_K_left = -2im * coupling_left&#39; * ρ * coupling_left
     Σ_K_right = -2im * coupling_right&#39; * ρ * coupling_right
     Σ_K = Σ_K_left + Σ_K_right
+    #Kinetic branch. Kernel products carry the quadrature weighting
+    #(semantic tier), so the chain is expressed with kernel `*`; every
+    #numeric operation inside (dressing, products, sums) evaluates
+    #through the expression DAG (numeric tier) with the compression&#39;s
+    #backend - the DAG is the only evaluation path of the package.
     G_K = G_R * Σ_K * G_R&#39;
     return (; G_R, G_K, Σ_R_left, Σ_K_left, Σ_R_right, Σ_K_right)
 end
 
 function compute_average_current(results)
     function f(G_R, G_K, Σ_R, Σ_K)
-        _Σ_R_time_G_R = Threads.@spawn Σ_R * G_R
-        _G_R_time_Σ_R = Threads.@spawn G_R * Σ_R
-        _G_R_time_Σ_K = Threads.@spawn G_R * Σ_K
-        _G_K_time_adjoint_Σ_R = Threads.@spawn G_K * adjoint(Σ_R)
-        _Σ_K_time_adjoint_G_R = Threads.@spawn Σ_K * adjoint(G_R)
-        _Σ_R_time_G_K = Threads.@spawn Σ_R * G_K
-        Σ_R_time_G_R = fetch(_Σ_R_time_G_R)
-        G_R_time_Σ_R = fetch(_G_R_time_Σ_R)
-        G_R_time_Σ_K = fetch(_G_R_time_Σ_K)
-        G_K_time_adjoint_Σ_R = fetch(_G_K_time_adjoint_Σ_R)
-        Σ_K_time_adjoint_G_R = fetch(_Σ_K_time_adjoint_G_R)
-        Σ_R_time_G_K = fetch(_Σ_R_time_G_K)
+        #The six kernel products are lazy kernel-level DAG nodes: they
+        #carry no numeric work until the forcing point below materializes
+        #the whole expression, so the observable is written as the plain
+        #mathematical expression. Manual Threads.@spawn fan-outs are
+        #counter-productive here: the spawned bodies would only build
+        #nodes (microseconds) while the actual backend evaluation would
+        #still run at the forcing point. Concurrent evaluation of
+        #independent lazy siblings is the DAG scheduler&#39;s job (see the
+        #backend contract page).
+        Σ_R_time_G_R = Σ_R * G_R
+        G_R_time_Σ_R = G_R * Σ_R
+        G_R_time_Σ_K = G_R * Σ_K
+        G_K_time_adjoint_Σ_R = G_K * adjoint(Σ_R)
+        Σ_K_time_adjoint_G_R = Σ_K * adjoint(G_R)
+        Σ_R_time_G_K = Σ_R * G_K
         return -((1 // 2) * ((adjoint(Σ_R_time_G_R)) - Σ_R_time_G_R) + G_R_time_Σ_K +
                  G_K_time_adjoint_Σ_R + -(Σ_K_time_adjoint_G_R + Σ_R_time_G_K) +
                  (3 // 2) * (G_R_time_Σ_R - adjoint(G_R_time_Σ_R)))
@@ -205,4 +213,4 @@ end
 
 f = plot_results(iavr, Ul, Ur)
 save(joinpath(@__DIR__, &quot;average_current_QD.svg&quot;), f)
-f</code></pre><p><img src="../mqdm-18.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../userguide/">« User guide</a><a class="docs-footer-nextpage" href="../sqds/">Superconductor - QD - Superconductor junction »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Wednesday 14 October 2026 16:35">Wednesday 14 October 2026</span>. Using Julia version 1.13.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+f</code></pre><p><img src="../mqdm-18.png" alt/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../userguide/">« User guide</a><a class="docs-footer-nextpage" href="../sqds/">Superconductor - QD - Superconductor junction »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.19.0 on <span class="colophon-date" title="Friday 23 October 2026 15:06">Friday 23 October 2026</span>. Using Julia version 1.13.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
