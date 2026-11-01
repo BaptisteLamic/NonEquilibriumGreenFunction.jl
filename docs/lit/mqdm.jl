@@ -87,7 +87,7 @@ struct Parameters
     ϕr
 end
 
-default_compression() = HssCompression(leafsize=32)
+default_representation() = HssRepresentation(leafsize=32)
 
 function Parameters(; δt, T, Γl=1, Γr=1, β=1000, ϕl, ϕr)
     return Parameters(δt, T, Γl, Γr, β, ϕl, ϕr)
@@ -95,25 +95,25 @@ end
 
 axis(p::Parameters) = 0:p.δt:p.T
 
-function simulate_junction(p::Parameters; cpr=default_compression())
+function simulate_junction(p::Parameters; rep=default_representation())
     #retarded
-    Σ_R_right = LocalKernel(axis(p), t -> -1im * p.Γr, compression=cpr)
-    Σ_R_left = LocalKernel(axis(p), t -> -1im * p.Γl, compression=cpr)
+    Σ_R_right = LocalKernel(axis(p), t -> -1im * p.Γr, representation=rep)
+    Σ_R_left = LocalKernel(axis(p), t -> -1im * p.Γl, representation=rep)
     Σ_R = Σ_R_left + Σ_R_right
-    g = RetardedKernel(axis(p), Stationary(τ -> ComplexF64(-2im)), compression=cpr)
+    g = RetardedKernel(axis(p), Stationary(τ -> ComplexF64(-2im)), representation=rep)
     G_R = solve_dyson(g, g * Σ_R)
     #kinetic
     ρ = AcausalKernel(axis(p), Stationary(τ -> thermal_kernel(τ, p.β) .|> ComplexF64),
-        compression=cpr)
-    coupling_left = LocalKernel(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), compression=cpr)
-    coupling_right = LocalKernel(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), compression=cpr)
+        representation=rep)
+    coupling_left = LocalKernel(axis(p), t -> sqrt(p.Γl) * exp(1im * p.ϕl(t) / 2), representation=rep)
+    coupling_right = LocalKernel(axis(p), t -> sqrt(p.Γr) * exp(1im * p.ϕr(t) / 2), representation=rep)
     Σ_K_left = -2im * coupling_left' * ρ * coupling_left
     Σ_K_right = -2im * coupling_right' * ρ * coupling_right
     Σ_K = Σ_K_left + Σ_K_right
     #Kinetic branch. Kernel products carry the quadrature weighting
     #(semantic tier), so the chain is expressed with kernel `*`; every
     #numeric operation inside (dressing, products, sums) evaluates
-    #through the expression DAG (numeric tier) with the compression's
+    #through the expression DAG (numeric tier) with the representation's
     #backend - the DAG is the only evaluation path of the package.
     G_K = G_R * Σ_K * G_R'
     return (; G_R, G_K, Σ_R_left, Σ_K_left, Σ_R_right, Σ_K_right)
@@ -154,7 +154,7 @@ end
 
 p = Junction.Parameters(δt=0.05, T=1, ϕl=t -> 0, ϕr=t -> 0);
 println("N = $(Junction.axis(p) |> length)")
-results = Junction.simulate_junction(p, cpr=HssCompression());
+results = Junction.simulate_junction(p, rep=HssRepresentation());
 
 # The retarded Green function of the isolated dot decays as $-2e^{-\Gamma t}$ with
 # $\Gamma = 2(\Gamma_l + \Gamma_r)$ (spin factor included).
@@ -233,7 +233,7 @@ function benchmark_full(T)
     param = Junction.Parameters(δt=0.1, T=T, ϕl=t -> 0, ϕr=t -> 0.1 * t);
     ts = Float64[]
     for _ in 1:3
-        push!(ts, @elapsed Junction.simulate_junction(param, cpr=NONCompression()))
+        push!(ts, @elapsed Junction.simulate_junction(param, rep=DenseRepresentation()))
     end
     minimum(ts)
 end
@@ -286,7 +286,7 @@ p = Junction.Parameters(
     ϕl=t -> quadgk(Ul, 0, t)[1],
     ϕr=t -> quadgk(Ur, 0, t)[1])
 println("N = $(Junction.axis(p) |> length)")
-results = Junction.simulate_junction(p, cpr=HssCompression());
+results = Junction.simulate_junction(p, rep=HssRepresentation());
 iavr = Junction.compute_average_current(results)
 
 function plot_results(iavr, Ul, Ur)

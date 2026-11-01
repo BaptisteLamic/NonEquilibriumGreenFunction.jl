@@ -18,7 +18,7 @@ This package solves the non-equilibrium Dyson equation in the time domain with q
 - Quasi-linear time complexity via kernel compression (HSS, or circulant for stationary kernels)
 - Typed kernel maps with algebra (`+`, `-`, `*`, composition)
 - Generic block-structure kernels (e.g. Nambu space)
-- Explicit compression/matrix interface with [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl) support
+- Explicit representation/backend interface with [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl) support
 
 ## Documentation
 

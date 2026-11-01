@@ -42,11 +42,11 @@ Returns the discretization axis of the operator.
 axis(g::SimpleOperator) = g |> discretization |> axis
 
 """
-    compression(g::SimpleOperator)
+    representation(g::SimpleOperator)
 
-Returns the compression method used by the operator.
+Returns the representation tag used by the operator.
 """
-compression(g::SimpleOperator) = g |> discretization |> compression
+representation(g::SimpleOperator) = g |> discretization |> representation
 
 """
     quadrature(g::SimpleOperator)
@@ -82,7 +82,7 @@ import Base: ==
 
 Compare two SimpleOperators for equality based on their axis, compression, and matrix.
 """
-==(A::SimpleOperator,B::SimpleOperator) = axis(A) == axis(B) && compression(A) == compression(B) && matrix(A) == matrix(B)
+==(A::SimpleOperator,B::SimpleOperator) = axis(A) == axis(B) && representation(A) == representation(B) && matrix(A) == matrix(B)
 
 """
     make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,UniformScaling})
@@ -115,19 +115,19 @@ function make_similar(op::SimpleOperator, new_matrix::Union{AbstractMatrix,Unifo
 end
 
 """
-    make_similar(op::SimpleOperator, new_compression::AbstractCompression)
+    make_similar(op::SimpleOperator, new_representation::AbstractRepresentation)
 
-Create a new SimpleOperator with a modified compression method.
+Create a new SimpleOperator with a modified representation tag.
 
 # Arguments
 - `op`: Original SimpleOperator
-- `new_compression`: New compression method to use
+- `new_representation`: New representation tag to use
 
 # Returns
-A new SimpleOperator of the same type as `op` but with the new compression.
+A new SimpleOperator of the same type as `op` but with the new representation.
 """
-function make_similar(op::SimpleOperator, new_compression::AbstractCompression)
-    new_dis = make_similar(discretization(op), matrix(op), compression = new_compression)
+function make_similar(op::SimpleOperator, new_representation::AbstractRepresentation)
+    new_dis = make_similar(discretization(op), matrix(op), representation = new_representation)
     return typeof(op)(new_dis)
 end
 
@@ -135,20 +135,22 @@ end
 """
     compress!(discretization::AbstractDiscretisation)
 
-In-place compression of a discretization's matrix.
+In-place recompression of a discretization's matrix with its backend.
 
 # Arguments
 - `discretization`: Discretization to compress
 
 # Returns
-The same discretization with its matrix compressed.
+The same discretization with its matrix recompressed.
 
 # Note
-This modifies the discretization in-place by replacing its matrix with a compressed version.
+This modifies the discretization in-place by recompressing its matrix
+through the representation's backend.
 """
 function compress!(discretization::AbstractDiscretisation)
-    cpr = discretization |> compression
-    recompress_inplace!(cpr, discretization |> matrix)
+    rep = discretization |> representation
+    b = backend(rep, scalartype(discretization))
+    recompress_inplace!(b, rep, discretization |> matrix)
     return discretization
 end
 
@@ -174,7 +176,7 @@ end
 
 -(op::AbstractOperator) = -1 * op
 
-*(λ::Number, op::SimpleOperator) = make_similar(op, evaluate(compression(op), op_scale(λ, CompressedLeaf(matrix(op)))))
+*(λ::Number, op::SimpleOperator) = make_similar(op, evaluate(representation(op), op_scale(λ, CompressedLeaf(matrix(op))); eltype=scalartype(op)))
 *(op::SimpleOperator, λ::Number) = λ * op
 *(scaling::UniformScaling, op::SimpleOperator) = scaling.λ * op
 *(op::SimpleOperator, scaling::UniformScaling) = scaling.λ * op
@@ -216,19 +218,19 @@ struct LocalKernel{D<:AbstractDiscretisation} <: SimpleOperator
 end
 
 """
-    LocalKernel(axis, f; compression=HssCompression())
+    LocalKernel(axis, f; representation=HssRepresentation())
 
 Create a LocalKernel from a function f defined on an axis.
 
 # Arguments
 - `axis`: Time axis for discretization
 - `f`: Function that returns a block matrix at each time point
-- `compression`: Compression method to use (default: HssCompression)
+- `representation`: Representation tag to use (default: HssRepresentation)
 
 # Returns
 A LocalKernel representing the diagonal matrix with f(axis[i]) at each block.
 """
-function LocalKernel(axis, f; compression::AbstractCompression=HssCompression())
+function LocalKernel(axis, f; representation::AbstractRepresentation=HssRepresentation())
     f00 = f(axis[1])
     T = eltype(f00)
     bs = size(f00, 1)
@@ -236,13 +238,13 @@ function LocalKernel(axis, f; compression::AbstractCompression=HssCompression())
     for i in eachindex(axis)
         δ[:, :, i] .= f(axis[i])
     end
-    matrix = build_blockdiag(δ, compression=compression)
+    matrix = build_blockdiag(δ, representation=representation)
     return LocalKernel(
         UniformDiscretisation(
             axis,
             matrix,
             bs,
-            compression
+            representation
         )
     )
 end
@@ -298,21 +300,21 @@ end
 
 Multiply two LocalKernels.
 """
-*(left::LocalKernel, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
+*(left::LocalKernel, right::LocalKernel) = make_similar(left, evaluate(representation(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right))); eltype=scalartype(left)))
 
 """
     *(left::LocalKernel, right::SimpleOperator)
 
 Multiply a LocalKernel with a SimpleOperator.
 """
-*(left::LocalKernel, right::SimpleOperator) = make_similar(right, evaluate(compression(right), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
+*(left::LocalKernel, right::SimpleOperator) = make_similar(right, evaluate(representation(right), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right))); eltype=scalartype(right)))
 
 """
     *(left::SimpleOperator, right::LocalKernel)
 
 Multiply a SimpleOperator with a LocalKernel.
 """
-*(left::SimpleOperator, right::LocalKernel) = make_similar(left, evaluate(compression(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right)))))
+*(left::SimpleOperator, right::LocalKernel) = make_similar(left, evaluate(representation(left), op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(matrix(right))); eltype=scalartype(left)))
 
 """
     adjoint(op::LocalKernel)
@@ -388,12 +390,12 @@ function _discretize_uniformScaling(discretization::UniformDiscretisation, I)
     for i in eachindex(ax)
         δ[:, :, i] = block_mat
     end
-    matrix = build_blockdiag(δ, compression=compression(discretization))
+    matrix = build_blockdiag(δ, representation=representation(discretization))
     return UniformDiscretisation(
         ax,
         matrix,
         bs,
-        compression(discretization)
+        representation(discretization)
     )
 end
 
@@ -435,12 +437,12 @@ Returns the causality of a SumOperator based on its components.
 causality(op::SumOperator) = causality_of_sum(causality(op.left), causality(op.right))
 
 """
-    compression(op::SumOperator)
+    representation(op::SumOperator)
 
-Returns the compression method of a SumOperator (both components must have the same compression).
+Returns the representation tag of a SumOperator (both components must have the same representation).
 
 # Throws
-AssertionError if left and right operators have different compression methods.
+AssertionError if left and right operators have different representation tags.
 """
 axis(op::SumOperator) = axis(op.left)
 step(op::SumOperator) = step(op.left)
@@ -449,11 +451,11 @@ scalartype(op::SumOperator) = promote_type(scalartype(op.left), scalartype(op.ri
 quadrature(op::SumOperator) = quadrature(op.left)
 discretization(op::SumOperator) = discretization(op.left)
 matrix(op::SumOperator) = matrix(materialize(op))
-function compression(op::SumOperator)
-    cl = compression(op.left)
-    cr = compression(op.right)
-    @assert cr == cl "SumOperator components must have the same compression"
-    return cr
+function representation(op::SumOperator)
+    rl = representation(op.left)
+    rr = representation(op.right)
+    @assert rr == rl "SumOperator components must have the same representation"
+    return rr
 end
 
 """
@@ -541,7 +543,8 @@ way to observe an operator; unlike `diag(matrix(op))` it is defined for
 `SumOperator`s and does not require knowing the storage layout.
 """
 function same_time(op::SimpleOperator)
-    return same_time_blocks(matrix(op), blocksize(op))
+    rep = representation(op)
+    return same_time_blocks(backend(rep, scalartype(op)), matrix(op), blocksize(op))
 end
 same_time(op::SumOperator) = same_time(op.left) .+ same_time(op.right)
 
@@ -557,8 +560,8 @@ keldysh_trace(op::AbstractOperator) = tr.(same_time(op))
     using LinearAlgebra
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
-    k = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t + tp)); compression=NONCompression())
-    d = LocalKernel(ax, t -> ComplexF64(2); compression=NONCompression())
+    k = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t + tp)); representation=DenseRepresentation())
+    d = LocalKernel(ax, t -> ComplexF64(2); representation=DenseRepresentation())
     s = k + d
     st = same_time(s)
     @test st isa Vector{Matrix{ComplexF64}}
@@ -574,7 +577,7 @@ end
     using NonEquilibriumGreenFunction
     N = 512
     ax = 0:0.01:(N - 1) * 0.01
-    k = RetardedKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); compression=HssCompression(leafsize=64))
+    k = RetardedKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); representation=HssRepresentation(leafsize=64))
     @test occursin("HssMatrix", string(typeof(matrix(k))))
     st = same_time(k)
     alloc = @allocated same_time(k)
@@ -583,7 +586,7 @@ end
     @test [st[i][1, 1] for i in eachindex(st)] ≈ [dense[i, i] for i in axes(dense, 1)]
     @test keldysh_trace(k) ≈ diag(dense)
 
-    g2 = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); compression=HssCompression(leafsize=64))
+    g2 = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); representation=HssRepresentation(leafsize=64))
     st2 = same_time(g2)
     dense2 = matrix(g2)[:, :]
     @test [st2[i] ≈ dense2[2*i-1:2*i, 2*i-1:2*i] for i in eachindex(st2)] |> all
@@ -596,9 +599,9 @@ end
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     c = 100
-    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-    kernelC = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+    kernelC = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
     @assert kernelA != kernelB
     @assert kernelA == deepcopy(kernelA)
     @assert kernelC == kernelA
@@ -610,12 +613,12 @@ end
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     c = 100
-    cprA = HssCompression(atol = 1E-4,rtol = 1E-4)
-    cprB = HssCompression(atol = 1E-6,rtol = 1E-6)
-    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=cprA)
+    cprA = HssRepresentation(atol = 1E-4,rtol = 1E-4)
+    cprB = HssRepresentation(atol = 1E-6,rtol = 1E-6)
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=cprA)
     kernelB = make_similar(kernelA, cprB)
-    @test compression(kernelA) == cprA
-    @test compression(kernelB) == cprB
+    @test representation(kernelA) == cprA
+    @test representation(kernelB) == cprB
     compress!(kernelB)
     @test norm(matrix(kernelA) - matrix(kernelB)) < cprB.atol
     @test norm(matrix(kernelA) - matrix(kernelB)) / norm(matrix(kernelB)) < cprB.rtol
@@ -626,8 +629,8 @@ end
     ax = LinRange(-Dt / 2, Dt, N)
     for T in (Float64,)
         c = 100
-        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), compression=NONCompression())
+        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), representation=DenseRepresentation())
         @test typeof(I*kernelA) == typeof(kernelA) 
         @test matrix(2*I*kernelA) == 2*matrix(kernelA)
         @test typeof(kernelA*I) == typeof(kernelA) 
@@ -644,8 +647,8 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, x->1., compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        dirac = LocalKernel(ax, x->1., representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
         @test norm(matrix(kernel * dirac - kernel)) / norm(matrix(kernel)) < tol
     end
 end
@@ -657,10 +660,10 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-        target_left = RetardedKernel(ax, TwoTime((x, y) -> sin(x) * cos(x - y)), compression=NONCompression())
-        target_right = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y) * sin(y)), compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+        target_left = RetardedKernel(ax, TwoTime((x, y) -> sin(x) * cos(x - y)), representation=DenseRepresentation())
+        target_right = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y) * sin(y)), representation=DenseRepresentation())
         @test norm(matrix(dirac * kernel - target_left)) / norm(matrix(target_left)) < tol
         @test norm(matrix(kernel * dirac - target_right)) / norm(matrix(target_right)) < tol
     end
@@ -671,8 +674,8 @@ end
     N, Dt = 256, 2.0
     ax = LinRange(-Dt / 2, Dt, N)
     c = 100
-    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+    kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+    kernelB = AdvancedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
     @test matrix(adjoint(kernelA)) == adjoint(matrix(kernelA)) 
     @test matrix(adjoint(kernelB)) == adjoint(matrix(kernelB)) 
     @test causality(adjoint(kernelA)) == Advanced()
@@ -686,7 +689,7 @@ end
     for T in (Float64, ComplexF64)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
         @test matrix(2I * dirac) == 2 * matrix(dirac)
     end
 end
@@ -698,7 +701,7 @@ end
         c = 100
         tol = c * max(1E-6, eps(real(T)))
         foo(x) = sin(x) + (T<:Complex ? 1im : 0)
-        dirac = LocalKernel(ax, foo, compression=NONCompression())
+        dirac = LocalKernel(ax, foo, representation=DenseRepresentation())
         @test matrix(dirac') == matrix(dirac)'
     end
 end
@@ -711,8 +714,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
-        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), compression=NONCompression())
+        kernelA = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
+        kernelB = RetardedKernel(ax, TwoTime((x, y) -> sin(x - y)), representation=DenseRepresentation())
         sumOp = SumOperator(kernelA, kernelB)
         target_right = kernelA * kernelB + kernelB * kernelB
         @test typeof(sumOp * kernelB) == typeof(target_right)
@@ -730,8 +733,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
         sumOp = dirac + kernel
         target_right = dirac * kernel + kernel * kernel
         target_left = kernel * dirac + kernel * kernel
@@ -750,8 +753,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
         sumOp = dirac + kernel
         @test matrix((-sumOp).left) == -matrix(dirac)
         @test matrix((-sumOp).right) == -matrix(kernel)
@@ -767,8 +770,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
         sumOp = dirac + kernel
         target = dirac*dirac + dirac*kernel + kernel*dirac + kernel*kernel
         @test typeof(sumOp * sumOp) == typeof(target)
@@ -783,8 +786,8 @@ end
     for T in (Float64,)
         c = 100
         tol = c * max(1E-6, eps(real(T)))
-        dirac = LocalKernel(ax, sin, compression=NONCompression())
-        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), compression=NONCompression())
+        dirac = LocalKernel(ax, sin, representation=DenseRepresentation())
+        kernel = RetardedKernel(ax, TwoTime((x, y) -> cos(x - y)), representation=DenseRepresentation())
         sumOp = dirac + kernel
         adjoint_sumOp = sumOp'
         @test matrix(sumOp.left') == matrix(dirac')

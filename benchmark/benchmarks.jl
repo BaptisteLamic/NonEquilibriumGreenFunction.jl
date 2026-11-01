@@ -10,7 +10,7 @@ const SMALL_N = 64
 const MEDIUM_N = 256
 const LARGE_N = 512
 const BLOCKSIZES = [1, 4, 8]
-const COMPRESSIONS = [NONCompression(), HssCompression(atol=1e-6, rtol=1e-6)]
+const COMPRESSIONS = [DenseRepresentation(), HssRepresentation(atol=1e-6, rtol=1e-6)]
 const DT = 2.0
 const SEED = 12345
 
@@ -37,16 +37,16 @@ for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, f_acausal, f_dirac = setup_benchmark(N; bs=bs)
 
     SUITE["discretization"]["retarded", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable RetardedKernel($ax, TwoTime($f_ret), compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable RetardedKernel($ax, TwoTime($f_ret), representation=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["advanced", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable AdvancedKernel($ax, TwoTime($f_ret), compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable AdvancedKernel($ax, TwoTime($f_ret), representation=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["acausal", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable AcausalKernel($ax, TwoTime($f_acausal), compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable AcausalKernel($ax, TwoTime($f_acausal), representation=$cpr) samples=10 evals=1 gcsample=true
 
     SUITE["discretization"]["dirac", "N=$N", "bs=$bs", "$(typeof(cpr).name.name)"] =
-        @benchmarkable LocalKernel($ax, $f_dirac, compression=$cpr) samples=10 evals=1 gcsample=true
+        @benchmarkable LocalKernel($ax, $f_dirac, representation=$cpr) samples=10 evals=1 gcsample=true
 end
 
 # =============================================================================
@@ -56,10 +56,10 @@ SUITE["operations"] = BenchmarkGroup()
 
 for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, f_acausal, _ = setup_benchmark(N; bs=bs)
-    k1 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
-    k2 = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
-    k_ac = AcausalKernel(ax, TwoTime(f_acausal), compression=cpr)
-    d = LocalKernel(ax, x -> Matrix{Float64}(I, bs, bs), compression=cpr)
+    k1 = RetardedKernel(ax, TwoTime(f_ret), representation=cpr)
+    k2 = RetardedKernel(ax, TwoTime(f_ret), representation=cpr)
+    k_ac = AcausalKernel(ax, TwoTime(f_acausal), representation=cpr)
+    d = LocalKernel(ax, x -> Matrix{Float64}(I, bs, bs), representation=cpr)
 
     SUITE["operations"]["addition", "N=$N", "bs=$bs"] =
         @benchmarkable $k1 + $k2 samples=100 evals=10 gcsample=true
@@ -95,10 +95,10 @@ for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES
     ax, f_ret, _, _ = setup_benchmark(N; bs=bs)
 
     SUITE["compression"]["dense", "N=$N", "bs=$bs"] =
-        @benchmarkable NONCompression()($ax, $f_ret) samples=5 evals=1 gcsample=true
+        @benchmarkable DenseRepresentation()($ax, $f_ret) samples=5 evals=1 gcsample=true
 
     for (atol, rtol) in [(1e-4, 1e-4), (1e-6, 1e-6)]
-        cpr = HssCompression(atol=atol, rtol=rtol)
+        cpr = HssRepresentation(atol=atol, rtol=rtol)
         SUITE["compression"]["hss_atol=$(atol)", "N=$N", "bs=$bs"] =
             @benchmarkable $cpr($ax, $f_ret) samples=5 evals=1 gcsample=true
     end
@@ -112,9 +112,9 @@ SUITE["solver"] = BenchmarkGroup()
 for N in [SMALL_N], bs in [1, 4]
     ax, f_ret, _, _ = setup_benchmark(N; bs=bs)
     g = RetardedKernel(ax, TwoTime((t, tp) -> exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64}))),
-                                   compression=HssCompression(atol=1e-8, rtol=1e-8))
+                                   representation=HssRepresentation(atol=1e-8, rtol=1e-8))
     K = RetardedKernel(ax, TwoTime((t, tp) -> 0.5 * exp(-abs(t-tp)) * (t >= tp ? Matrix{Float64}(I, bs, bs) : zero(Matrix{Float64}))),
-                                   compression=HssCompression(atol=1e-8, rtol=1e-8))
+                                   representation=HssRepresentation(atol=1e-8, rtol=1e-8))
 
     SUITE["solver"]["dyson", "N=$N", "bs=$bs"] =
         @benchmarkable solve_dyson($g, $K) samples=3 evals=1 gcsample=true
@@ -127,7 +127,7 @@ SUITE["indexing"] = BenchmarkGroup()
 
 for N in [SMALL_N, MEDIUM_N], bs in BLOCKSIZES, cpr in COMPRESSIONS
     ax, f_ret, _, _ = setup_benchmark(N; bs=bs)
-    k = RetardedKernel(ax, TwoTime(f_ret), compression=cpr)
+    k = RetardedKernel(ax, TwoTime(f_ret), representation=cpr)
     dis = discretization(k)
 
     SUITE["indexing"]["single_block", "N=$N", "bs=$bs"] =

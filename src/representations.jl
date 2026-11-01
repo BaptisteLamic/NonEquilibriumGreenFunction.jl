@@ -167,9 +167,12 @@ function build_linearMap(axis, f; blk=512)
 end
 
 """
-    HssCompression <: AbstractCompression
+    HssRepresentation <: AbstractRepresentation
 
-HSS (Hierarchically Semi-Separable) matrix compression parameters.
+HSS (Hierarchically Semi-Separable) matrix representation parameters.
+The matrices are built by `compress(backend(HssRepresentation()), ...)`
+through the HSS backend; the word "compression" survives here only where
+it is literally true (the HSS tolerances).
 
 # Fields
 - `atol::Float64`: Absolute tolerance for compression
@@ -177,7 +180,7 @@ HSS (Hierarchically Semi-Separable) matrix compression parameters.
 - `kest::Int`: Estimated rank for compression
 - `leafsize::Int`: Leaf size for the HSS tree
 """
-struct HssCompression <: AbstractCompression
+struct HssRepresentation <: AbstractRepresentation
     atol::Float64
     rtol::Float64
     kest::Int
@@ -185,9 +188,9 @@ struct HssCompression <: AbstractCompression
 end
 
 """
-    HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
+    HssRepresentation(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
 
-Construct an HssCompression object with specified parameters.
+Construct an HssRepresentation object with specified parameters.
 
 # Arguments
 - `atol`: Absolute tolerance (default: 1e-4)
@@ -195,257 +198,56 @@ Construct an HssCompression object with specified parameters.
 - `kest`: Estimated rank (default: 20)
 - `leafsize`: Leaf size for HSS tree (default: 32)
 """
-function HssCompression(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
-    return HssCompression(atol, rtol, kest, leafsize)
+function HssRepresentation(; atol=1E-4, rtol=1E-4, kest=20, leafsize=32)
+    return HssRepresentation(atol, rtol, kest, leafsize)
 end
 
 """
-    NONCompression <: AbstractCompression
+    DenseRepresentation <: AbstractRepresentation
 
-No compression - returns full dense matrices.
+Dense CPU matrices - no compression at all, a plain dense backend.
 """
-struct NONCompression <: AbstractCompression end
+struct DenseRepresentation <: AbstractRepresentation end
 
 
 """
-    (Compression::HssCompression)(axis, f; stationary=false)
+    triangularLowRankCompression(rep::AbstractRepresentation, causality, axis, f, g)
 
-Compress a function-defined matrix using HSS compression.
+Build a low-rank kernel f(t) * g(tp) with triangular masking in the
+representation's family, via `compress(backend(rep, ...), ...)`.
 
 # Arguments
-- `axis`: Time axis for discretization
-- `f`: Function f(t, tp) that returns a block matrix
-- `stationary`: If true, use circulant structure (default: false)
-
-# Returns
-An HssMatrix containing the compressed representation.
-
-# Throws
-AssertionError if f does not return square matrices.
-"""
-function (Compression::HssCompression)(axis, f; stationary=false)
-    f00 = f(axis[1], axis[1])
-    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
-    lm = stationary ? build_CirculantlinearMap(axis, f) : build_linearMap(axis, f)
-    bs = size(f00, 1)
-    cc = bisection_cluster(length(axis) * bs, leafsize=Compression.leafsize)
-    r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest, leafsize=Compression.leafsize)
-    return r
-end
-
-"""
-    (Compression::HssCompression)(tab::HssMatrix)
-
-Recompress an existing HssMatrix with the compression parameters.
-
-# Arguments
-- `tab`: HssMatrix to recompress
-
-# Returns
-A recompressed HssMatrix.
-"""
-function (Compression::HssCompression)(tab::HssMatrix)
-    return recompress_inplace!(Compression, tab)
-end
-
-"""
-    recompress_inplace!(c::HssCompression, tab::HssMatrix)
-
-In-place recompression of an HssMatrix with the compression parameters.
-
-# Arguments
-- `c`: HssCompression parameters
-- `tab`: HssMatrix to recompress
-# Returns
-The recompressed HssMatrix (mutated in place).
-"""
-function NonEquilibriumGreenFunction.recompress_inplace!(c::HssCompression, tab::HssMatrix)
-    return HssMatrices.recompress!(tab, atol=c.atol, rtol=c.rtol, leafsize=c.leafsize)
-end
-
-"""
-    (Compression::HssCompression)(blocks::AbstractArray{T,3})
-
-Build a block-diagonal HssMatrix with the `bs×bs` block `blocks[:, :, k]` on
-diagonal block `k`, exactly and directly in the HSS family via
-`HssMatrices.hss_blkdiag` (no randomized recompression and no lossy
-round-trip: the result represents the blocks bit-for-bit).
-"""
-function (Compression::HssCompression)(blocks::AbstractArray{T,3}) where {T}
-    @assert size(blocks, 1) == size(blocks, 2) "Blocks must be square matrices"
-    n = size(blocks, 1) * size(blocks, 3)
-    cc = bisection_cluster(n, leafsize=Compression.leafsize)
-    return hss_blkdiag(_blockdiag_sparse(blocks), cc, cc)
-end
-
-"""
-    ldiv(left::HssMatrix, right::HssMatrix)
-
-Solve `left * X = right` using the in-place HSS solver.
-"""
-function NonEquilibriumGreenFunction.ldiv(left::HssMatrix, right::HssMatrix)
-    return ldiv!(left, right)
-end
-
-"""
-    same_time_blocks(m::HssMatrix, bs)
-
-Equal-time blocks of an HssMatrix, extracted without materializing the full
-HSS storage.
-"""
-function NonEquilibriumGreenFunction.same_time_blocks(m::HssMatrix, bs)
-    T = eltype(m)
-    N = div(size(m, 1), bs)
-    return [T[m[p + j, p + k] for j in 1:bs, k in 1:bs] for p in (0:bs:(N - 1) * bs)]
-end
-
-"""
-    (Compression::HssCompression)(tab::AbstractMatrix{T}) where {T<:Number}
-
-Compress a dense matrix using HSS compression.
-
-# Arguments
-- `tab`: Dense matrix to compress
-
-# Returns
-An HssMatrix containing the compressed representation.
-"""
-function (Compression::HssCompression)(tab::AbstractMatrix{T}) where {T<:Number}
-    return hss(tab, atol=Compression.atol, rtol=Compression.rtol, leafsize=Compression.leafsize)
-end
-
-"""
-    (Compression::HssCompression)(axis, tab::BlockCirculantMatrix)
-
-Compress a BlockCirculantMatrix using HSS compression.
-
-# Arguments
-- `axis`: Time axis
-- `tab`: BlockCirculantMatrix to compress
-
-# Returns
-An HssMatrix containing the compressed representation.
-"""
-function (Compression::HssCompression)(axis, tab::BlockCirculantMatrix)
-    lm = build_CirculantlinearMap(tab)
-    cc = bisection_cluster(size(tab, 1), leafsize=Compression.leafsize)
-    r = randcompress_adaptive(lm, cc, cc, atol=Compression.atol, rtol=Compression.rtol, kest=Compression.kest)
-    return r
-end
-
-"""
-    (Compression::NONCompression)(axis, f; stationary=false)
-
-Build a full dense matrix without compression.
-
-# Arguments
-- `axis`: Time axis for discretization
-- `f`: Function f(t, tp) that returns a block matrix
-- `stationary`: Ignored for NONCompression (default: false)
-
-# Returns
-A dense matrix of size (bs*length(axis), bs*length(axis)).
-
-# Throws
-AssertionError if f does not return square matrices.
-"""
-function (Compression::NONCompression)(axis, f; stationary=false)
-    f00 = f(axis[1], axis[1])
-    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
-    bs = size(f00, 1)
-    r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
-    for it in eachindex(axis)
-        for itp in eachindex(axis)
-            r[blockrange(it, bs), blockrange(itp, bs)] .= f(axis[it], axis[itp])
-        end
-    end
-    return r
-end
-
-"""
-    (Compression::NONCompression)(axis, tab::BlockCirculantMatrix)
-
-Convert BlockCirculantMatrix to a dense matrix.
-
-# Arguments
-- `axis`: Time axis (unused but kept for API consistency)
-- `tab`: BlockCirculantMatrix to convert
-
-# Returns
-A dense matrix representation.
-"""
-function (Compression::NONCompression)(axis, tab::BlockCirculantMatrix)
-    return tab[:, :]
-end
-
-"""
-    (Compression::NONCompression)(tab::AbstractMatrix{T}) where {T<:Number}
-
-Convert any matrix to a dense Matrix.
-
-# Arguments
-- `tab`: Matrix to convert
-
-# Returns
-A dense Matrix.
-"""
-function (Compression::NONCompression)(tab::AbstractMatrix{T}) where {T<:Number}
-    return Matrix(tab)
-end
-
-"""
-    (Compression::NONCompression)(axis, f, g)
-
-Build a dense matrix from two functions f and g, computing f(t) * g(tp).
-
-# Arguments
-- `axis`: Time axis for discretization
-- `f`: Function of time t
-- `g`: Function of time tp
-
-# Returns
-A dense matrix where element (i,j) = f(axis[i]) * g(axis[j]).
-"""
-function (Compression::NONCompression)(axis, f, g)
-    return Compression(axis, (t, tp) -> f(t) * g(tp))
-end
-
-"""
-    triangularLowRankCompression(compression::AbstractCompression, causality, axis, f, g)
-
-Compress a low-rank kernel f(t) * g(tp) with triangular masking using the specified compression.
-
-# Arguments
-- `compression`: Compression method to use
+- `rep`: Representation tag to use
 - `causality`: Causality type (Retarded, Advanced, or Acausal)
 - `axis`: Time axis for discretization
 - `f`: Function of time t
 - `g`: Function of time tp
 
 # Returns
-A compressed matrix representation.
+A matrix of the representation's family.
 
 # Throws
 AssertionError if f or g do not return square matrices.
 """
-function triangularLowRankCompression(compression::AbstractCompression, causality, axis, f, g)
+function triangularLowRankCompression(rep::AbstractRepresentation, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
+    f00 isa AbstractMatrix && @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
     fg(t, tp) = f(t) * g(tp)
     _mask(::Retarded) = (x, y) -> x >= y ? fg(x, y) : zero(f00)
     _mask(::Advanced) = (x, y) -> x <= y ? fg(x, y) : zero(f00)
     _mask(::Acausal) = (x, y) -> fg(x, y)
     fg_masked = _mask(causality)
-    return compression(axis, fg_masked)
+    return compress(backend(rep), axis, fg_masked)
 end
 
 """
-    triangularLowRankCompression(compression::HssCompression, causality, axis, f, g)
+    triangularLowRankCompression(rep::HssRepresentation, causality, axis, f, g)
 
-Compress a low-rank kernel using HSS compression with optimized BlockTriangularLowRankMatrix.
+Build a low-rank kernel in the HSS family with an optimized
+BlockTriangularLowRankMatrix sampling path.
 
 # Arguments
-- `compression`: HssCompression parameters
+- `rep`: HSS representation parameters
 - `causality`: Causality type (Retarded, Advanced, or Acausal)
 - `axis`: Time axis for discretization
 - `f`: Function of time t
@@ -457,20 +259,22 @@ An HssMatrix containing the compressed representation.
 # Throws
 AssertionError if f or g do not return square matrices.
 """
-function triangularLowRankCompression(compression::HssCompression, causality, axis, f, g)
+function triangularLowRankCompression(rep::HssRepresentation, causality, axis, f, g)
     f00 = f(axis[1])
-    @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
-    blocksize = size(f00, 1)
-    u = zeros(eltype(f00), blocksize, blocksize, length(axis))
-    v = zeros(eltype(f00), blocksize, blocksize, length(axis))
+    f00 isa AbstractMatrix && @assert size(f00, 1) == size(f00, 2) "Functions f and g must return square matrices"
+    blocksize = f00 isa AbstractMatrix ? size(f00, 1) : 1
+    S = f00 isa AbstractMatrix ? eltype(f00) : typeof(f00)
+    u = zeros(S, blocksize, blocksize, length(axis))
+    v = zeros(S, blocksize, blocksize, length(axis))
     for k in eachindex(axis)
-        u[:, :, k] .= f(axis[k])
-        v[:, :, k] .= g(axis[k])
+        fk = f(axis[k]); gk = g(axis[k])
+        u[:, :, k] .= fk isa AbstractMatrix ? fk : fill(fk, 1, 1)
+        v[:, :, k] .= gk isa AbstractMatrix ? gk : fill(gk, 1, 1)
     end
     matrix = BlockTriangularLowRankMatrix(u, v, causality)
     lm = build_triangularLowRankMap(matrix)
-    cc = bisection_cluster(size(matrix, 1), leafsize=compression.leafsize)
-    r = randcompress_adaptive(lm, cc, cc, atol=compression.atol, rtol=compression.rtol, kest=compression.kest, leafsize=compression.leafsize)
+    cc = bisection_cluster(size(matrix, 1), leafsize=rep.leafsize)
+    r = randcompress_adaptive(lm, cc, cc, atol=rep.atol, rtol=rep.rtol, kest=rep.kest, leafsize=rep.leafsize)
     return r
 end
 
@@ -568,7 +372,7 @@ end
             f(x) = T.([x 0; 0 x])
             g(x) = T.([x^2 0; 0 x^2])
             K = Kernel(causality, ax, Separable(f, g);
-                compression=HssCompression(atol=1e-12, rtol=1e-12))
+                representation=HssRepresentation(atol=1e-12, rtol=1e-12))
             _getMask(::Type{Acausal}) = (i, j) -> T(true)
             _getMask(::Type{Retarded}) = (i, j) -> T(i >= j)
             _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
@@ -588,8 +392,8 @@ end
     for (bs, N) in [(1, 16), (2, 32), (3, 7)]
         T = ComplexF64
         blocks = [T(i + 10 * j + 100 * blk) for i in 1:bs, j in 1:bs, blk in 1:N]
-        cp = HssCompression()
-        m = cp(blocks)
+        rep = HssRepresentation()
+        m = NonEquilibriumGreenFunction.compress(NonEquilibriumGreenFunction.backend(rep), blocks)
         @test m isa HssMatrix
         ref = zeros(T, N * bs, N * bs)
         for blk in 1:N

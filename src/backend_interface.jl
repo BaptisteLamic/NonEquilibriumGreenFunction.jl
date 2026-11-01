@@ -4,9 +4,9 @@
 # Implemented and consumed: the expression DAG below is the only numeric
 # evaluation path of the package. Kernel algebra, solve_dyson, observables,
 # scalar/local-kernel operations and discretization adjoint/negation build
-# DAGs and evaluate them via the compression's backend; legacy
-# AbstractCompression objects are bridged through backend(c) (see the
-# legacy bridge section).
+# DAGs and evaluate them via the representation's backend; representation
+# tags reach the backend contract through backend(r) (see the bridge
+# section).
 
 # ---------------------------------------------------------------------------
 # Thread budget facility (task-local, inherited by spawned children)
@@ -80,46 +80,41 @@ struct ThreadConfig
 end
 
 """
-    AbstractCompressionBackend
+    AbstractBackend
 
 Backend contract (numeric tier). Subtypes own: device, threads, precision
-(`sample_type`, `coeff_type`, `working_type`), and the compressed-operator
-family they produce. The mandatory primitive set and the optional
-`evaluate` override are specified in
-`docs/src/backend_interface_design.md`. There is deliberately no dense
-fallback: every primitive must be implemented in-family.
+(`sample_type`, `coeff_type`, `working_type`), and the matrix family they
+produce. The mandatory primitive set (listed once in `CORE_PRIMITIVES`
+below) and the optional `evaluate` override are specified in
+`docs/src/backend_interface_design.md` and `docs/src/backend_contract.md`.
+There is deliberately no dense fallback: every primitive must be
+implemented in-family.
 """
-abstract type AbstractCompressionBackend end
+abstract type AbstractBackend end
 
 """
-    working_eltype(b::AbstractCompressionBackend)
+    working_eltype(b::AbstractBackend)
 
 The scalar type the backend works in: drives `scalartype` and the
 `solve_dyson` assembly. Not derived from any stored matrix.
-
-**Advisory in stage 1**: the generic `AbstractMatrix` primitives never
-consult it (eltype promotion happens naturally through Base), and the
-legacy bridge's `backend(c)` defaults to `ComplexF64` regardless of the
-stored matrices' eltype. Backends that actually work in a different
-precision (mixed-precision backends) must consume it; until then it is
-carried but inert.
 """
 function working_eltype end
 
 """
-    MatrixFamilyBackend{T} <: AbstractCompressionBackend
+    MatrixFamilyBackend{T} <: AbstractBackend
 
 Reference backend for any matrix family built on `AbstractMatrix` with
 the standard Base operations (dense `Matrix`, HSS, GPU-style arrays
-whose family implements Base ops). It is the bridge for the legacy
-compressions: `NONCompression` and any `AbstractCompression` that has
-not been ported to a dedicated backend evaluate through it. The
-primitives are the generic `AbstractMatrix` methods defined below, so
-the family stays in-family (dense+dense stays dense, HSS+HSS stays HSS);
-structured backends (`HssMatricesBackend`) specialize the same
-generic functions for in-family wins (e.g. balanced chains).
+whose family implements Base ops). It is the default bridge for
+representation tags: `DenseRepresentation` and any
+`AbstractRepresentation` that has not been ported to a dedicated backend
+evaluate through it. The primitives are the generic `AbstractMatrix`
+methods defined below, so the family stays in-family (dense+dense stays
+dense, HSS+HSS stays HSS); structured backends (`HssMatricesBackend`)
+specialize the same generic functions for in-family wins (e.g. balanced
+chains).
 """
-struct MatrixFamilyBackend{T<:Number} <: AbstractCompressionBackend end
+struct MatrixFamilyBackend{T<:Number} <: AbstractBackend end
 
 MatrixFamilyBackend(::Type{T}=ComplexF64) where {T<:Number} = MatrixFamilyBackend{T}()
 
@@ -181,7 +176,7 @@ function op_mul end
 """In-family adjoint of a compressed operator."""
 function op_adjoint end
 
-"""In-family norm of a compressed operator (mandatory)."""
+"""In-family norm of a compressed operator (optional, test-only)."""
 function op_norm end
 
 """
@@ -191,6 +186,53 @@ Operator action of `m` on `x` (used for residual closures and lazy
 products). In-family; no dense fallback.
 """
 function apply end
+
+"""
+    compress(b::AbstractBackend, axis, f; stationary=false)
+    compress(b::AbstractBackend, m)
+    compress(b::AbstractBackend, blocks::AbstractArray{T,3})
+
+Build a matrix of the backend's family. `compress(b, axis, f;
+stationary=...)` builds the kernel matrix of `f(t, tp)` (already
+causality-masked by the caller; `f` returns fixed-size square blocks);
+`compress(b, m)` (re)compresses a matrix into the family (must be pure);
+`compress(b, blocks)` builds the block-diagonal matrix with block
+`blocks[:, :, k]` on diagonal block `k`. This is the **only** construction
+entry point of the numeric tier.
+"""
+function compress end
+
+"""
+    to_cpu(b::AbstractBackend, m)
+
+Materialize a matrix of the backend's family as a CPU `Matrix`.
+"""
+function to_cpu end
+
+"""
+    same_time_blocks(b::AbstractBackend, m, bs)
+
+Equal-time blocks of `m`: one `bs×bs` CPU matrix per time step, i.e.
+`same_time_blocks(b, m, bs)[i] ≈ m[blockrange(i, bs), blockrange(i, bs)]`.
+"""
+function same_time_blocks end
+
+"""
+    recompress_inplace!(b::AbstractBackend, r, m)
+
+In-place recompression of `m` in the family of backend `b`, using the
+parameters of the representation tag `r`.
+"""
+function recompress_inplace! end
+
+"""
+    blockdiag_blocks(b::AbstractBackend, m, bs)
+
+Equal-time blocks of `m` stacked as a `bs×bs×N` `Array{T,3}`: block `k`
+along the third axis is `m[blockrange(k, bs), blockrange(k, bs)]`. This
+is the natural input of `compress(b, blocks)`.
+"""
+function blockdiag_blocks end
 
 # ---------------------------------------------------------------------------
 # Solve strategies
@@ -231,9 +273,20 @@ end
 Solve `left * X = right` in the family of backend `b`. `DirectSolve` is
 the factorization path; `StructureOptimizingSolve` keeps `structure(left)`
 fixed and optimizes coefficients (backend-owned iteration; defined but
-not yet implemented by any backend).
+not yet implemented by any backend). Backends that do not support a
+strategy reject it in the `SolveNode` constructor (fail fast) and in
+`solve` itself.
 """
 function solve end
+
+"""
+    supports_strategy(b::AbstractBackend, strategy::AbstractSolveStrategy) -> Bool
+
+Whether backend `b` accepts `strategy` in `solve`/`SolveNode`. The
+default accepts only `DirectSolve`.
+"""
+supports_strategy(::AbstractBackend, ::DirectSolve) = true
+supports_strategy(::AbstractBackend, ::AbstractSolveStrategy) = false
 
 # ---------------------------------------------------------------------------
 # Generic matrix-family primitives (reference implementations)
@@ -247,11 +300,17 @@ function solve end
 # ---------------------------------------------------------------------------
 
 # Core manipulations (backends must implement these for their family):
-#   op_add, op_scale, op_mul (binary), op_adjoint, solve, blockdiag_blocks,
-#   compress.
+#   compress, op_add, op_scale, op_mul (binary), op_adjoint, op_norm,
+#   apply, solve, blockdiag_blocks, to_cpu, same_time_blocks,
+#   recompress_inplace!, working_eltype (see CORE_PRIMITIVES).
 # Derived manipulations (default implementations below, expressed via the
 # core; backends with a cheaper structured version override them):
-#   op_sub, op_norm, multi-arg op_mul chains.
+#   op_sub, multi-arg op_mul chains.
+#
+# Eltype homogeneity: operands of the binary primitives must share an
+# eltype unless the backend explicitly widens (the HSS backend does, via
+# `_widen_eltype`); the generic family relies on Base promotion and
+# MethodErrors on families without native promotion.
 op_add(A::AbstractMatrix, B::AbstractMatrix) = A + B
 op_scale(alpha::Number, A::AbstractMatrix) = alpha * A
 op_mul(A::AbstractMatrix, B::AbstractMatrix) = A * B
@@ -262,17 +321,82 @@ structure(A::AbstractMatrix) = nothing
 # Derived: difference via add/scale
 op_sub(A::AbstractMatrix, B::AbstractMatrix) = op_add(A, op_scale(-1, B))
 
-# Derived: Frobenius norm via randomized probing (exact for the generic
-# matrix family where `norm` exists; structured backends override with
-# their cheap structured norm, e.g. HSS via tr(m'm))
+# Derived: Frobenius norm (optional, test-only - `norm(::AbstractOperator)`
+# deliberately does not route through it; structured backends override with
+# their cheap structured version, e.g. HSS via tr(m'm))
 op_norm(A::AbstractMatrix) = norm(A)
 
-function solve(b::AbstractCompressionBackend, left::AbstractMatrix, right::AbstractMatrix;
+# Construction on the generic family: the legacy callables' semantics.
+function compress(b::MatrixFamilyBackend, axis, f; stationary=false)
+    f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
+    bs = size(f00, 1)
+    r = Array{eltype(f00),2}(undef, bs * length(axis), bs * length(axis))
+    for it in eachindex(axis)
+        for itp in eachindex(axis)
+            r[blockrange(it, bs), blockrange(itp, bs)] .= f(axis[it], axis[itp])
+        end
+    end
+    return r
+end
+compress(b::MatrixFamilyBackend, m::AbstractMatrix) = Matrix(m)
+compress(b::MatrixFamilyBackend, axis, tab::BlockCirculantMatrix) = tab[:, :]
+function compress(b::MatrixFamilyBackend, blocks::AbstractArray{T,3}) where {T}
+    bs = size(blocks, 1)
+    @assert size(blocks, 1) == size(blocks, 2) "Blocks must be square matrices"
+    N = size(blocks, 3)
+    I = [(t - 1) * bs + i for i in 1:bs, j in 1:bs, t in 1:N]
+    J = [(t - 1) * bs + j for i in 1:bs, j in 1:bs, t in 1:N]
+    sp = SparseArrays.sparse(I[:], J[:], blocks[:], N * bs, N * bs)
+    return compress(b, sp)
+end
+
+to_cpu(b::AbstractBackend, m::AbstractMatrix) = Matrix(m)
+function same_time_blocks(b::AbstractBackend, m::AbstractMatrix, bs)
+    N = div(size(m, 1), bs)
+    return [copy(@view m[blockrange(i, bs), blockrange(i, bs)]) for i in 1:N]
+end
+recompress_inplace!(::AbstractBackend, ::AbstractRepresentation, m) = m
+function blockdiag_blocks(b::AbstractBackend, m::AbstractMatrix, bs)
+    blocks = same_time_blocks(b, m, bs)
+    B = Array{eltype(m),3}(undef, bs, bs, length(blocks))
+    for k in eachindex(blocks)
+        B[:, :, k] .= blocks[k]
+    end
+    return B
+end
+
+function solve(b::AbstractBackend, left::AbstractMatrix, right::AbstractMatrix;
     strategy::AbstractSolveStrategy=DirectSolve())
-    strategy isa DirectSolve || throw(ArgumentError(
+    supports_strategy(b, strategy) || throw(ArgumentError(
         "strategy $(typeof(strategy)) not supported by backend $(typeof(b))"))
     return ldiv(left, right)
 end
+
+"""
+    CORE_PRIMITIVES
+
+The documented core primitive list of the backend contract, as
+`(function, arity)` pairs. This tuple is the **source of truth** for the
+contract-audit meta-test (`src/backend_interface_tests.jl`), which fails
+if a shipped backend lacks a method for any listed primitive; the contract
+tables in `docs/src/backend_contract.md` reference the same names.
+"""
+const CORE_PRIMITIVES = (
+    (compress, 2),
+    (op_add, 2),
+    (op_scale, 2),
+    (op_mul, 2),
+    (op_adjoint, 1),
+    (op_norm, 1),
+    (apply, 2),
+    (solve, 3),
+    (blockdiag_blocks, 2),
+    (to_cpu, 1),
+    (same_time_blocks, 2),
+    (recompress_inplace!, 2),
+    (working_eltype, 1),
+)
 
 # ---------------------------------------------------------------------------
 # Expression DAG (numeric tier). The semantic tier (quadrature, dressing,
@@ -315,13 +439,23 @@ end
     SolveNode <: AbstractOpNode
 
 Solve node of the numeric DAG: `solve(backend, left, right; strategy)`
-as a graph node, evaluated by the backend's interpreter.
+as a graph node, evaluated by the backend's interpreter. Construction
+fails fast with an `ArgumentError` when the backend does not support the
+strategy.
 """
-struct SolveNode <: AbstractOpNode
-    backend::AbstractCompressionBackend
-    left::AbstractOpNode
-    right::AbstractOpNode
-    strategy::AbstractSolveStrategy
+struct SolveNode{B,L,R,S} <: AbstractOpNode
+    backend::B
+    left::L
+    right::R
+    strategy::S
+end
+
+function SolveNode(backend::AbstractBackend, left::AbstractOpNode, right::AbstractOpNode,
+    strategy::AbstractSolveStrategy=DirectSolve())
+    supports_strategy(backend, strategy) || throw(ArgumentError(
+        "strategy $(typeof(strategy)) not supported by backend $(typeof(backend))"))
+    return SolveNode{typeof(backend),typeof(left),typeof(right),typeof(strategy)}(
+        backend, left, right, strategy)
 end
 
 # lazy constructors - no work happens here
@@ -341,43 +475,46 @@ backend that implements the primitive set. Backends may override for
 fusion, reassociation and joint coefficient optimization.
 """
 # (default evaluate moved to the CSE section at the end of this file)
-evaluate(b::AbstractCompressionBackend, m::AbstractCompressedOperator) = m
+evaluate(b::AbstractBackend, m::AbstractCompressedOperator) = m
 
 # ---------------------------------------------------------------------------
-# Legacy compression bridge: every AbstractCompression evaluates through a
-# backend (MatrixFamilyBackend by default). This is the single evaluation
-# entry point of the package: kernel algebra, solver and observables all
-# build DAGs and call evaluate.
+# Bridge: every AbstractRepresentation evaluates through a backend
+# (MatrixFamilyBackend by default). This is the single evaluation entry
+# point of the package: kernel algebra, solver and observables all build
+# DAGs and call evaluate.
 # ---------------------------------------------------------------------------
 
 """
-    backend(c::AbstractCompression)
+    backend(r::AbstractRepresentation, T::Type=ComplexF64)
 
-The backend a legacy compression evaluates through. Defaults to
-`MatrixFamilyBackend` (the generic AbstractMatrix family reference
-backend, working in `ComplexF64`); structured compressions override this
-to return their dedicated backend. Precision is not yet derived from the
-compression's stored matrices (the eltype is inert for the generic
-family; see `working_eltype`).
+The backend a representation evaluates through. Defaults to
+`MatrixFamilyBackend{T}` (the generic AbstractMatrix family reference
+backend, working in `T`); structured representations override this to
+return their dedicated backend. `T` is the working eltype of the kernels
+built with `r` (task: `working_eltype(backend(r, T)) == T`).
 """
-backend(::AbstractCompression) = MatrixFamilyBackend{ComplexF64}()
-
-"""
-    evaluate(c::AbstractCompression, ex::AbstractOpNode)
-
-Evaluate a DAG with the backend of a legacy compression. This is how
-existing `AbstractCompression` objects (dense, HSS, JLArrays, ...) reach
-the DAG world without changes at call sites.
-"""
-evaluate(c::AbstractCompression, ex::AbstractOpNode) = evaluate(backend(c), ex)
+backend(::AbstractRepresentation, ::Type{T}=ComplexF64) where {T<:Number} = MatrixFamilyBackend{T}()
 
 """
-    evaluate(c::AbstractCompression, m::AbstractMatrix)
+    evaluate(r::AbstractRepresentation, ex::AbstractOpNode; eltype=nothing)
 
-Single-leaf convenience: evaluate a compressed operator in the
-compression's family.
+Evaluate a DAG with the backend of a representation. This is how
+representation tags (dense, HSS, JLArrays, ...) reach the DAG world
+without changes at call sites. `eltype` optionally pins the working
+eltype of the bridged backend.
 """
-evaluate(c::AbstractCompression, m::AbstractMatrix) = m
+function evaluate(r::AbstractRepresentation, ex::AbstractOpNode; eltype=nothing)
+    b = eltype === nothing ? backend(r) : backend(r, eltype)
+    return evaluate(b, ex)
+end
+
+"""
+    evaluate(r::AbstractRepresentation, m::AbstractMatrix)
+
+Single-leaf convenience: evaluate an operator in the representation's
+family.
+"""
+evaluate(r::AbstractRepresentation, m::AbstractMatrix) = m
 
 # ---------------------------------------------------------------------------
 # Common-subexpression elimination (CSE) on lowered concrete DAGs
@@ -531,7 +668,7 @@ values available as leaves. Backends with a fused `evaluate` may instead
 schedule the bindings themselves (e.g. batching or device-placing them);
 this function is the reference semantics.
 """
-function evaluate_cse(b::AbstractCompressionBackend, bindings, ex)
+function evaluate_cse(b::AbstractBackend, bindings, ex)
     env = Dict{Symbol,Any}()
     for (name, node) in bindings
         env[name] = _eval_with(b, node, env)
@@ -539,7 +676,7 @@ function evaluate_cse(b::AbstractCompressionBackend, bindings, ex)
     return _eval_with(b, ex, env)
 end
 
-function _eval_with(b::AbstractCompressionBackend, ex::AbstractOpNode, env)
+function _eval_with(b::AbstractBackend, ex::AbstractOpNode, env)
     ex isa CompressedLeaf && return ex.op
     ex isa BindingNode && return env[ex.name]
     ex isa AddNode && return foldl(op_add, map(a -> _eval_with(b, a, env), ex.args))
@@ -551,14 +688,14 @@ function _eval_with(b::AbstractCompressionBackend, ex::AbstractOpNode, env)
 end
 
 """
-    evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
+    evaluate(b::AbstractBackend, ex::AbstractOpNode)
 
 Evaluate a numeric DAG with backend `b`. The default implementation is
 the in-family interpreter; it first applies CSE so repeated subgraphs
 are computed once. Backends may override for fusion/reassociation (and
 typically want to run `cse` first as well).
 """
-function evaluate(b::AbstractCompressionBackend, ex::AbstractOpNode)
+function evaluate(b::AbstractBackend, ex::AbstractOpNode)
     bindings, root = cse(ex)
     return evaluate_cse(b, bindings, root)
 end

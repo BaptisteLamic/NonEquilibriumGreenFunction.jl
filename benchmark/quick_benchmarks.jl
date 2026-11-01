@@ -37,11 +37,11 @@ function run_quick_benchmarks(; verbose=false)
 
     # Discretization
     ax, f_ret = quick_setup()
-    suite["discretization_quick"] = @benchmarkable RetardedKernel($ax, TwoTime($f_ret), compression=NONCompression()) samples=1 evals=1
+    suite["discretization_quick"] = @benchmarkable RetardedKernel($ax, TwoTime($f_ret), representation=DenseRepresentation()) samples=1 evals=1
 
     # Operations
-    k1 = RetardedKernel(ax, TwoTime(f_ret), compression=NONCompression())
-    k2 = RetardedKernel(ax, TwoTime(f_ret), compression=NONCompression())
+    k1 = RetardedKernel(ax, TwoTime(f_ret), representation=DenseRepresentation())
+    k2 = RetardedKernel(ax, TwoTime(f_ret), representation=DenseRepresentation())
     suite["addition_quick"] = @benchmarkable $k1 + $k2 samples=1 evals=1
     suite["multiplication_quick"] = @benchmarkable $k1 * $k2 samples=1 evals=1
 

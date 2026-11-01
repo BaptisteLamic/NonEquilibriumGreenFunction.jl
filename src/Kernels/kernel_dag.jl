@@ -71,7 +71,7 @@ discretization(op::KernelProd) = discretization(op.left)
 axis(op::KernelProd) = axis(discretization(op))
 blocksize(op::KernelProd) = blocksize(discretization(op))
 scalartype(op::KernelProd) = promote_type(scalartype(op.left), scalartype(op.right))
-compression(op::KernelProd) = compression(discretization(op))
+representation(op::KernelProd) = representation(discretization(op))
 
 """
     lower(op::KernelProd)
@@ -96,13 +96,13 @@ end
 function _lower_prod(::C, ::C, q, op) where {C<:Union{Retarded,Advanced}}
     dis_l, dis_r = discretization(op.left), discretization(op.right)
     bs = blocksize(dis_l)
-    dl = blockdiag_blocks(matrix(op.left), bs)
-    dr = blockdiag_blocks(matrix(op.right), bs)
-    cpr = compression(dis_l)
+    b = backend(representation(dis_l), scalartype(dis_l))
+    dl = blockdiag_blocks(b, matrix(op.left), bs)
+    dr = blockdiag_blocks(b, matrix(op.right), bs)
     weighted_L = _lower_dressing(dis_l, dl)
     weighted_R = _lower_dressing(dis_r, dr)
     biased = op_mul(weighted_L, weighted_R)
-    corr = CompressedLeaf(_lower_blockwise(dl, dr, cpr))
+    corr = CompressedLeaf(_lower_blockwise(dl, dr, b))
     return op_scale(step(dis_l), op_sub(biased, corr))
 end
 
@@ -110,7 +110,8 @@ end
 function _lower_prod(::Acausal, ::Advanced, q, op)
     dis_l, dis_r = discretization(op.left), discretization(op.right)
     bs = blocksize(dis_r)
-    dr = blockdiag_blocks(matrix(op.right), bs)
+    b = backend(representation(dis_r), scalartype(dis_r))
+    dr = blockdiag_blocks(b, matrix(op.right), bs)
     weighted_R = _lower_dressing(dis_r, dr)
     weighted_R = _lower_acausal_advanced_edges(q, dis_r, weighted_R)
     return op_scale(step(dis_l), op_mul(CompressedLeaf(matrix(op.left)), weighted_R))
@@ -127,7 +128,8 @@ end
 function _lower_prod(::Retarded, ::Acausal, q, op)
     dis_l, dis_r = discretization(op.left), discretization(op.right)
     bs = blocksize(dis_l)
-    dl = blockdiag_blocks(matrix(op.left), bs)
+    b = backend(representation(dis_l), scalartype(dis_l))
+    dl = blockdiag_blocks(b, matrix(op.left), bs)
     weighted_L = _lower_dressing(dis_l, dl)
     weighted_L, MR = _lower_retarded_acausal_edges(q, dis_l, weighted_L, matrix(op.right))
     # weighted_L is already a DAG node; MR may be a bare matrix (leaf) or a
@@ -143,13 +145,13 @@ _as_node(m) = CompressedLeaf(m)
 # `materialize` evaluates it once.
 function _lower_dressing(dis, d::AbstractArray{T,3}) where {T}
     blocks = d .* T(1 // 2)
-    cpr = compression(dis)
-    return op_sub(CompressedLeaf(matrix(dis)), CompressedLeaf(cpr(blocks)))
+    b = backend(representation(dis), scalartype(dis))
+    return op_sub(CompressedLeaf(matrix(dis)), CompressedLeaf(compress(b, blocks)))
 end
 
 # blockwise correction dl*dr/4 as an evaluated block-diagonal (it is a
 # leaf constructor, not an algebra op)
-_lower_blockwise(dl, dr, cpr) = cpr(_mul_blocks(dl, dr, 1 // 4))
+_lower_blockwise(dl, dr, b) = compress(b, _mul_blocks(dl, dr, 1 // 4))
 
 # edge corrections: rectangle = identity, trapezoid = half/zer
 # block-diagonal constructors (leaves) wrapping the weighted operand
@@ -195,7 +197,7 @@ function _lower_quadrature_prod(::TrapezoidQuadrature, op)
     blocks[:, :, 1] .= 0.5 * Matrix{T}(I, bs, bs)
     blocks[:, :, n] .= 0.5 * Matrix{T}(I, bs, bs)
     blocks .*= step(dis_l)
-    D = compression(dis_l)(blocks)
+    D = compress(backend(representation(dis_l), scalartype(dis_l)), blocks)
     return op_mul(CompressedLeaf(matrix(op.left)), CompressedLeaf(D), CompressedLeaf(MR))
 end
 
@@ -210,14 +212,16 @@ the lazily computed traits.
 """
 function materialize(op::AbstractLazyOperator)
     isdefined(op, :materialized) && op.materialized !== nothing && return op.materialized::Kernel
-    cpr = compression(op)
-    m = evaluate(cpr, lower(op))
+    rep = representation(op)
+    T = scalartype(op)
+    b = backend(rep, T)
+    m = evaluate(b, lower(op))
     # DAG arithmetic grows the off-diagonal generator ranks; recompress at
     # this boundary (the lazy world's equivalent of the eager compress!),
     # otherwise inflated generators break downstream in-family solvers
     # (HssMatrices' ULV solver needs size(U,2) < size(D,1) at the leaves).
-    m = recompress_inplace!(cpr, m)
-    dis = UniformDiscretisation(axis(op), m, blocksize(op), cpr;
+    m = recompress_inplace!(b, rep, m)
+    dis = UniformDiscretisation(axis(op), m, blocksize(op), rep;
         quadrature=quadrature(op))
     k = Kernel(dis, causality(op))
     op.materialized = k
@@ -323,11 +327,12 @@ end
 
 function materialize(op::SumOperator)
     op.materialized !== nothing && return op.materialized::Kernel
-    cpr = compression(_sum_context(op))
-    m = evaluate(cpr, lower(op))
-    m = recompress_inplace!(cpr, m)
     ctx = _sum_context(op)
-    dis = UniformDiscretisation(axis(ctx), m, blocksize(ctx), cpr; quadrature=quadrature(ctx))
+    rep = representation(ctx)
+    b = backend(rep, scalartype(ctx))
+    m = evaluate(b, lower(op))
+    m = recompress_inplace!(b, rep, m)
+    dis = UniformDiscretisation(axis(ctx), m, blocksize(ctx), rep; quadrature=quadrature(ctx))
     k = Kernel(dis, causality(op))
     op.materialized = k
     return k

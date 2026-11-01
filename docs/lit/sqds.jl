@@ -51,7 +51,7 @@ struct Parameters
 end
 
 #The leafsize should be adapted to the problem at hand.
-default_compression() = HssCompression(leafsize=64)
+default_representation() = HssRepresentation(leafsize=64)
 
 function Parameters(; δt, T, Γl=1, Γr=1, β=1000, Δ=1.0, ϕl, ϕr, η=0)
     return Parameters(δt, T, Γl, Γr, β, Δ, ϕl, ϕr, η)
@@ -71,29 +71,29 @@ axis(p::Parameters) = 0:p.δt:p.T
 # instantaneous operators and to $O(N\log N)$ in both time and space for stationary
 # operators — hence the `Stationary` map below.
 
-function compute_retarded_lead_green_function(p::Parameters; cpr=default_compression())
-    g_R_lead_delta = LocalKernel(axis(p), t -> -1im * σ0(), compression=cpr)
+function compute_retarded_lead_green_function(p::Parameters; rep=default_representation())
+    g_R_lead_delta = LocalKernel(axis(p), t -> -1im * σ0(), representation=rep)
     g_R_lead_continuous = RetardedKernel(axis(p),
         Stationary(τ -> (p.Δ * besselj0(p.Δ * τ) * σx() + 1im * p.Δ * besselj1(p.Δ * τ) * σ0())),
-        compression=cpr)
+        representation=rep)
     g_lead = g_R_lead_delta + g_R_lead_continuous
 end
 
 # We can now solve the retarded Dyson equation.
 
-function compute_GR(p::Parameters; cpr=default_compression())
-    g_R_lead = compute_retarded_lead_green_function(p; cpr=cpr)
+function compute_GR(p::Parameters; rep=default_representation())
+    g_R_lead = compute_retarded_lead_green_function(p; rep=rep)
     apodisation(t) = (1 - exp(-(t / 2)^2))
     coupling_left = LocalKernel(axis(p),
-        t -> apodisation(t) * sqrt(p.Γl / 2) * exp(1im * σz() * p.ϕl(t) / 2) * σz(), compression=cpr)
+        t -> apodisation(t) * sqrt(p.Γl / 2) * exp(1im * σz() * p.ϕl(t) / 2) * σz(), representation=rep)
     coupling_right = LocalKernel(axis(p),
-        t -> apodisation(t) * sqrt(p.Γr / 2) * exp(1im * σz() * p.ϕr(t) / 2) * σz(), compression=cpr)
+        t -> apodisation(t) * sqrt(p.Γr / 2) * exp(1im * σz() * p.ϕr(t) / 2) * σz(), representation=rep)
     Σ_R_left = coupling_left' * g_R_lead * coupling_left
     Σ_R_right = coupling_right' * g_R_lead * coupling_right
     Σ_R = Σ_R_left + Σ_R_right
     g = RetardedKernel(axis(p),
         Stationary(τ -> -1im * exp(-p.η * τ) * σ0()),
-        compression=cpr)
+        representation=rep)
     G_R = solve_dyson(g, g * Σ_R)
     return (; g_R_lead, g, G_R, Σ_R_left, Σ_R, coupling_left, coupling_right)
 end
@@ -102,8 +102,8 @@ end
 #
 # With the retarded solution at hand we can solve the whole Dyson equation.
 
-function simulate_junction(p::Parameters; cpr=default_compression())
-    results_GR = compute_GR(p; cpr=cpr)
+function simulate_junction(p::Parameters; rep=default_representation())
+    results_GR = compute_GR(p; rep=rep)
     g_R_lead = results_GR[:g_R_lead]
     coupling_left = results_GR[:coupling_left]
     coupling_right = results_GR[:coupling_right]
@@ -111,7 +111,7 @@ function simulate_junction(p::Parameters; cpr=default_compression())
 
     ρ = AcausalKernel(axis(p),
         Stationary(τ -> thermal_kernel(τ, p.β) * σ0() .|> ComplexF64),
-        compression=cpr)
+        representation=rep)
     g_lead_kinetic = g_R_lead * ρ - ρ * g_R_lead'
     g = results_GR[:g]
     g_dot_kinetic = g * ρ - ρ * g'
@@ -122,7 +122,7 @@ function simulate_junction(p::Parameters; cpr=default_compression())
     #Kinetic branch. Kernel products carry the quadrature weighting
     #(semantic tier), so the chain is expressed with kernel `*`; every
     #numeric operation inside (dressing, products, sums) evaluates
-    #through the expression DAG (numeric tier) with the compression's
+    #through the expression DAG (numeric tier) with the representation's
     #backend - the DAG is the only evaluation path of the package.
     G_K = G_R * Σ_K * G_R'
     return (; results_GR..., G_K, Σ_K_left, Σ_K_right)

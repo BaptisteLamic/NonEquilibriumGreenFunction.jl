@@ -26,7 +26,7 @@ include("locality.jl")
 include("singular.jl")
 include("circulant_matrix.jl")
 include("triangularLowRankMatrix.jl")
-include("compression.jl")
+include("representations.jl")
 include("utils.jl")
 include("quadrature.jl")
 include("discretizations.jl")
@@ -40,7 +40,7 @@ using .Kernels
 
 include("Physics.jl")
 using .Physics
-include("test_compression_interface.jl")
+include("test_representation_contract.jl")
 
 include("AdaptiveRichardson.jl")
 
@@ -66,19 +66,19 @@ export solve_dyson
 export adjoint
 export norm
 export BlockCirculantMatrix
-export NONCompression, HssCompression
-export AbstractCompression, ldiv, to_cpu, same_time_blocks, recompress_inplace!
-export AbstractCompressionBackend, AbstractCompressedOperator, AbstractOpNode
-export HssMatricesBackend
+export DenseRepresentation, HssRepresentation
+export AbstractRepresentation, ldiv, to_cpu, same_time_blocks, recompress_inplace!
+export AbstractBackend, AbstractCompressedOperator, AbstractOpNode, CORE_PRIMITIVES, compress, backend
+export HssMatricesBackend, MatrixFamilyBackend, supports_strategy
 export working_eltype, structure, empty_like
-export op_add, op_sub, op_scale, op_mul, op_adjoint, op_norm, apply, solve
+export op_add, op_sub, op_scale, op_mul, op_adjoint, op_norm, apply, solve, blockdiag_blocks
 export CompressedLeaf, SolveNode, DirectSolve, StructureOptimizingSolve, evaluate
 export with_thread_budget, current_thread_budget, ThreadConfig, DeviceConfig
 export cse, evaluate_cse, BindingNode
-export test_compression_interface
+export test_representation_contract
 export pauli
 export matrix
-export compression
+export representation
 export compress!
 export scalartype
 export make_similar

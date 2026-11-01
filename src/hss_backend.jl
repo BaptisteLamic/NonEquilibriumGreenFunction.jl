@@ -8,7 +8,7 @@
 # express.
 
 """
-    HssMatricesBackend <: AbstractCompressionBackend
+    HssMatricesBackend <: AbstractBackend
 
 Reference CPU HSS backend wrapping HssMatrices.jl. Carries the HSS
 compression parameters (`atol`, `rtol`, `kest`, `leafsize`) and the
@@ -16,7 +16,7 @@ working scalar type. All primitives stay in the HSS family (dense
 `Matrix` inputs are accepted at the boundary only, as the compressed
 family's constructor input - there is no dense fallback for operations).
 """
-struct HssMatricesBackend{T<:Number} <: AbstractCompressionBackend
+struct HssMatricesBackend{T<:Number} <: AbstractBackend
     atol::Float64
     rtol::Float64
     kest::Int
@@ -104,10 +104,10 @@ function _zero_like(m::HssMatrix)
         m.R1, m.W1, m.R2, m.W2, m.rootnode)
 end
 
-function blockdiag_blocks(m::HssMatrix, bs)
-    # same semantics as the generic `blockdiag_blocks` (utils.jl):
-    # a `bs x bs x N` Array{T,3}, the input of `c(blocks)`
-    blocks = same_time_blocks(m, bs)
+function blockdiag_blocks(b::HssMatricesBackend, m::HssMatrix, bs)
+    # same semantics as the generic `blockdiag_blocks`:
+    # a `bs x bs x N` Array{T,3}, the input of `compress(b, blocks)`
+    blocks = same_time_blocks(b, m, bs)
     B = Array{eltype(m),3}(undef, bs, bs, length(blocks))
     for k in eachindex(blocks)
         B[:, :, k] .= blocks[k]
@@ -115,9 +115,41 @@ function blockdiag_blocks(m::HssMatrix, bs)
     return B
 end
 
+to_cpu(b::HssMatricesBackend, m::HssMatrix) = Matrix(m)
+function same_time_blocks(b::HssMatricesBackend, m::HssMatrix, bs)
+    T = eltype(m)
+    N = div(size(m, 1), bs)
+    return [T[m[p + j, p + k] for j in 1:bs, k in 1:bs] for p in (0:bs:(N - 1) * bs)]
+end
+recompress_inplace!(::HssMatricesBackend, rep::HssRepresentation, tab::HssMatrix) =
+    HssMatrices.recompress!(tab, atol=rep.atol, rtol=rep.rtol, leafsize=rep.leafsize)
+
+function compress(b::HssMatricesBackend, axis, f; stationary=false)
+    f00 = f(axis[1], axis[1])
+    @assert size(f00, 1) == size(f00, 2) "Function f must return square matrices"
+    lm = stationary ? build_CirculantlinearMap(axis, f) : build_linearMap(axis, f)
+    bs = size(f00, 1)
+    cc = bisection_cluster(length(axis) * bs, leafsize=b.leafsize)
+    return randcompress_adaptive(lm, cc, cc, atol=b.atol, rtol=b.rtol, kest=b.kest, leafsize=b.leafsize)
+end
+compress(b::HssMatricesBackend, tab::HssMatrix) = recompress_inplace!(b, HssRepresentation(atol=b.atol, rtol=b.rtol, kest=b.kest, leafsize=b.leafsize), tab)
+compress(b::HssMatricesBackend, tab::AbstractMatrix) =
+    hss(tab, atol=b.atol, rtol=b.rtol, leafsize=b.leafsize)
+function compress(b::HssMatricesBackend, axis, tab::BlockCirculantMatrix)
+    lm = build_CirculantlinearMap(tab)
+    cc = bisection_cluster(size(tab, 1), leafsize=b.leafsize)
+    return randcompress_adaptive(lm, cc, cc, atol=b.atol, rtol=b.rtol, kest=b.kest)
+end
+function compress(b::HssMatricesBackend, blocks::AbstractArray{T,3}) where {T}
+    @assert size(blocks, 1) == size(blocks, 2) "Blocks must be square matrices"
+    n = size(blocks, 1) * size(blocks, 3)
+    cc = bisection_cluster(n, leafsize=b.leafsize)
+    return hss_blkdiag(_blockdiag_sparse(blocks), cc, cc)
+end
+
 function solve(b::HssMatricesBackend, left::HssMatrix, right::HssMatrix;
                strategy::AbstractSolveStrategy=DirectSolve())
-    strategy isa DirectSolve || throw(ArgumentError(
+    supports_strategy(b, strategy) || throw(ArgumentError(
         "strategy $(typeof(strategy)) not supported by HssMatricesBackend"))
     return ldiv!(left, right)
 end
@@ -140,10 +172,27 @@ Optimized whole-graph evaluation for the HSS family:
   is exact for the HSS family (every primitive is in-family).
 """
 function evaluate(b::HssMatricesBackend, ex::AbstractOpNode)
-    if ex isa MulNode
-        return _balanced_chain(b, map(a -> evaluate(b, a), ex.args))
+    # CSE first: repeated subgraphs (also inside a root MulNode chain)
+    # are extracted into bindings and evaluated exactly once, through the
+    # balanced path below.
+    bindings, root = cse(ex)
+    env = Dict{Symbol,Any}()
+    for (name, node) in bindings
+        env[name] = _eval_hss(b, node, env)
     end
-    return invoke(evaluate, Tuple{AbstractCompressionBackend, AbstractOpNode}, b, ex)
+    return _eval_hss(b, root, env)
+end
+
+# CSE-aware evaluation with the balanced-chain fast path for MulNodes
+# (root and nested); all other nodes use the default in-family
+# interpreter semantics with the binding values available.
+function _eval_hss(b::HssMatricesBackend, ex::AbstractOpNode, env)
+    ex isa CompressedLeaf && return ex.op
+    ex isa BindingNode && return env[ex.name]
+    if ex isa MulNode
+        return _balanced_chain(b, map(a -> _eval_hss(b, a, env), ex.args))
+    end
+    return _eval_with(b, ex, env)
 end
 
 function _balanced_chain(b::HssMatricesBackend, ops)
@@ -164,14 +213,15 @@ end
 # Default interpreter compatibility: HSS matrices are valid leaves
 # ---------------------------------------------------------------------------
 
-evaluate(b::AbstractCompressionBackend, m::HssMatrix) = m
+evaluate(b::AbstractBackend, m::HssMatrix) = m
 
 # ---------------------------------------------------------------------------
-# Legacy bridge: HssCompression evaluates through HssMatricesBackend, so
-# all kernel algebra built on HSS matrices gets the optimized (balanced
-# chain) DAG evaluation.
+# Bridge: HssRepresentation evaluates through HssMatricesBackend, so all
+# kernel algebra built on HSS matrices gets the optimized (balanced
+# chain) DAG evaluation. The working eltype is derived from the
+# representation's kernels (task: working_eltype matches scalartype).
 # ---------------------------------------------------------------------------
 
-function backend(c::HssCompression)
-    return HssMatricesBackend{ComplexF64}(c.atol, c.rtol, c.kest, c.leafsize)
+function backend(r::HssRepresentation, ::Type{T}=ComplexF64) where {T<:Number}
+    return HssMatricesBackend{T}(r.atol, r.rtol, r.kest, r.leafsize)
 end
