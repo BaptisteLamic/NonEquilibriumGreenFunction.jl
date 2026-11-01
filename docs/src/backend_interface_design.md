@@ -133,8 +133,7 @@ contract-audit meta-test):
 
 | Primitive | Meaning |
 |---|---|
-| `compress(b, sampler; support, params)` | build the family from support-tagged samples |
-| `compress(b, m; params)` | (re)compress an in-family operator (replaces `c(m)` + `recompress_inplace!`) |
+| `compress(b, axis, f; stationary=false)`, `compress(b, m)`, `compress(b, blocks)` | build the family from a sampled axis function (circulant map when `stationary=true`), (re)compress a matrix, or build a block-diagonal matrix - the only construction entry points |
 | `structure(m)` | the structure (tree/rank profile) of `m`; `nothing` = unavailable |
 | `empty_like(st)` | same structure, zeroed coefficients |
 | `op_add(m1, m2)` | in-family sum |
