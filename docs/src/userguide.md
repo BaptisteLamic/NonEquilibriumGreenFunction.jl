@@ -132,7 +132,7 @@ the operators. The current through lead `l` reduces to a combination of products
 
 - HSS compression does not benefit from multithreaded BLAS; large runs typically call
   `BLAS.set_num_threads(1)` and rely on Julia threads instead.
-- Prefer `stationary=true` whenever the physics allows — the circulant path is the
+- Prefer a `Stationary(f)` map whenever the physics allows — the circulant path is the
   fastest construction.
 - Kernel products allocate intermediate HSS matrices; long expression chains are faster
   when intermediate results are named and reused.
