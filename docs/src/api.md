@@ -196,6 +196,7 @@ build_CirculantlinearMap
 
 ```@docs
 thermal_kernel
+theq_lesser_time_kernel
 pauli
 blockrange
 blockindex

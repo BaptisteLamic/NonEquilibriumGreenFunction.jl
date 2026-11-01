@@ -1,6 +1,15 @@
 export theq_lesser_time_kernel
 export thermal_kernel
 export pauli
+"""
+    theq_lesser_time_kernel(T, bs, τ; kb=1, Ɣ=1)
+
+Returns the pair `(f_δ, f_reg)` of the time-ordered (lesser-side) thermal
+kernel at temperature `T`: `f_δ(t)` is the instantaneous `-1/Ɣ` diagonal
+part and `f_reg(t, tp)` the regularized part built from
+[`thermal_kernel`](@ref) with smoothing time `τ`, both as `bs × bs` blocks.
+Used to build the acausal occupation kernel `ρ`.
+"""
 function theq_lesser_time_kernel(T,bs,τ; kb = 1., ħ = 1.)
     f_reg(t,tp) = diagm([ thermal_kernel(t-tp,T,τ, kb = kb, ħ = ħ) for i = 1:bs])
     f_δ(t) = diagm([-1. /ħ for i = 1:bs])

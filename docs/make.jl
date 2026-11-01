@@ -30,6 +30,10 @@ makedocs(;
             "Superconductor - QD - Superconductor junction" => "generated/sqds.md",
         ],
         "API" => "api.md",
+        "Backend" => [
+            "Backend contract" => "backend_contract.md",
+            "Backend interface design" => "backend_interface_design.md",
+        ],
         "Custom representations" => "custom_compression.md",
         "Internals" => "internals.md",
     ],
