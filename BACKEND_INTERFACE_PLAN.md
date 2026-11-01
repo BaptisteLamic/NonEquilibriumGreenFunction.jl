@@ -1,51 +1,76 @@
-# Backend interface evolution plan (delegated implementation)
+# Backend interface evolution plan: one contract (delegated implementation)
 
 Companion to `CLEANUP_PLAN.md` (PR #57). This plan covers the **stage-2 backend
 interface work** that the review of `src/backend_interface.jl`, `src/hss_backend.jl`,
 `src/matrixinterface.jl`, `ext/JLArraysExt.jl` and the contract docs identified.
+
+**Goal: collapse the two parallel contracts into a single one.** Today a backend
+author must implement both the legacy callable (`c(axis, f; stationary=)`, `c(m)`,
+`c(blocks)`, `ldiv`, `to_cpu`, `same_time_blocks`, `recompress_inplace!` on an
+`AbstractCompression` subtype plus a duck-typed matrix family) and the new numeric
+primitive set (`op_*`, `solve`, `evaluate` on an `AbstractCompressionBackend`),
+bridged one-way by `backend(c)`. The plan below makes the backend contract the
+only contract: the legacy types become thin adapters over it, then disappear.
+
 Each item is independently implementable and verifiable, sized for a flash model.
+Order matters: 1-4 define the single contract, 7-9 port the package and docs onto
+it, 5-6 and 10-12 are consistency/edge fixes that can land any time after 1-4.
 
 Context decisions (from review discussion):
-- `JLArrayCompression` is a **demonstration** of the legacy matrix-family interface,
+- `JLArrayCompression` is a **demonstration** of the matrix-family interface,
   not a production GPU backend. Items touching it are low priority / optional.
-- **`Compression` may not be the right name anymore** — the type now means two things
-  (a callable that builds matrices, and a tag carrying backend parameters). The
-  rename below resolves this; until it lands, docs must describe both roles.
+- **Breaking changes are accepted** (pre-1.0). The old `AbstractCompression` name
+  goes away outright — it now means two things (callable matrix-builder and
+  parameter tag), which is exactly what the single-contract rework removes.
 
-Scope guard: no silent breaking changes. Renames ship with deprecated aliases
-(pattern already established by PR #49 `TrapzDiscretisation` -> `UniformDiscretisation`).
-
-## 1. Add the `compress` primitive (or mark it stage-2 in the docs)
+## 1. Define the single contract: make `compress` a real backend primitive
 
 - Files: `src/backend_interface.jl`, `docs/src/backend_contract.md:139`,
   `docs/src/backend_interface_design.md` (mandatory-primitives table).
 - The contract tables list `compress(b, sampler; ...)` / `compress(b, m)` as core
-  primitives, but no `compress` function exists; compression goes through the
+  primitives, but no `compress` function exists; construction goes through the
   legacy callable `c(axis, f)` / `c(m)` / `c(blocks)`.
-- Preferred: add `compress(b::AbstractCompressionBackend, m; params...)` with a
-  default that routes to the bridged legacy callable, so the numeric tier has the
-  documented entry point. Alternative (smaller): mark the rows "stage 2, not yet
-  in the contract" in both docs.
-- Verify: grep finds a definition matching every contract-table row, or the
-  "stage 2" label is present.
+- Add `compress(b::AbstractCompressionBackend, axis, f; support, params...)` and
+  `compress(b, m; params...)` as the **only** construction entry points of the
+  numeric tier. `MatrixFamilyBackend` implements them via the legacy callable;
+  `HssMatricesBackend` via native HSS construction.
+- Verify: grep finds a definition matching every contract-table row.
 
-## 2. Rename `AbstractCompression` -> a backend-parameter/representation name
+## 2. Rename the legacy type and make backends the primary concept
 
-- Rationale: "compression" now covers both the callable matrix-builder and the
-  parameter tag; the design doc's direction is backend-owned representation.
-- Proposed: keep `AbstractCompression` as the **deprecated alias**, introduce
-  e.g. `AbstractMatrixRepresentation` (or `AbstractBackendParams`) as the primary
-  name for the callable subtype; `backend(c)` becomes `backend(r)`.
+- Rationale: "compression" currently covers both the callable matrix-builder and
+  the parameter tag; the single contract removes the duality.
+- Introduce e.g. `AbstractMatrixRepresentation` (or `AbstractBackendParams`) as
+  the name for what is today the `AbstractCompression` callable subtype, and
+  **remove** `AbstractCompression` outright (breaking change accepted).
+  `HssCompression`/`NONCompression`/`JLArrayCompression` become subtypes of the
+  new abstract type but are now pure parameter holders; their callable methods
+  move to `compress(b, ...)` on the corresponding backend.
+- `backend(c)` becomes the identity-ish accessor `backend(r)` returning the
+  `AbstractCompressionBackend` carrying those parameters.
 - Touch points: `src/matrixinterface.jl` (definition), `src/compression.jl`
-  (subtypes `HssCompression`, `NONCompression`), `ext/JLArraysExt.jl`
-  (`JLArrayCompression`), `src/backend_interface.jl` (bridge), exports in
-  `src/NonEquilibriumGreenFunction.jl`, `docs/src/custom_compression.md`,
-  `test/test_compression_interface.jl`, `test_compression_interface` (function
-  name may stay or gain an alias).
-- Verify: `@deprecate`-style alias keeps old code working; full `Pkg.test()` green;
-  docs use the new name with a "formerly `AbstractCompression`" note.
+  (subtypes + callables), `ext/JLArraysExt.jl`, `src/backend_interface.jl`
+  (bridge), `src/Kernels/*` (call sites of `c(...)`), exports in
+  `src/NonEquilibriumGreenFunction.jl`, `docs/src/custom_compression.md` ->
+  rewrite as the backend-contract page, `test/test_compression_interface.jl`.
+- Verify: no remaining references to `AbstractCompression` (grep across src/,
+  ext/, test/, docs/); full `Pkg.test()` green; docs use the new name.
 
-## 3. State the eltype-homogeneity requirement in the contract
+## 3. Make the matrix-family methods backend primitives, not duck-typed Base ops
+
+- Files: `src/backend_interface.jl:255-262,375-380`, `docs/src/backend_contract.md`.
+- Today `ldiv`, `to_cpu`, `same_time_blocks`, `recompress_inplace!` are free
+  functions on `AbstractMatrix` with fallbacks; the design doc says primitives
+  must be mandatory in-family with no fallback.
+- Move them into the contract as backend-dispatched primitives
+  (`op_solve`/`solve` already exists; add `blockdiag_blocks` as a mandatory core
+  — it already has an HSS specialization — plus `to_cpu`/`same_time_blocks` as
+  core rows), with `MatrixFamilyBackend` providing the generic `AbstractMatrix`
+  implementations. Delete the fallback free functions once call sites are ported.
+- Verify: contract table has no "fallback" column; every row has a method per
+  shipped backend.
+
+## 4. State the eltype-homogeneity requirement in the contract
 
 - File: `docs/src/backend_contract.md` (primitive section).
 - `op_mul`/`op_add` are mandatory in-family; mixed-eltype operands are only
@@ -56,7 +81,7 @@ Scope guard: no silent breaking changes. Renames ship with deprecated aliases
   backend explicitly widens (HSS does).
 - Verify: sentence present; HSS widening tests still pass.
 
-## 4. Run `cse` in the HSS `evaluate` override
+## 5. Run `cse` in the HSS `evaluate` override
 
 - File: `src/hss_backend.jl:135-140`.
 - The top-level `MulNode` fast path returns before `cse` runs, and
@@ -70,7 +95,7 @@ Scope guard: no silent breaking changes. Renames ship with deprecated aliases
   subchain inside a pure-`MulNode` root is computed once (counting backend
   pattern from `backend_interface_tests.jl`).
 
-## 5. Wire `op_norm` into `norm(::AbstractOperator)` or mark it optional
+## 6. Wire `op_norm` into `norm(::AbstractOperator)` or mark it optional
 
 - File: `src/operators.jl:197-200` still does `norm(matrix(op)) / sqrt(prod(size))`,
   bypassing the mandatory `op_norm` primitive (only tests use it).
@@ -79,57 +104,71 @@ Scope guard: no silent breaking changes. Renames ship with deprecated aliases
   or mark `op_norm` "optional, test-only" in `backend_contract.md`.
 - Verify: `norm(::Kernel)` result unchanged within tolerance on HSS and dense.
 
-## 6. Document the two parallel contracts explicitly
+## 7. Rewrite the docs around the single contract
 
-- File: `docs/src/backend_contract.md` ("Legacy compressions evaluate through
-  backends" section) and `docs/src/custom_compression.md` NOTE.
-- Today a backend author must implement BOTH the legacy callable
-  (`c(axis, f; stationary=)`, `c(m)`, `c(blocks)`, `ldiv`, `to_cpu`,
-  `same_time_blocks`, `recompress_inplace!`) AND the new primitive set; the bridge
-  only goes one direction (`backend(c)`).
-- Add a short "implementing a new backend today" subsection listing both sets and
-  stating the migration plan steps 4-7 collapse them.
-- Verify: a reader can list both required method sets from the docs alone.
+- Files: `docs/src/backend_contract.md`, `docs/src/custom_compression.md`
+  (rename/rewrite as the backend-authoring page), `docs/src/backend_interface_design.md`.
+- Remove the "legacy compressions are bridged" framing and the "implement both
+  contracts" reality; document one contract: backend subtype + core primitives +
+  optional `evaluate` override, plus the acceptance test (`test_compression_interface`
+  becomes a contract audit per migration step 6).
+- State the eltype-homogeneity requirement (item 3 below) and the opacity status
+  (item 7 below).
+- Verify: a reader can implement a new backend from the docs alone, listing
+  exactly one method set.
 
-## 7. Relax or implement the "opaque, not an AbstractMatrix" claim
+## 8. Port the package's call sites onto the single contract
 
-- Files: `docs/src/backend_interface_design.md` (principles), `src/backend_interface.jl:255-262,380`.
-- Generic primitives are typed on `AbstractMatrix` and
-  `evaluate(c, m::AbstractMatrix) = m`; every real family is an `AbstractMatrix`.
-- Either (small) reword the design doc to "families are currently
-  `AbstractMatrix`-based; `AbstractCompressedOperator` is the stage-2 target", or
-  (large, stage 2) wrap families in an opaque type. Do the reword now.
-- Verify: docs no longer promise opacity that the code doesn't deliver.
+- Files: `src/Kernels/kernels.jl` (constructors call `compression(axis, f)`),
+  `src/Kernels/kernel_dag.jl` (`cpr(blocks)`, `recompress_inplace!`),
+  `src/Kernels/kernel_solver.jl`, `src/operators.jl` (`compress!`),
+  `src/compression.jl`, `src/triangularLowRankMatrix.jl`, `src/circulant_matrix.jl`.
+- Replace every `c(...)` / `cpr(blocks)` call with `compress(backend(cpr), ...)`;
+  replace `recompress_inplace!(cpr, m)` with a backend primitive; delete the
+  legacy callable methods once no call site remains.
+- Verify: `grep -rn "cpr(\|compression(\w*)(axis\|)(blocks" src/` returns nothing;
+  full `Pkg.test()` green.
 
-## 8. One DAG-path test for the JLArrays demonstration extension
+## 9. State the opacity status honestly
+
+- Files: `docs/src/backend_interface_design.md` (principles), `src/backend_interface.jl`.
+- Generic primitives are typed on `AbstractMatrix`; every shipped family is an
+  `AbstractMatrix`. Either wrap families in an opaque `AbstractCompressedOperator`
+  subtype now (breaking, allowed) or reword the design doc to "families are
+  currently `AbstractMatrix`-based; opacity is the target".
+- Verify: docs no longer promise opacity that the code doesn't deliver (or the
+  wrapper exists and primitives dispatch on it).
+
+## 10. One DAG-path test for the JLArrays demonstration extension
 
 - File: `test/test_compression_interface.jl` (next to the existing
   JLArrayCompression testitem at line 27).
-- The ext is only exercised through the legacy interface; add a testitem building a
-  small DAG (`op_mul`/`op_add` over `CompressedLeaf`s of `JLArray`s) and evaluating
-  via `evaluate(cpr, ex)` through the `MatrixFamilyBackend` bridge.
+- The ext is only exercised through the legacy interface; after the port it must
+  go through the single contract like any backend: add a testitem building a small
+  DAG (`op_mul`/`op_add` over `CompressedLeaf`s of `JLArray`s) and evaluating via
+  `evaluate(backend(cpr), ex)`.
 - Verify: new testitem passes (requires `using JLArrays`).
 - Note: demonstration-only per maintainer; keep this item last/optional.
 
-## 9. `working_eltype` consistency check
+## 11. `working_eltype` consistency check
 
 - Files: `src/backend_interface.jl:102-108,363` — `backend(::AbstractCompression)`
   hardcodes `MatrixFamilyBackend{ComplexF64}()` regardless of stored eltype, so
   `working_eltype` can disagree with `scalartype` for non-ComplexF64 kernels.
-- Add a test asserting `working_eltype(backend(cpr))` matches the family for
-  `NONCompression()`/`HssCompression()` on a Float32 kernel, or document the
-  inertness more loudly in `scalartype`.
-- Verify: test passes or docstring updated.
+- After the port, derive the working eltype from the representation/backend, and
+  add a test asserting `working_eltype(backend(cpr))` matches the family for
+  `NONCompression()`/`HssCompression()` on a Float32 kernel.
+- Verify: test passes.
 
-## 10. Clarify `SolveNode` failure mode
+## 12. Clarify `SolveNode` failure mode
 
 - Files: `src/backend_interface.jl:185-197` (docstring already honest),
   `docs/src/backend_contract.md` (solve strategies).
 - `StructureOptimizingSolve` can be *built* into a `SolveNode` and only fails at
-  evaluation. Add one line to the contract: "building a node with an unsupported
-  strategy is allowed; evaluation throws `ArgumentError`" — or fail fast in the
-  `SolveNode` constructor. Pick fail-fast if cheap.
-- Verify: doc matches behavior; test covers it.
+  evaluation. Fail fast in the `SolveNode` constructor for strategies the backend
+  rejects.
+- Verify: constructing `SolveNode(b, l, r, StructureOptimizingSolve(10, 1e-8))`
+  with `HssMatricesBackend` throws immediately; test covers it.
 
 ## Deliberately out of scope
 
