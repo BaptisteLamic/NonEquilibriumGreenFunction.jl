@@ -15,3 +15,5 @@ benchmark_results_*.json
 docs/build/
 docs/src/generated/
 docs/Manifest.toml
+# Figures written by the executed Literate examples (docs/lit/*.jl)
+docs/lit/*.svg
