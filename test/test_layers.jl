@@ -29,10 +29,10 @@ end
     end
 
     ax = 0:0.1:2
-    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=HssCompression())
-    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); compression=HssCompression())
-    ρ = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 100) .|> ComplexF64); compression=HssCompression())
-    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=HssCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); representation=HssRepresentation())
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); representation=HssRepresentation())
+    ρ = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 100) .|> ComplexF64); representation=HssRepresentation())
+    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); representation=HssRepresentation())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -57,19 +57,19 @@ end
     using NonEquilibriumGreenFunction: Physics
 
     ax = 0:0.1:1
-    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); compression=NONCompression())
-    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); compression=NONCompression())
-    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(1.0)); compression=NONCompression())
-    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); compression=NONCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64(-2im)); representation=DenseRepresentation())
+    Σ_R = LocalKernel(ax, t -> ComplexF64(-1im * 0.5); representation=DenseRepresentation())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(1.0)); representation=DenseRepresentation())
+    W = LocalKernel(ax, t -> ComplexF64(sqrt(0.5)); representation=DenseRepresentation())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
 
-    zero_dirac = LocalKernel(ax, t -> ComplexF64(0); compression=NONCompression())
+    zero_dirac = LocalKernel(ax, t -> ComplexF64(0); representation=DenseRepresentation())
     I_zero = Physics.lead_current(G_R, G_K, zero_dirac, zero_dirac)
     @test matrix(I_zero) ≈ zeros(ComplexF64, size(matrix(G_R))) atol = 1e-12
 
-    ρ2 = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 50) .|> ComplexF64); compression=NONCompression())
+    ρ2 = AcausalKernel(ax, Stationary(tau -> thermal_kernel(tau, 50) .|> ComplexF64); representation=DenseRepresentation())
     Σ_K2 = -2im * W' * ρ2 * W
     I1 = Physics.lead_current(G_R, G_K, Σ_R, Σ_K)
     I2 = Physics.lead_current(G_R, G_K, Σ_R, Σ_K2)
@@ -100,10 +100,10 @@ end
     using NonEquilibriumGreenFunction: Physics
 
     ax = 0:0.25:1
-    g = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); compression=NONCompression())
-    Σ_R = LocalKernel(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); compression=NONCompression())
-    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64[1 0; 0 1] * exp(-tau^2)); compression=NONCompression())
-    W = LocalKernel(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); compression=NONCompression())
+    g = RetardedKernel(ax, Stationary(tau -> ComplexF64[1.0 2.0; 3.0 4.0] * (tau + 1.0)); representation=DenseRepresentation())
+    Σ_R = LocalKernel(ax, t -> ComplexF64.([-0.5im 0; 0 -0.25im]); representation=DenseRepresentation())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64[1 0; 0 1] * exp(-tau^2)); representation=DenseRepresentation())
+    W = LocalKernel(ax, t -> ComplexF64.([sqrt(0.5) 0; 0 sqrt(0.3)]); representation=DenseRepresentation())
     Σ_K = -2im * W' * ρ * W
 
     (; G_R, G_K) = Physics.solve_keldysh(g, Σ_R, Σ_K)
@@ -115,14 +115,14 @@ end
     @test sig ≈ manual atol = 1e-12
     @test sig ≠ diag(mat)[1:2:end]
 
-    z = LocalKernel(ax, t -> zeros(ComplexF64, 2, 2); compression=NONCompression())
+    z = LocalKernel(ax, t -> zeros(ComplexF64, 2, 2); representation=DenseRepresentation())
     @test Physics.current_signal(Physics.lead_current(G_R, G_K, z, z)) ≈ zeros(ComplexF64, length(ax)) atol = 1e-12
 end
 
 @testitem "Causality predicates on all operators" begin
     using NonEquilibriumGreenFunction
     ax = 0:0.1:1
-    δ = LocalKernel(ax, t -> ComplexF64(-1im); compression=HssCompression())
+    δ = LocalKernel(ax, t -> ComplexF64(-1im); representation=HssRepresentation())
     # A Local contact term satisfies every support constraint: it is
     # simultaneously retarded, advanced and acausal; the canonical
     # representative is Acausal, and its locality is Local.
@@ -139,10 +139,10 @@ end
     using NonEquilibriumGreenFunction
 
     ax = 0:0.1:1
-    g = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t - tp + 1.0)); compression=NONCompression())
-    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); compression=NONCompression())
-    δ1 = LocalKernel(ax, t -> ComplexF64(2); compression=NONCompression())
-    δ2 = LocalKernel(ax, t -> ComplexF64(3); compression=NONCompression())
+    g = RetardedKernel(ax, TwoTime((t, tp) -> ComplexF64(t - tp + 1.0)); representation=DenseRepresentation())
+    ρ = AcausalKernel(ax, Stationary(tau -> ComplexF64(exp(-tau^2))); representation=DenseRepresentation())
+    δ1 = LocalKernel(ax, t -> ComplexF64(2); representation=DenseRepresentation())
+    δ2 = LocalKernel(ax, t -> ComplexF64(3); representation=DenseRepresentation())
 
     # locality composition
     @test locality(g) == Smooth()
@@ -190,15 +190,15 @@ end
     # reference: fine-grid singular rule (converges O(dt^2))
     Nref = 4001
     axref = range(-T, T; length=Nref)
-    Lref = AcausalKernel(axref, Stationary(g); compression=NONCompression())
-    Kref = AcausalKernel(axref, Singular(s); compression=NONCompression())
+    Lref = AcausalKernel(axref, Stationary(g); representation=DenseRepresentation())
+    Kref = AcausalKernel(axref, Singular(s); representation=DenseRepresentation())
     mid = (Nref + 1) ÷ 2
     ref = matrix(Kref * Lref)[mid, mid]
 
     function midval(N, maptype)
         ax = range(-T, T; length=N)
-        K = AcausalKernel(ax, maptype; compression=NONCompression())
-        L = AcausalKernel(ax, Stationary(g); compression=NONCompression())
+        K = AcausalKernel(ax, maptype; representation=DenseRepresentation())
+        L = AcausalKernel(ax, Stationary(g); representation=DenseRepresentation())
         return matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
     end
 
@@ -206,7 +206,7 @@ end
     ax = range(-T, T; length=51)
     W = singular_weights(s, step(ax); N=51)
     @test W[0 + 51] == 0.0
-    K = AcausalKernel(ax, Singular(s); compression=NONCompression())
+    K = AcausalKernel(ax, Singular(s); representation=DenseRepresentation())
     @test matrix(K)[(51 + 1) ÷ 2, (51 + 1) ÷ 2] == 0.0
 
     # second-order convergence: error drops ~4x per refinement
@@ -219,13 +219,13 @@ end
 
     # HSS compression path produces a finite product with a smooth partner
     axh = range(-T, T; length=201)
-    Kh = AcausalKernel(axh, Singular(s); compression=HssCompression(leafsize=32))
-    Lh = AcausalKernel(axh, Stationary(g); compression=HssCompression(leafsize=32))
+    Kh = AcausalKernel(axh, Singular(s); representation=HssRepresentation(leafsize=32))
+    Lh = AcausalKernel(axh, Stationary(g); representation=HssRepresentation(leafsize=32))
     Ph = Kh * Lh
     @test all(isfinite, real(matrix(Ph)[100, 100]))
 
     # retarded masking: no support at negative lags
-    Kr = RetardedKernel(ax, Singular(s); compression=NONCompression())
+    Kr = RetardedKernel(ax, Singular(s); representation=DenseRepresentation())
     Mr = matrix(Kr)
     @test Mr[10, 20] == 0.0
 end
@@ -248,8 +248,8 @@ end
 
     Nref = 2001
     axref = range(-T, T; length=Nref)
-    Lref = AcausalKernel(axref, Stationary(g2); compression=NONCompression())
-    Kref = AcausalKernel(axref, Singular(f); compression=NONCompression())
+    Lref = AcausalKernel(axref, Stationary(g2); representation=DenseRepresentation())
+    Kref = AcausalKernel(axref, Singular(f); representation=DenseRepresentation())
     mid = (Nref + 1) ÷ 2
     ref = matrix(Kref * Lref)[mid, mid]
 
@@ -260,8 +260,8 @@ end
 
     function midval(N, mt)
         ax = range(-T, T; length=N)
-        K = AcausalKernel(ax, mt; compression=NONCompression())
-        L = AcausalKernel(ax, Stationary(g2); compression=NONCompression())
+        K = AcausalKernel(ax, mt; representation=DenseRepresentation())
+        L = AcausalKernel(ax, Stationary(g2); representation=DenseRepresentation())
         return matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
     end
     # product-integration beats naive sampling of the singular core at
@@ -281,14 +281,14 @@ end
         s(τ) = abs(τ) > 1e-64 ? -1im / β * csch(π * τ / β) : 0.0im
         Nref = 2001
         axref = range(-T, T; length=Nref)
-        Lref = AcausalKernel(axref, Stationary(g); compression=NONCompression())
-        Kref = AcausalKernel(axref, Singular(s); compression=NONCompression())
+        Lref = AcausalKernel(axref, Stationary(g); representation=DenseRepresentation())
+        Kref = AcausalKernel(axref, Singular(s); representation=DenseRepresentation())
         mid = (Nref + 1) ÷ 2
         ref = matrix(Kref * Lref)[mid, mid]
         midval(N) = begin
             ax = range(-T, T; length=N)
-            K = AcausalKernel(ax, Singular(s); compression=NONCompression())
-            L = AcausalKernel(ax, Stationary(g); compression=NONCompression())
+            K = AcausalKernel(ax, Singular(s); representation=DenseRepresentation())
+            L = AcausalKernel(ax, Stationary(g); representation=DenseRepresentation())
             matrix(K * L)[(N + 1) ÷ 2, (N + 1) ÷ 2]
         end
         e1 = abs(midval(101) - ref)
@@ -309,18 +309,18 @@ end
 
     # default is the second-order trapezoid rule
     ax = range(-2.0, 2.0; length=51)
-    K = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    K = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); representation=DenseRepresentation())
     @test quadrature(discretization(K)) == TrapezoidQuadrature()
-    Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression(),
+    Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2))); representation=DenseRepresentation(),
         quadrature=RectangleQuadrature())
     @test quadrature(discretization(Kr)) == RectangleQuadrature()
     # rectangle rule reproduces the historical product bit-for-bit
-    Lr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression(),
+    Lr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); representation=DenseRepresentation(),
         quadrature=RectangleQuadrature())
     dt = step(ax)
     @test matrix(Kr * Lr) ≈ dt * matrix(Kr) * matrix(Lr)
     # trapezoid rule: half weights on the two domain-edge row-blocks
-    L = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
+    L = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); representation=DenseRepresentation())
     Mr = copy(matrix(L))
     Mr[1, :] .*= 0.5
     Mr[size(Mr, 1), :] .*= 0.5
@@ -338,8 +338,8 @@ end
 
     function midval(N, q)
         ax = range(-T, T; length=N)
-        K = AcausalKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q)
-        L = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=q)
+        K = AcausalKernel(ax, Stationary(k1); representation=DenseRepresentation(), quadrature=q)
+        L = AcausalKernel(ax, Stationary(g2); representation=DenseRepresentation(), quadrature=q)
         M = matrix(K * L)
         n0 = (N + 1) ÷ 2
         return M[2*(n0-1)+1, 2*(n0-1)+1]
@@ -383,8 +383,8 @@ end
 
     # retarded x acausal: trapezoid restores second order
     rac = (ax, q) -> (
-        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
-        AcausalKernel(ax, Stationary(g); compression=NONCompression(), quadrature=q))
+        RetardedKernel(ax, Stationary(k1); representation=DenseRepresentation(), quadrature=q),
+        AcausalKernel(ax, Stationary(g); representation=DenseRepresentation(), quadrature=q))
     ref = entry(1601, TrapezoidQuadrature(), rac)
     e1 = abs(entry(101, TrapezoidQuadrature(), rac) - ref)
     e2 = abs(entry(201, TrapezoidQuadrature(), rac) - ref)
@@ -403,8 +403,8 @@ end
 
     # retarded x retarded: already second order under both rules (dressing)
     rr = (ax, q) -> (
-        RetardedKernel(ax, Stationary(k1); compression=NONCompression(), quadrature=q),
-        RetardedKernel(ax, Stationary(k2); compression=NONCompression(), quadrature=q))
+        RetardedKernel(ax, Stationary(k1); representation=DenseRepresentation(), quadrature=q),
+        RetardedKernel(ax, Stationary(k2); representation=DenseRepresentation(), quadrature=q))
     refrr = entry(1601, RectangleQuadrature(), rr)
     a1 = abs(entry(101, RectangleQuadrature(), rr) - refrr)
     a2 = abs(entry(201, RectangleQuadrature(), rr) - refrr)
@@ -421,8 +421,8 @@ end
         dt = step(ax)
         i = round(Int, t / dt) + 1
         j = round(Int, tp / dt) + 1
-        A = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=q)
-        B = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=q)
+        A = AcausalKernel(ax, Stationary(g2); representation=DenseRepresentation(), quadrature=q)
+        B = AdvancedKernel(ax, Stationary(k3); representation=DenseRepresentation(), quadrature=q)
         return matrix(A * B)[i, j]
     end
     ref = entry(1601, TrapezoidQuadrature())
@@ -435,11 +435,11 @@ end
     @test e1 < r1
     # degenerate boundary column (t' = t₀): exactly zero under trapezoid
     ax = range(0.0, T; length=101)
-    A = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=TrapezoidQuadrature())
-    B = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=TrapezoidQuadrature())
+    A = AcausalKernel(ax, Stationary(g2); representation=DenseRepresentation(), quadrature=TrapezoidQuadrature())
+    B = AdvancedKernel(ax, Stationary(k3); representation=DenseRepresentation(), quadrature=TrapezoidQuadrature())
     @test maximum(abs.(matrix(A * B)[:, 1])) == 0.0
-    Ar = AcausalKernel(ax, Stationary(g2); compression=NONCompression(), quadrature=RectangleQuadrature())
-    Br = AdvancedKernel(ax, Stationary(k3); compression=NONCompression(), quadrature=RectangleQuadrature())
+    Ar = AcausalKernel(ax, Stationary(g2); representation=DenseRepresentation(), quadrature=RectangleQuadrature())
+    Br = AdvancedKernel(ax, Stationary(k3); representation=DenseRepresentation(), quadrature=RectangleQuadrature())
     @test maximum(abs.(matrix(Ar * Br)[:, 1])) > 0.0
 end
 
@@ -456,7 +456,7 @@ end
     # discretized: construction must never evaluate f(0)
     f_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
                   -1im / 10 * csch(π * τ / 10)
-    K = AcausalKernel(ax, Singular(f_throws); compression=NONCompression())
+    K = AcausalKernel(ax, Singular(f_throws); representation=DenseRepresentation())
     @test size(matrix(K)) == (41, 41)
     @test matrix(K)[21, 21] == 0.0
 
@@ -464,27 +464,27 @@ end
     A = [1.0 2.0; 0.5 1.5]
     fm_throws(τ) = τ == 0 ? error("singular core evaluated at τ = 0") :
                    (-1im / 10) .* A .* csch(π * τ / 10)
-    Km = AcausalKernel(ax, Singular(fm_throws); compression=NONCompression())
+    Km = AcausalKernel(ax, Singular(fm_throws); representation=DenseRepresentation())
     @test blocksize(Km) == 2
     @test size(matrix(Km)) == (82, 82)
 
     # mismatched quadrature rules are rejected instead of silently
     # resolving to the left operand's rule
     Kt = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
-        compression=NONCompression(), quadrature=TrapezoidQuadrature())
+        representation=DenseRepresentation(), quadrature=TrapezoidQuadrature())
     Kr = AcausalKernel(ax, Stationary(τ -> ComplexF64(exp(-τ^2)));
-        compression=NONCompression(), quadrature=RectangleQuadrature())
+        representation=DenseRepresentation(), quadrature=RectangleQuadrature())
     @test_throws AssertionError Kt * Kr
 
     # trapezoid acausal×acausal matches the dense reference when the
     # operands are compressed (generic weighted-product path)
     axh = range(-2.0, 2.0; length=129)
-    Kd = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); compression=NONCompression())
-    L = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2))); compression=NONCompression())
+    Kd = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2))); representation=DenseRepresentation())
+    L = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2))); representation=DenseRepresentation())
     Lh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-τ^2)));
-        compression=HssCompression(atol=1e-12, rtol=1e-12))
+        representation=HssRepresentation(atol=1e-12, rtol=1e-12))
     Kh = AcausalKernel(axh, Stationary(τ -> ComplexF64(exp(-(τ - 0.3)^2)));
-        compression=HssCompression(atol=1e-12, rtol=1e-12))
+        representation=HssRepresentation(atol=1e-12, rtol=1e-12))
     Pdense = matrix(Kd * L)           # dense × dense
     Ph = matrix(Kh * Lh)              # compressed, generic path
     @test norm(Ph - Pdense) / norm(Pdense) < 1e-8

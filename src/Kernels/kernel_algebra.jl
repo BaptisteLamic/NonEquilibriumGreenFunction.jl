@@ -1,10 +1,10 @@
 # All numeric evaluation goes through the expression DAG (see
-# backend_interface.jl): the compression of a discretization provides the
-# backend, the DAG provides the operations. Quadrature weighting and the
-# edge corrections below are package-owned semantics (they *build* DAG
+# backend_interface.jl): the representation of a discretization provides
+# the backend, the DAG provides the operations. Quadrature weighting and
+# the edge corrections below are package-owned semantics (they *build* DAG
 # inputs); the numeric products/sums themselves are DAG evaluations.
-_ev(dis, ex) = evaluate(compression(dis), ex)
-_ev(c::AbstractCompression, ex) = evaluate(c, ex)
+_ev(dis, ex) = evaluate(representation(dis), ex; eltype=scalartype(dis))
+_ev(c::AbstractRepresentation, ex) = evaluate(c, ex)
 
 # Kernel +/- are owned by the kernel-level DAG: the generic AbstractOperator methods build SumOperator nodes (the DAG's sum construct), lowered+evaluated at the forcing points.
 
@@ -40,21 +40,24 @@ end
 
 function _dressing(g::UniformDiscretisation, d::AbstractArray{T,3}) where {T}
      # d holds the equal-time blocks: build the half-weighted block-diagonal
-     # directly in the compression family (exact for HSS, no recompression)
+     # directly in the representation's family (exact for HSS, no recompression)
      blocks = d .* T(1 // 2)
-     return matrix(g) - compression(g)(blocks)
+     b = backend(representation(g), scalartype(g))
+     return matrix(g) - compress(b, blocks)
 end
 function _biased_mul(::C, ::C, gl::UniformDiscretisation, gr::UniformDiscretisation) where {C<:Union{Retarded,Advanced}}
     bs = blocksize(gl)
-    dl = blockdiag_blocks(matrix(gl), bs)
-    dr = blockdiag_blocks(matrix(gr), bs)
+    b = backend(representation(gl), scalartype(gl))
+    dl = blockdiag_blocks(b, matrix(gl), bs)
+    dr = blockdiag_blocks(b, matrix(gr), bs)
     weighted_L = _dressing(gl, dl)
     weighted_R = _dressing(gr, dr)
     return _ev(gl, op_mul(CompressedLeaf(weighted_L), CompressedLeaf(weighted_R))), dl, dr
 end
 function prod(c_left::C, c_right::C, left::AbstractDiscretisation, right::AbstractDiscretisation) where {C<:Union{Retarded,Advanced}}
     biased_result, dl, dr = _biased_mul(c_left, c_right, left, right)
-    result = _ev(left, op_sub(CompressedLeaf(biased_result), CompressedLeaf(compression(left)(_mul_blocks(dl, dr, 1//4)))))
+    b = backend(representation(left), scalartype(left))
+    result = _ev(left, op_sub(CompressedLeaf(biased_result), CompressedLeaf(compress(b, _mul_blocks(dl, dr, 1//4)))))
     result = step(left)*result
     return make_similar(left, result)
 end
@@ -69,7 +72,8 @@ function _mul_blocks(dl::AbstractArray{T,3}, dr::AbstractArray{T,3}, α) where {
     return r
 end
 function prod(::Acausal, ::Advanced, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    dr = blockdiag_blocks(matrix(right), blocksize(right))
+    b = backend(representation(right), scalartype(right))
+    dr = blockdiag_blocks(b, matrix(right), blocksize(right))
     weighted_R = _dressing(right, dr)
     weighted_R = _acausal_advanced_edges(quadrature(left), right, weighted_R)
     result = _ev(left, op_mul(CompressedLeaf(matrix(left)), CompressedLeaf(weighted_R)))
@@ -93,7 +97,7 @@ function _boundary_blockdiag(dis, firstblock)
         blocks[:, :, i] .= Matrix{T}(I, bs, bs)
     end
     blocks[:, :, 1] .= firstblock
-    return compression(dis)(blocks)
+    return compress(backend(representation(dis), scalartype(dis)), blocks)
 end
 
 # Rectangle rule: historical behaviour, no edge correction.
@@ -116,7 +120,8 @@ function _acausal_advanced_edges(::TrapezoidQuadrature, right, weighted_R)
     return _ev(right, op_mul(CompressedLeaf(half), CompressedLeaf(weighted_R), CompressedLeaf(zer)))
 end
 function prod(::Retarded, ::Acausal, left::AbstractDiscretisation, right::AbstractDiscretisation)
-    dl = blockdiag_blocks(matrix(left), blocksize(left))
+    b = backend(representation(left), scalartype(left))
+    dl = blockdiag_blocks(b, matrix(left), blocksize(left))
     weighted_L = _dressing(left, dl)
     weighted_L, MR = _retarded_acausal_edges(quadrature(left), left, weighted_L, matrix(right))
     result = _ev(left, op_mul(CompressedLeaf(weighted_L), CompressedLeaf(MR)))
@@ -193,7 +198,7 @@ function _quadrature_prod(q::AbstractQuadrature, left::AbstractDiscretisation, r
     for i in 1:n
         blocks[:, :, i] .*= w[i] / step(left)
     end
-    D = compression(left)(blocks)
+    D = compress(backend(representation(left), scalartype(left)), blocks)
     return _ev(left, op_scale(step(left), op_mul(CompressedLeaf(ML), CompressedLeaf(D), CompressedLeaf(MR))))
 end
 
@@ -219,7 +224,7 @@ function _quadrature_prod(::TrapezoidQuadrature, left::AbstractDiscretisation, r
     end
     blocks[:, :, 1] .= 0.5 * Matrix{T}(I, bs, bs)
     blocks[:, :, n] .= 0.5 * Matrix{T}(I, bs, bs)
-    D = compression(left)(blocks)
+    D = compress(backend(representation(left), scalartype(left)), blocks)
     return _ev(left, op_scale(step(left), op_mul(CompressedLeaf(ML), CompressedLeaf(D), CompressedLeaf(MR))))
 end
 

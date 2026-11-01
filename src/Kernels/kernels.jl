@@ -72,8 +72,8 @@ function make_similar(g::Kernel, new_matrix::Union{AbstractMatrix,UniformScaling
     return Kernel(new_dis, causality(g))
 end
 
-function make_similar(g::Kernel, new_compression::AbstractCompression)
-    new_dis = make_similar(discretization(g), matrix(g), compression = new_compression)
+function make_similar(g::Kernel, new_representation::AbstractRepresentation)
+    new_dis = make_similar(discretization(g), matrix(g), representation = new_representation)
     return Kernel(new_dis, causality(g))
 end
 
@@ -90,7 +90,7 @@ function masked(map::AbstractKernelMap, ::Acausal, f00)
 end
 
 """
-    Kernel(::Type{C}, axis, map::AbstractKernelMap; compression=HssCompression()) where {C<:AbstractCausality}
+    Kernel(::Type{C}, axis, map::AbstractKernelMap; representation=HssRepresentation()) where {C<:AbstractCausality}
 
 Discretize the kernel described by `map` masked by the causality `C`
 (`Retarded`, `Advanced` or `Acausal`) on `axis`.
@@ -98,17 +98,18 @@ Discretize the kernel described by `map` masked by the causality `C`
 Returns a `Kernel` with causality `C`.
 """
 function Kernel(::Type{C}, axis, map::AbstractKernelMap;
-    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
+    representation::AbstractRepresentation=HssRepresentation(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
-    bs, _ = blocksize_and_eltype(map, axis)
+    bs, T = blocksize_and_eltype(map, axis)
     f_masked = masked(map, causality, map(axis[1], axis[1]))
-    matrix = compression(axis, f_masked, stationary = map isa Stationary)
-    discretization = UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
+    b = backend(representation, T)
+    matrix = compress(b, axis, f_masked, stationary = map isa Stationary)
+    discretization = UniformDiscretisation(axis, matrix, bs, representation; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 
 """
-    Kernel(::Type{C}, axis, map::Singular; compression=HssCompression()) where {C<:AbstractCausality}
+    Kernel(::Type{C}, axis, map::Singular; representation=HssRepresentation()) where {C<:AbstractCausality}
 
 Discretize a singular stationary kernel (see [`Singular`](@ref)) with
 product-integration weights: the block-circulant matrix stores the exact
@@ -120,7 +121,7 @@ or matrix-valued (blocksize `> 1`, e.g. multi-level finite-temperature
 systems).
 """
 function Kernel(::Type{C}, axis, map::Singular;
-    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
+    representation::AbstractRepresentation=HssRepresentation(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
     # never evaluate the core at the singular point τ = 0: probe one
     # grid step away, like `singular_weights` does
@@ -138,8 +139,8 @@ function Kernel(::Type{C}, axis, map::Singular;
         m = W ./ dt
     end
     tab = _masked_circulant(causality, m, N)
-    matrix = compression(axis, tab)
-    return Kernel(UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature), causality)
+    matrix = compress(backend(representation, ComplexF64), axis, tab)
+    return Kernel(UniformDiscretisation(axis, matrix, bs, representation; quadrature=quadrature), causality)
 end
 
 function _masked_circulant(::Acausal, m, N)
@@ -156,22 +157,22 @@ function _masked_circulant(C, m, N)
 end
 
 function Kernel(::Type{C}, axis, sep::Separable;
-    compression=HssCompression(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
+    representation::AbstractRepresentation=HssRepresentation(), quadrature::AbstractQuadrature=TrapezoidQuadrature()) where {C<:AbstractCausality}
     causality = C()
-    bs, _ = blocksize_and_eltype(sep, axis)
-    matrix = triangularLowRankCompression(compression, causality, axis, sep.f, sep.g)
-    discretization = UniformDiscretisation(axis, matrix, bs, compression; quadrature=quadrature)
+    bs, T = blocksize_and_eltype(sep, axis)
+    matrix = triangularLowRankCompression(representation, causality, axis, sep.f, sep.g)
+    discretization = UniformDiscretisation(axis, matrix, bs, representation; quadrature=quadrature)
     return Kernel(discretization, causality)
 end
 
-function Kernel{D,C}(axis, matrix, blocksize, compression) where {D<:AbstractDiscretisation, C<:AbstractCausality}
+function Kernel{D,C}(axis, matrix, blocksize, representation) where {D<:AbstractDiscretisation, C<:AbstractCausality}
     causality = C()
-    discretization = D(axis, matrix, blocksize, compression)
+    discretization = D(axis, matrix, blocksize, representation)
     Kernel(discretization, causality)
 end
 
 """
-    RetardedKernel(axis, map::AbstractKernelMap; compression=HssCompression())
+    RetardedKernel(axis, map::AbstractKernelMap; representation=HssRepresentation())
 
 Discretize a retarded kernel (zero for `t < t'`) described by `map`
 (`Stationary`, `TwoTime` or `Separable`) on `axis`.
@@ -181,11 +182,11 @@ Returns a `Kernel` with `Retarded` causality.
 RetardedKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Retarded, axis, map; kwargs...)
 
-RetardedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{UniformDiscretisation,Retarded}(axis, matrix, blocksize, compression)
+RetardedKernel(axis, matrix::AbstractMatrix, blocksize, representation) =
+    Kernel{UniformDiscretisation,Retarded}(axis, matrix, blocksize, representation)
 
 """
-    AdvancedKernel(axis, map::AbstractKernelMap; compression=HssCompression())
+    AdvancedKernel(axis, map::AbstractKernelMap; representation=HssRepresentation())
 
 Discretize an advanced kernel (zero for `t > t'`) described by `map`
 (`Stationary`, `TwoTime` or `Separable`) on `axis`.
@@ -195,11 +196,11 @@ Returns a `Kernel` with `Advanced` causality.
 AdvancedKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Advanced, axis, map; kwargs...)
 
-AdvancedKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{UniformDiscretisation,Advanced}(axis, matrix, blocksize, compression)
+AdvancedKernel(axis, matrix::AbstractMatrix, blocksize, representation) =
+    Kernel{UniformDiscretisation,Advanced}(axis, matrix, blocksize, representation)
 
 """
-    AcausalKernel(axis, map::AbstractKernelMap; compression=HssCompression())
+    AcausalKernel(axis, map::AbstractKernelMap; representation=HssRepresentation())
 
 Discretize an acausal kernel (no time-ordering constraint, e.g. an
 equilibrium occupation) described by `map` (`Stationary`, `TwoTime` or
@@ -210,8 +211,8 @@ Returns a `Kernel` with `Acausal` causality.
 AcausalKernel(axis, map::AbstractKernelMap; kwargs...) =
     Kernel(Acausal, axis, map; kwargs...)
 
-AcausalKernel(axis, matrix::AbstractMatrix, blocksize, compression) =
-    Kernel{UniformDiscretisation,Acausal}(axis, matrix, blocksize, compression)
+AcausalKernel(axis, matrix::AbstractMatrix, blocksize, representation) =
+    Kernel{UniformDiscretisation,Acausal}(axis, matrix, blocksize, representation)
 
 include("kernel_algebra.jl")
 include("kernel_solver.jl")

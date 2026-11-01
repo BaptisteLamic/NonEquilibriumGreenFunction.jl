@@ -1,12 +1,12 @@
 # Backend contract and the expression DAG
 
-This page documents the backend interface implemented today: the
-**numeric-tier contract** that compression backends implement, the
-**expression DAG** the package builds over them, and the reference HSS
-backend with its optimized DAG evaluation. The full design rationale and
-migration plan are in [Backend Interface Design](backend_interface_design.md);
-the legacy `AbstractCompression` interface still in production use is
-documented in [Custom compression](custom_compression.md).
+This page documents the **single backend contract** implemented today: the
+**numeric-tier contract** that backends implement, the **expression DAG**
+the package builds over them, and the reference backends with their
+optimized DAG evaluation. The design rationale is in
+[Backend Interface Design](backend_interface_design.md); the
+representation tags that select a backend for the kernel constructors are
+documented in [Custom representations](custom_compression.md).
 
 ## Overview
 
@@ -22,9 +22,9 @@ Kernel-level DAG   (physics constructs, lazy - package-owned)
 Concrete DAG       (matrix manipulation - the backend contract)
     op_add / op_sub / op_scale / op_mul / op_adjoint / SolveNode
         |
-        |  evaluate(cpr, ex)      default in-family interpreter, or a
+        |  evaluate(b, ex)        default in-family interpreter, or a
         v                        backend override (HSS: balanced chains)
-AbstractCompressedOperator
+family of the backend (e.g. Matrix, HssMatrix, JLArray)
 ```
 
 The split is deliberate: **the backend DAG contains only concrete matrix
@@ -106,11 +106,9 @@ result = evaluate_cse(b, bindings, root)   # A*B computed once
   and the rewritten root referencing them through `BindingNode` leaves.
 - `evaluate_cse(b, bindings, root)`: the reference evaluation - each
   binding is computed exactly once, then the root consumes them.
-- The **default `evaluate` applies CSE automatically**, so every backend
-  without its own `evaluate` gets it for free; backends with a fused
-  `evaluate` should run `cse` first and schedule the bindings (e.g.
-  batching them, placing them on a device, or interleaving them with
-  their consumers).
+- The **default `evaluate` applies CSE automatically**, and the HSS
+  backend's fused `evaluate` runs `cse` first as well, so every backend
+  gets it.
 
 Two subgraphs are common iff structurally equal over identical leaf
 objects; leaves themselves are never extracted (cheap references).
@@ -124,19 +122,28 @@ Two rules govern the concrete DAG:
    backend's family produce operators of the same family. There is no
    dense fallback; an unsupported operation is a `MethodError`.
 2. **The backend owns configuration.** Working eltype, device and
-   threading live on the backend (`AbstractCompressionBackend`), never
-   on the stored matrices.
+   threading live on the backend (`AbstractBackend`), never on the
+   stored matrices.
 
 ### Core and derived manipulations
 
-Backends implement a small **core**; other operations have default
-implementations expressed through the core (staying in-family by
-construction) and exist only as override points for backends with
-cheaper structured versions:
+Backends implement a small **core** (listed once in `CORE_PRIMITIVES` in
+`src/backend_interface.jl`, which is the source of truth - the
+contract-audit meta-test fails if a shipped backend lacks a method for
+any listed primitive); other operations have default implementations
+expressed through the core (staying in-family by construction) and exist
+only as override points for backends with cheaper structured versions:
 
 | Core (implement) | Derived (default implementation) |
 |---|---|
-| `op_add`, `op_scale`, `op_mul` (binary), `op_adjoint`, `solve`, `blockdiag_blocks`, `compress` | `op_sub` (= `op_add(a, op_scale(-1, b))`), multi-arg `op_mul` chains (left fold), `op_norm`, `apply` |
+| `compress`, `op_add`, `op_scale`, `op_mul` (binary), `op_adjoint`, `solve`, `blockdiag_blocks`, `to_cpu`, `same_time_blocks`, `recompress_inplace!`, `working_eltype` | `op_sub` (= `op_add(a, op_scale(-1, b))`), multi-arg `op_mul` chains (left fold) |
+
+### Eltype homogeneity
+
+Operands of the binary primitives must share an eltype unless the backend
+explicitly widens (the HSS backend does, via `_widen_eltype`); the
+generic `AbstractMatrix` family relies on Base promotion and
+`MethodError`s on families without native promotion.
 
 ### The `evaluate` override is optional
 
@@ -146,14 +153,16 @@ in-family interpreter is used. `HssMatricesBackend` overrides it with
 balanced-chain `op_mul` evaluation; `MatrixFamilyBackend` uses the
 default.
 
-### Legacy compressions evaluate through backends
+### Representation tags select the backend
 
-`AbstractCompression` objects (dense `NONCompression`, `HssCompression`,
-`JLArrayCompression`, custom ones) are bridged: `backend(c)` returns
-their evaluation backend (`MatrixFamilyBackend` by default,
-`HssMatricesBackend` for `HssCompression`). `evaluate(c, ex)` evaluates
-a DAG with it, so all existing code and compressions reach the DAG
-world unchanged.
+The kernel constructors take a `representation=` tag
+(`DenseRepresentation`, `HssRepresentation`, `JLArrayRepresentation`,
+custom ones): a pure parameter holder. `backend(r)` returns the
+`AbstractBackend` it evaluates through (`MatrixFamilyBackend` by default,
+`HssMatricesBackend` for `HssRepresentation`, `JLArrayBackend` for
+`JLArrayRepresentation`). `evaluate(r, ex)` evaluates a DAG with it.
+Construction of kernel matrices goes through the `compress` primitive of
+that backend - there is no other construction entry point.
 
 ## The DAG
 
@@ -183,7 +192,7 @@ Node constructors (all lazy, all pure):
 | `op_scale(alpha, ex)` | scalar scaling node |
 | `op_mul(ex...)` | **variadic chain-product node** |
 | `op_adjoint(ex)` | adjoint node |
-| `SolveNode(b, left, right, strategy)` | solve node |
+| `SolveNode(b, left, right, strategy)` | solve node (fails fast with `ArgumentError` if `b` does not support `strategy`) |
 
 The variadic `op_mul` is the multi-kernel entry point: chains like
 `G_R * Σ_K * G_R'` reach the backend as **one node**, so the backend can
@@ -205,21 +214,25 @@ valid if the result matches the left fold within tolerance).
 
 ## The primitive set
 
-A backend is an `AbstractCompressionBackend` subtype implementing the
-**core** manipulations; derived manipulations have in-family default
-implementations and are override points:
+A backend is an `AbstractBackend` subtype implementing the **core**
+manipulations (see `CORE_PRIMITIVES`); derived manipulations have
+in-family default implementations and are override points:
 
 | Primitive | Core/derived | Meaning |
 |---|---|---|
+| `compress(b, axis, f; stationary=false)`, `compress(b, m)`, `compress(b, blocks)` | core | the only construction entry points: kernel matrix from a sampler, (re)compress a matrix, block-diagonal matrix |
 | `working_eltype(b)` | core | the scalar type assembly and solve work in |
 | `op_add(a, b)` | core | in-family sum |
 | `op_scale(alpha, a)` | core | in-family scalar scaling |
 | `op_mul(a, b)` | core | in-family binary product (variadic chains left-fold to it unless the backend overrides `evaluate`) |
 | `op_adjoint(a)` | core | in-family adjoint |
 | `solve(b, left, right; strategy)` | core | in-family solve (see strategies) |
-| `blockdiag_blocks(a, bs)` | core | `bs×bs×N` equal-time blocks (the observables/solver boundary) |
+| `blockdiag_blocks(b, a, bs)` | core | `bs×bs×N` equal-time blocks (the observables/solver boundary) |
+| `to_cpu(b, a)` | core | materialize as a CPU `Matrix` |
+| `same_time_blocks(b, a, bs)` | core | one `bs×bs` CPU block per time step |
+| `recompress_inplace!(b, rep, m)` | core | in-place recompression with the representation's parameters |
 | `op_sub(a, b)` | derived | `op_add(a, op_scale(-1, b))` |
-| `op_norm(a)` | derived | norm (generic families use `norm`; structured backends override with the cheap structured version, e.g. HSS `tr(m'm)`) |
+| `op_norm(a)` | **optional, test-only** | in-family norm; `norm(::AbstractOperator)` deliberately does not route through it (it uses the exact Frobenius norm) |
 | `apply(a, x)` | derived | operator action |
 | `structure(a)` | optional | the structure of `a` (`nothing` default) |
 | `empty_like(a)` | optional | zero-coefficient operator with the same structure |
@@ -237,7 +250,10 @@ StructureOptimizingSolve(maxiter, tol)
 
 `StructureOptimizingSolve` is the contract for "HSS structure known,
 coefficients optimized": the package supplies `structure(left)` and
-`empty_like`; the iteration itself is entirely backend-owned.
+`empty_like`; the iteration is entirely backend-owned. Backends that do
+not support a strategy reject it **at construction** of the `SolveNode`
+(`ArgumentError`) and in `solve` itself - building the node never
+succeeds silently.
 
 ## Threading
 
@@ -275,11 +291,11 @@ planned for the threading stage of the backend rework.
 `MatrixFamilyBackend{T}` is the reference backend for any family built on
 `AbstractMatrix` with standard Base operations: dense `Matrix`, HSS
 matrices, GPU-style arrays whose family implements the Base ops. It is
-the default bridge for legacy `AbstractCompression` objects without a
-dedicated backend. Its primitives are the generic `AbstractMatrix`
-methods of the contract (`+`, `-`, scalar `*`, `*`, `adjoint`, `norm`,
-`\`), which stay in-family for every matrix family - this is not a dense
-fallback, since nothing ever converts between families.
+the default bridge for representation tags without a dedicated backend.
+Its primitives are the generic `AbstractMatrix` methods of the contract
+(`+`, `-`, scalar `*`, `*`, `adjoint`, `norm`, `\`), which stay
+in-family for every matrix family - this is not a dense fallback, since
+nothing ever converts between families.
 
 ## The reference HSS backend
 
@@ -289,38 +305,47 @@ adapts HssMatrices.jl to the contract:
 - primitives map to native HSS operations (`A + B`, `A * B`, `adjoint`,
   `alpha * A`, the structured Frobenius norm `computeMatrixNorm`, the ULV
   solve `ldiv!` for `DirectSolve`),
+- `compress` builds HSS matrices natively: `randcompress_adaptive` from a
+  sampled axis function (circulant map when `stationary=true`), `hss`
+  from a dense matrix, `hss_blkdiag` (exact) from a block array,
 - `structure(m) === m` - the `HssMatrix` (its cluster tree and rank
   profile) is the structure,
 - `empty_like(m)` zeroes `D`, `B12`, `B21` and keeps the generator bases
   `U`, `V`, `R1`, `R2`, `W1`, `W2`, so the tree shape and rank profile
   are preserved verbatim,
-- `StructureOptimizingSolve` is not yet implemented (errors) - it is the
-  entry point for the upcoming optimized-coefficient solver.
+- `StructureOptimizingSolve` is not yet implemented (rejected at
+  `SolveNode` construction) - it is the entry point for the upcoming
+  optimized-coefficient solver.
 
 ### Optimized DAG evaluation for HSS
 
-The HSS backend overrides `evaluate` with a **balanced-chain**
-evaluation of variadic `op_mul`:
+The HSS backend overrides `evaluate`:
 
-- a chain of length `k` is split at the middle and evaluated
-  recursively: `A*B*C*D` becomes `(A*B)*(C*D)`, giving `log2(k)`
-  sequential product steps instead of `k-1` for the left fold,
-- shallower product chains mean intermediate HSS representations go
-  through fewer recompressions, which bounds intermediate rank growth
-  and accumulates less compression error,
-- all other node types (add, scale, adjoint, solve, and mixed graphs)
-  fall through to the default interpreter, which is exact for the HSS
-  family since every primitive is in-family.
+- it runs `cse` **first**, so repeated subgraphs (also inside a root
+  `MulNode` chain) are extracted into bindings and evaluated exactly
+  once,
+- variadic `op_mul` chains are evaluated in **balanced (tree) order**:
+  a chain `A*B*C*D` is evaluated as `(A*B)*(C*D)` rather than the
+  default left fold. For HSS this halves the depth of sequential
+  products (`log2(k)` vs `k-1` steps), which bounds intermediate rank
+  growth and accumulates less compression error per step,
+- all other node types use the default in-family interpreter, which is
+  exact for the HSS family since every primitive is in-family.
 
 The acceptance property (checked in the test suite): the balanced
 evaluation matches both the dense reference and the left-fold result
-within tolerance, for chains of length 3 and 4.
+within tolerance, for chains of length 3 and 4, and a repeated subchain
+inside a pure-`MulNode` root is computed once.
 
 ## Testing a backend
 
-`test_compression_interface` (legacy path) plus the DAG contract tests
+`test_representation_contract` (the contract audit: every representation
+checked against the dense reference - construction, algebra, solver,
+recompression, block-diagonal construction) plus the DAG contract tests
 in `src/backend_interface_tests.jl` are the templates: a backend should
-check every primitive against a dense reference, then check its
-`evaluate` (if overridden) against the default interpreter on graphs
-covering every node type - including chain comparisons at combined
-tolerance, since reassociation changes floating-point rounding.
+check every primitive in `CORE_PRIMITIVES` against a dense reference (the
+meta-test iterates `CORE_PRIMITIVES` and fails if the backend lacks a
+method), then check its `evaluate` (if overridden) against the default
+interpreter on graphs covering every node type - including chain
+comparisons at combined tolerance, since reassociation changes
+floating-point rounding.

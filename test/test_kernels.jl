@@ -5,7 +5,7 @@
         ax = LinRange(-Dt / 2, Dt, N)
         A = randn(T, bs * N, bs * N)
         B = randn(T, bs * N, bs * N)
-        dA = UniformDiscretisation(ax, A, bs, NONCompression())
+        dA = UniformDiscretisation(ax, A, bs, DenseRepresentation())
         dB = make_similar(dA, B)
         @test matrix(dA) == A
         @test matrix(dB) == B
@@ -20,7 +20,7 @@ end
 
 @testitem "Kernel creation and accessor" begin
     using LinearAlgebra
-    for compressionMethod in (NONCompression(), HssCompression())
+    for representationMethod in (DenseRepresentation(), HssRepresentation())
         for T = [Float32, Float64, ComplexF64]
             bs, N, Dt = 2, 128, 2.0
             ax = LinRange(-Dt / 2, Dt, N)
@@ -29,13 +29,13 @@ end
                 (Retarded, Advanced, Acausal)
             )
                 A = randn(T, bs * N, bs * N)
-                GA = Kernel(ax, A, bs, compressionMethod)
+                GA = Kernel(ax, A, bs, representationMethod)
                 @test causality(GA) isa Causality
                 @test matrix(GA) == A
                 @test eltype(matrix(GA)) == eltype(A)
                 @test eltype(matrix(GA)) == T
                 @test axis(GA) == ax
-                @test compression(GA) == compressionMethod
+                @test representation(GA) == representationMethod
                 @test blocksize(GA) == bs
                 @test scalartype(GA) == T
                 @test axis(GA) == ax
@@ -53,11 +53,11 @@ end
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
         foo_st(x) = T <: Complex ? T.(1im * [x 2x; 0 x]) : T.([x 2x; 0 x])
         foo_st(x, y) = foo_st(x - y)
-        for cpr in (NONCompression(), HssCompression())
+        for cpr in (DenseRepresentation(), HssRepresentation())
             for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
-                GA = Kernel(ax, Stationary(foo_st), compression=cpr)
+                GA = Kernel(ax, Stationary(foo_st), representation=cpr)
                 compress!(GA)
-                GB = Kernel(ax, TwoTime(foo_st), compression=cpr)
+                GB = Kernel(ax, TwoTime(foo_st), representation=cpr)
                 compress!(GB)
                 @test matrix(GA) - matrix(GB) |> norm < tol
             end
@@ -78,8 +78,8 @@ end
             _getMask(::Type{Advanced}) = (i, j) -> T(i <= j)
             mask = _getMask(_causality)
             refMatrix = [f(x) * g(y) * mask(x, y) for x in ax, y in ax]
-            for cpr in (NONCompression(), HssCompression())
-                GA = Kernel(_causality, ax, Separable(f, g), compression=cpr)
+            for cpr in (DenseRepresentation(), HssRepresentation())
+                GA = Kernel(_causality, ax, Separable(f, g), representation=cpr)
                 compress!(GA)
                 @test matrix(GA) - refMatrix |> norm < tol * N^2
                 @test _causality() == causality(GA)
@@ -97,11 +97,11 @@ end
         foo(x, y) = T <: Complex ? T.(1im .* x + y) : T.(x + y)
         foo_st(x) = T <: Complex ? T.(1im * x) : T.(x)
         foo_st(x, y) = foo_st(x - y)
-        for cpr in (NONCompression(), HssCompression())
+        for cpr in (DenseRepresentation(), HssRepresentation())
             for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
-                GA = Kernel(ax, Stationary(foo_st), compression=cpr)
+                GA = Kernel(ax, Stationary(foo_st), representation=cpr)
                 compress!(GA)
-                GB = Kernel(ax, TwoTime(foo_st), compression=cpr)
+                GB = Kernel(ax, TwoTime(foo_st), representation=cpr)
                 compress!(GB)
                 @test matrix(GA) - matrix(GB) |> norm < tol
             end
@@ -118,7 +118,7 @@ end
         ax = LinRange(-Dt / 2, Dt, N)
         foo(x, y) = T <: Complex ? T.(1im .* [x x+y; x-y y]) : T.([x x+y; x-y y])
         for Kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
-            GA = Kernel(ax, TwoTime(foo), compression=NONCompression())
+            GA = Kernel(ax, TwoTime(foo), representation=DenseRepresentation())
             _causality = causality(GA)
             bs = blocksize(GA)
             B = zeros(T, N * bs, N * bs)
@@ -143,8 +143,8 @@ end
         for left_kernel in (RetardedKernel, AdvancedKernel, AcausalKernel),
             right_kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
 
-            GA = left_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
-            GB = right_kernel(ax, randn(T, bs * N, bs * N), bs, NONCompression())
+            GA = left_kernel(ax, randn(T, bs * N, bs * N), bs, DenseRepresentation())
+            GB = right_kernel(ax, randn(T, bs * N, bs * N), bs, DenseRepresentation())
             gsum = GA + GB
             gdiff = GA - GB
             @test matrix(gsum) == matrix(GA) + matrix(GB)
@@ -164,7 +164,7 @@ end
 @testitem "kernel adjoint" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
-        for cpr in (HssCompression(), NONCompression())
+        for cpr in (HssRepresentation(), DenseRepresentation())
             for kernel in (RetardedKernel, AdvancedKernel, AcausalKernel)
                 bs, N, Dt = 2, 128, 2.0
                 ax = LinRange(-Dt / 2, Dt, N)
@@ -181,7 +181,7 @@ end
 @testitem "kernel scaling" begin
     using LinearAlgebra
     for T = [Float64, ComplexF64]
-        for cpr in (HssCompression(), NONCompression())
+        for cpr in (HssRepresentation(), DenseRepresentation())
             for kernel_creator in (RetardedKernel, AdvancedKernel, AcausalKernel)
                 bs, N, Dt = 2, 128, 2.0
                 ax = LinRange(-Dt / 2, Dt, N)
@@ -223,7 +223,7 @@ end
             return step * sum([_trapz(k_sup, k, k_inf) * f[p, k] * g[k, q] for k = k_inf:k_sup])
         end
     end
-    for cpr in (HssCompression(), NONCompression())
+    for cpr in (HssRepresentation(), DenseRepresentation())
         for T = [Float64, ComplexF64]
             c = 100
             tol = c * max(1E-6, eps(real(T)))
@@ -235,8 +235,8 @@ end
                 (RetardedKernel, AdvancedKernel, AcausalKernel, RetardedKernel, AcausalKernel),
                 (RetardedKernel, AdvancedKernel, AcausalKernel, AcausalKernel, AdvancedKernel)
             )
-                GL = Left(ax, TwoTime(gooL), compression=NONCompression())
-                GR = Right(ax, TwoTime(gooR), compression=NONCompression())
+                GL = Left(ax, TwoTime(gooL), representation=DenseRepresentation())
+                GR = Right(ax, TwoTime(gooR), representation=DenseRepresentation())
                 discretization_GL = discretization(GL)
                 discretization_GR = discretization(GR)
                 causality_left = causality(GL)
@@ -279,15 +279,15 @@ end
     atol = 1E-5
     rtol = 1E-5
     kest = 20
-    compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
+    rep = HssRepresentation(atol=atol, rtol=rtol, kest=kest)
     t0, t1 = 0, 1
     for T in [Float64, ComplexF64]
         g(x) = T(sin(9 * x))
         g(x, y) = g(x - y)
         n1 = 128
         n2 = 2 * n1
-        g1 = RetardedKernel(LinRange(t0, t1, n1), TwoTime(g), compression=compression)
-        g2 = RetardedKernel(LinRange(t0, t1, n2), TwoTime(g), compression=compression)
+        g1 = RetardedKernel(LinRange(t0, t1, n1), TwoTime(g), representation=rep)
+        g2 = RetardedKernel(LinRange(t0, t1, n2), TwoTime(g), representation=rep)
         @test abs(norm(g1) / norm(g2) - 1) < 0.1
     end
 end
@@ -298,14 +298,14 @@ end
     rtol = 1E-5
     kest = 20
     n = 128
-    compression = HssCompression(atol=atol, rtol=rtol, kest=kest)
+    rep = HssRepresentation(atol=atol, rtol=rtol, kest=kest)
     for T in [Float64, ComplexF64]
         g(x) = T(cos(10 * x))
         g(x, y) = g(x - y)
         tf1 = 1
         tf2 = 2 * tf1
-        g1 = RetardedKernel(LinRange(0, tf1, n), TwoTime(g), compression=compression)
-        g2 = RetardedKernel(LinRange(0, tf2, n), TwoTime(g), compression=compression)
+        g1 = RetardedKernel(LinRange(0, tf1, n), TwoTime(g), representation=rep)
+        g2 = RetardedKernel(LinRange(0, tf2, n), TwoTime(g), representation=rep)
         @test abs(norm(g1) / norm(g2) - 1) < 0.1
     end
 end
@@ -315,7 +315,7 @@ end
     atol = 1E-5
     rtol = 1E-5
     kest = 20
-    for compressionMethod in (NONCompression(), HssCompression(atol=atol, rtol=rtol, kest=kest))
+    for representationMethod in (DenseRepresentation(), HssRepresentation(atol=atol, rtol=rtol, kest=kest))
         for T in [Float32, Float64, ComplexF32, ComplexF64]
             g(x) = T(sin(9 * x))
             g(x, y) = g(x - y)
@@ -325,12 +325,12 @@ end
             sol_ana(x, y) = sol_ana(x - y)
             t0, t1 = 0, 10
             ax = LinRange(t0, t1, 2^8)
-            G0 = RetardedKernel(ax, TwoTime(g), compression=compressionMethod)
+            G0 = RetardedKernel(ax, TwoTime(g), representation=representationMethod)
             @test scalartype(G0) == T
-            K = RetardedKernel(ax, TwoTime(k), compression=compressionMethod)
+            K = RetardedKernel(ax, TwoTime(k), representation=representationMethod)
             @test scalartype(K) == T
             G = solve_dyson(G0, K)
-            G_ana = RetardedKernel(ax, TwoTime(sol_ana), compression=compressionMethod)
+            G_ana = RetardedKernel(ax, TwoTime(sol_ana), representation=representationMethod)
             @test norm(matrix(G - G_ana)) / norm(G_ana |> matrix) < 1E-3
         end
     end

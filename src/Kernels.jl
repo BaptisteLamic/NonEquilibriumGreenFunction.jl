@@ -1,7 +1,7 @@
 module Kernels
 
-using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractCompression, UniformDiscretisation,
-    HssCompression, causality_of_sum, causality_of_prod,
+using ..NonEquilibriumGreenFunction: AbstractDiscretisation, AbstractRepresentation, UniformDiscretisation,
+    HssRepresentation, representation, causality_of_sum, causality_of_prod,
     Retarded, Advanced, Acausal, AbstractCausality,
     AbstractLocality, Local, Smooth, locality_of_sum, locality_of_prod,
     extract_blockdiag, build_blockdiag, blockdiag_blocks, triangularLowRankCompression,
@@ -16,8 +16,8 @@ using LinearAlgebra
 using ..NonEquilibriumGreenFunction: I
 using TestItems
 
-import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step, compression, make_similar
-import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!
+import ..NonEquilibriumGreenFunction: matrix, axis, blocksize, scalartype, step, representation, make_similar
+import ..NonEquilibriumGreenFunction: ldiv, to_cpu, same_time_blocks, recompress_inplace!, blockdiag_blocks, backend, compress
 import ..NonEquilibriumGreenFunction: op_add, op_sub, op_scale, op_mul, op_adjoint, evaluate, CompressedLeaf
 import ..NonEquilibriumGreenFunction: SolveNode, DirectSolve, backend
 import ..NonEquilibriumGreenFunction: AbstractOpNode

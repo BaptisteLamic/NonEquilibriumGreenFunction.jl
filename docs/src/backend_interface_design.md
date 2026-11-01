@@ -6,18 +6,21 @@ preparation for a new HSS backend that performs compression on GPU and
 CPU, runs in mixed precision, is multithreaded, and supports
 structure-known / coefficient-optimized solving strategies.
 
-The first stage is merged: the numeric-tier skeleton
-(`src/backend_interface.jl`) defines the types, the mandatory primitive
-set, the thread-budget facility and the default DAG interpreter, and the
-reference HSS backend (`src/hss_backend.jl`) implements the contract with
-an optimized whole-graph `evaluate`. See the *Backend contract* page for
-the user-facing reference of what is implemented today.
+Stage 1 (skeleton + reference HSS backend) and **stage 2 (the
+single-contract rework, PR #58)** are merged: `src/backend_interface.jl`
+defines the single backend contract (representation tags bridge to
+backends via `backend(r)`; `compress(backend(r), ...)` is the only
+construction entry point; `CORE_PRIMITIVES` is the source of truth for
+the contract audit), and the reference HSS backend
+(`src/hss_backend.jl`) implements the contract with an optimized
+whole-graph `evaluate`. See the *Backend contract* page for the
+user-facing reference of what is implemented today.
 
 ## Motivation
 
-The current contract (`AbstractCompression` callable + duck-typed matrix
-family, see `docs/src/custom_compression.md`) carries several assumptions
-that the new backend cannot satisfy:
+The legacy contract (callable `AbstractCompression` tag + duck-typed
+matrix family) carried several assumptions that the new backend could not
+satisfy (removed by the stage-2 rework, PR #58):
 
 1. The sampling API is a raw Julia closure with no negotiation: backends
    cannot ask for batches, a different element type, a device, or their own
@@ -35,14 +38,20 @@ that the new backend cannot satisfy:
 - **Backend-owned representation.** The compressed object is an opaque
   `AbstractCompressedOperator`, NOT an `AbstractMatrix`. No `getindex`,
   no Base operator overload obligations, no materialization expectations.
+  *Opacity status (honest, stage 2):* the generic primitives are typed on
+  `AbstractMatrix` and every shipped family is an `AbstractMatrix`
+  subtype, so opacity is the target, not yet delivered - families are
+  currently `AbstractMatrix`-based.
 - **Eltype, precision, device, threads are configured on the backend.**
   The backend declares `sample_type`, `coeff_type`, `working_type`,
   `device` and thread configuration. The package never sees an eltype;
   `scalartype` reads `working_eltype(backend)`.
 - **No dense fallback.** Every primitive is mandatory. If a backend cannot
   implement an op in-family, it fails with a `MethodError` at first use.
-  Dense is itself a backend (`NONCompression` becomes one), used as the
-  reference in tests - never as a fallback for other backends.
+  Dense is itself a backend (`DenseRepresentation` becomes one), used as
+  the reference in tests - never as a fallback for other backends. A
+  backend is not necessarily a compression: a dense GPU-array family is a
+  first-class backend.
 - **Quadrature/masking/dressing are package-owned semantics.** Backends
   never implement discretization schemes; there is exactly one quadrature
   implementation, so scheme divergence between backends is impossible.
@@ -117,8 +126,10 @@ outer `@spawn` with the shared budget, and each chain is one variadic
 
 ## The backend contract (numeric tier)
 
-Mandatory primitives - `AbstractCompressionBackend` subtypes must
-implement all of them in-family:
+Mandatory primitives - `AbstractBackend` subtypes must implement all of
+them in-family (the same list is defined once as `CORE_PRIMITIVES` in
+`src/backend_interface.jl`, which is the source of truth for the
+contract-audit meta-test):
 
 | Primitive | Meaning |
 |---|---|
@@ -168,7 +179,7 @@ implementation of the contract and the first optimized DAG consumer:
 Precision configuration lives on the backend:
 
 ```julia
-struct MyHssBackend <: AbstractCompressionBackend
+struct MyHssBackend <: AbstractBackend
     sample_type::Type        # what f(t,tp) samples are converted to
     coeff_type::Type         # what the compressed representation stores
     working_type::Type       # what assembly/solve promotes to
@@ -208,25 +219,28 @@ results with no oversubscription.
 1. `AbstractCompressedOperator` + package-level op names + default
    in-family interpreter; port package-internal `Threads.@threads` loops
    to budgeted `@spawn` equivalents.
-2. `AbstractCompressionBackend`; precision/device/threads fields;
+2. `AbstractBackend`; precision/device/threads fields;
    `scalartype` -> `working_eltype`.
 3. `solve(b, left, right; strategy)` + strategies; `ldiv` becomes a
    deprecated shim.
-4. Port the two reference backends (dense `NONCompression`, HSS
+4. Port the two reference backends (dense `DenseRepresentation`, HSS
    `HssMatricesBackend`) onto the contract; prove the floor.
 5. Lowering pass: move `kernel_algebra.jl`/`quadrature.jl` semantics into
    semantic nodes; `Kernel` constructors, `solve_keldysh` and
    `lead_current` become graph builders.
-6. `test_compression_interface` becomes a contract audit: (a) semantic
+6. `test_representation_contract` is the contract audit: (a) semantic
    tier checked once against the dense backend; (b) per-backend numeric
    `evaluate` checked against the default interpreter on graphs covering
-   every node type; chain comparisons use combined tolerances.
-7. Docs rewrite (`custom_compression.md` -> backend contract).
+   every node type; chain comparisons use combined tolerances. A
+   meta-test iterates `CORE_PRIMITIVES` and fails if a shipped backend
+   lacks a method for any documented core primitive.
+7. Docs rewrite (`custom_compression.md` -> representation/backend
+   contract).
 
 After step 7, the new backend (GPU / mixed-precision / multithreaded HSS)
 lands as one self-contained addition: a single
-`AbstractCompressionBackend` subtype implementing the primitives above -
-nothing else in the package changes.
+`AbstractBackend` subtype implementing the primitives above - nothing
+else in the package changes.
 
 ## Open points
 

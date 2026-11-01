@@ -1,17 +1,17 @@
 """
-    AbstractDiscretisation{A,M,C}
+    AbstractDiscretisation{A,M,R}
 
 Abstract type for discretization methods.
 
 Type parameters:
 - `A`: Type of the axis
 - `M`: Type of the matrix
-- `C`: Type of the compression
+- `R`: Type of the representation tag
 """
-abstract type AbstractDiscretisation{A,M,C} end
+abstract type AbstractDiscretisation{A,M,R} end
 
 """
-    UniformDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
+    UniformDiscretisation{A,M,R} <: AbstractDiscretisation{A,M,R}
 
 Discretization on a uniform time axis. The integration rule is not
 baked in: it is carried by the `quadrature` field (an
@@ -22,28 +22,28 @@ baked in: it is carried by the `quadrature` field (an
 - `axis::A`: Time axis
 - `matrix::M`: Discretized matrix
 - `blocksize::Int`: Size of each block
-- `compression::C`: Compression method used
+- `representation::R`: Representation tag used
 - `quadrature::AbstractQuadrature`: Integration rule for products
 """
-struct UniformDiscretisation{A,M,C} <: AbstractDiscretisation{A,M,C}
+struct UniformDiscretisation{A,M,R} <: AbstractDiscretisation{A,M,R}
     axis::A
     matrix::M
     blocksize::Int
-    compression::C
+    representation::R
     quadrature::AbstractQuadrature
 end
 
 """
-    UniformDiscretisation(axis, matrix, blocksize, compression; quadrature=TrapezoidQuadrature())
+    UniformDiscretisation(axis, matrix, blocksize, representation; quadrature=TrapezoidQuadrature())
 
 Constructor with the quadrature rule as an optional keyword; it
 defaults to the package default, [`TrapezoidQuadrature`](@ref).
 Pass `quadrature=RectangleQuadrature()` for the historical first-order
 rule.
 """
-function UniformDiscretisation(axis, matrix, blocksize, compression;
+function UniformDiscretisation(axis, matrix, blocksize, representation;
     quadrature::AbstractQuadrature=TrapezoidQuadrature())
-    return UniformDiscretisation(axis, matrix, blocksize, compression, quadrature)
+    return UniformDiscretisation(axis, matrix, blocksize, representation, quadrature)
 end
 
 quadrature(dis::UniformDiscretisation) = dis.quadrature
@@ -84,11 +84,11 @@ Returns the block size of the discretization.
 blocksize(k::UniformDiscretisation) = k.blocksize
 
 """
-    compression(k::UniformDiscretisation)
+    representation(k::UniformDiscretisation)
 
-Returns the compression method of the discretization.
+Returns the representation tag of the discretization.
 """
-compression(k::UniformDiscretisation) = k.compression
+representation(k::UniformDiscretisation) = k.representation
 
 """
     matrix(k::UniformDiscretisation)
@@ -206,7 +206,7 @@ function getindex(A::AbstractDiscretisation, I, J)
 end
 
 """
-    make_similar(discretization::D, new_matrix::AbstractMatrix; axis, blocksize, compression) where {D<:AbstractDiscretisation}
+    make_similar(discretization::D, new_matrix::AbstractMatrix; axis, blocksize, representation) where {D<:AbstractDiscretisation}
 
 Create a new discretization with a modified matrix.
 
@@ -215,20 +215,20 @@ Create a new discretization with a modified matrix.
 - `new_matrix`: New matrix to use
 - `axis`: Optional new axis (defaults to original axis)
 - `blocksize`: Optional new blocksize (defaults to original blocksize)
-- `compression`: Optional new compression (defaults to original compression)
+- `representation`: Optional new representation tag (defaults to original)
 
 # Returns
 A new discretization of the same type with the specified modifications.
 """
 function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(discretization),
-    blocksize=blocksize(discretization), compression=compression(discretization)
+    blocksize=blocksize(discretization), representation=representation(discretization)
 ) where {D<:AbstractDiscretisation}
     if eltype(new_matrix) <: scalartype(discretization)
         return D(
             axis,
             new_matrix,
             blocksize,
-            compression,
+            representation,
             quadrature(discretization)
         )
     end
@@ -236,7 +236,7 @@ function make_similar(discretization::D, new_matrix::AbstractMatrix; axis=axis(d
         axis,
         new_matrix,
         blocksize,
-        compression,
+        representation,
         quadrature(discretization)
     )
 end
@@ -247,7 +247,7 @@ end
 Return the adjoint of a UniformDiscretisation.
 """
 function adjoint(dis::UniformDiscretisation)
-    return make_similar(dis, evaluate(compression(dis), op_adjoint(CompressedLeaf(matrix(dis)))))
+    return make_similar(dis, evaluate(representation(dis), op_adjoint(CompressedLeaf(matrix(dis))); eltype=scalartype(dis)))
 end
 
 """
@@ -255,4 +255,4 @@ end
 
 Negate a discretization's matrix.
 """
--(discretization::AbstractDiscretisation) = make_similar(discretization, evaluate(compression(discretization), op_scale(-1, CompressedLeaf(matrix(discretization)))))
+-(discretization::AbstractDiscretisation) = make_similar(discretization, evaluate(representation(discretization), op_scale(-1, CompressedLeaf(matrix(discretization))); eltype=scalartype(discretization)))

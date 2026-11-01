@@ -52,9 +52,15 @@ The numeric-tier backend contract and the lazy expression DAG. See the
 [Backend contract](backend_contract.md) page for the full reference.
 
 ```@docs
-AbstractCompressionBackend
+AbstractBackend
 AbstractCompressedOperator
 HssMatricesBackend
+MatrixFamilyBackend
+CORE_PRIMITIVES
+backend
+compress
+supports_strategy
+blockdiag_blocks
 working_eltype
 structure
 empty_like
@@ -102,7 +108,7 @@ blocksize
 matrix
 discretization
 causality
-compression
+representation
 scalartype
 ```
 
@@ -170,18 +176,18 @@ locality_of_sum
 prod(::Acausal, ::Acausal, ::AbstractDiscretisation, ::AbstractDiscretisation)
 ```
 
-## Compression
+## Representations
 
 ```@docs
 BlockCirculantMatrix
-HssCompression
-NONCompression
-AbstractCompression
+HssRepresentation
+DenseRepresentation
+AbstractRepresentation
 ldiv
 to_cpu
 same_time_blocks
 recompress_inplace!
-test_compression_interface
+test_representation_contract
 build_linearMap
 build_CirculantlinearMap
 ```

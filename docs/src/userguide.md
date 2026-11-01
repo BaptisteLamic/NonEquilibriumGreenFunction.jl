@@ -11,9 +11,9 @@ using NonEquilibriumGreenFunction
 ax = 0:δt:T                                   # time axis
 
 # 1. discretize the building blocks
-g     = RetardedKernel(ax, TwoTime(g_func); compression=cpr)
-Σ_R   = LocalKernel(ax, Σ_R_func; compression=cpr) + ...
-ρ     = AcausalKernel(ax, Stationary(ρ_func); compression=cpr)
+g     = RetardedKernel(ax, TwoTime(g_func); representation=rep)
+Σ_R   = LocalKernel(ax, Σ_R_func; representation=rep) + ...
+ρ     = AcausalKernel(ax, Stationary(ρ_func); representation=rep)
 
 # 2. solve the retarded Dyson equation
 G_R = solve_dyson(g, g * Σ_R)
@@ -78,14 +78,16 @@ integrated as
 and products of kernels compose this quadrature automatically — the `*` operator on
 kernels *is* the time integral, so `g * Σ` is ready to be passed to `solve_dyson`.
 
-## Compression
+## Representations
 
-The matrix of a discretized kernel is compressed to make the algebra quasi-linear:
+The matrix of a discretized kernel is stored in the family of its
+representation tag, chosen with `representation=`, which makes the algebra
+quasi-linear for compressible kernels:
 
-- `HssCompression(atol, rtol, kest, leafsize)`: hierarchical semi-separable compression
-  of the kernel matrix. General kernels cost ``\mathcal O(N^2)`` to compress and
-  ``\mathcal O(N \log N)`` to multiply.
-- `NONCompression()`: no compression, dense matrices. Multiply costs
+- `HssRepresentation(atol, rtol, kest, leafsize)`: hierarchical
+  semi-separable (HSS) storage of the kernel matrix. General kernels cost
+  ``\mathcal O(N^2)`` to compress and ``\mathcal O(N \log N)`` to multiply.
+- `DenseRepresentation()`: no compression, dense matrices. Multiply costs
   ``\mathcal O(N^3)`` — useful for testing and small systems.
 
 Two knobs matter in practice:
@@ -99,7 +101,7 @@ Two knobs matter in practice:
   second order under both rules via the diagonal dressing).
   `RectangleQuadrature()` is the historical first-order rule, useful
   as a baseline. Pass a rule to any kernel constructor:
-  `AcausalKernel(ax, map; compression, quadrature=RectangleQuadrature())`.
+  `AcausalKernel(ax, map; representation, quadrature=RectangleQuadrature())`.
 
 - `Singular` maps: kernels with an integrable singularity at ``\tau = 0``
   (e.g. the Keldysh thermal core ``-i/\beta \, \mathrm{csch}(\pi\tau/\beta)``)

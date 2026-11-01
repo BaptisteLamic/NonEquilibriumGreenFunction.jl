@@ -49,7 +49,7 @@ function sparse_extract_blockdiag(m::AbstractMatrix{T}, bs, diagonalIndices=0) w
 end
 function extract_blockdiag(m::AbstractMatrix{T}, bs, d=0) where {T}
     d != 0 && return sparse_extract_blockdiag(m, bs, d)
-    blocks = same_time_blocks(m, bs)
+    blocks = same_time_blocks(MatrixFamilyBackend{T}(), m, bs)
     N = length(blocks)
     I = [(t - 1) * bs + i for i in 1:bs, j in 1:bs, t in 1:N]
     J = [(t - 1) * bs + j for i in 1:bs, j in 1:bs, t in 1:N]
@@ -66,28 +66,19 @@ function _blockdiag_sparse(A::AbstractArray{T,3}, d::Integer=0) where {T}
     J = [(t + shift_J - 1) * bs + jb for ib in 1:bs, jb in 1:bs, t = 1:N]
     return sparse(I[:], J[:], A[:], (N + abs(d)) * bs, (N + abs(d)) * bs)
 end
-function build_blockdiag(A::AbstractArray{T,3}, d::Integer=0; compression=HssCompression()) where {T}
-    d == 0 && return compression(A)
-    return compression(_blockdiag_sparse(A, d))
-end
-
 """
-    blockdiag_blocks(m, bs)
+    build_blockdiag(A, d=0; representation=HssRepresentation())
 
-Equal-time blocks of `m` stacked as a `bs×bs×N` `Array{T,3}`: block `k`
-along the third axis is `m[blockrange(k, bs), blockrange(k, bs)]`. This is
-the natural input of the compression interface's block-diagonal
-constructor `c(blocks)`.
+Build the block-diagonal matrix with block `A[:, :, k]` (or `A[k]`) on
+diagonal block `k` (offset `d`), in the family of `representation`, via
+`compress(backend(representation), ...)`.
 """
-function blockdiag_blocks(m, bs)
-    blocks = same_time_blocks(m, bs)
-    B = Array{eltype(m),3}(undef, bs, bs, length(blocks))
-    for k in eachindex(blocks)
-        B[:, :, k] .= blocks[k]
-    end
-    return B
+function build_blockdiag(A::AbstractArray{T,3}, d::Integer=0; representation=HssRepresentation()) where {T}
+    b = backend(representation, T)
+    d == 0 && return compress(b, A)
+    return compress(b, _blockdiag_sparse(A, d))
 end
-function build_blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; compression=HssCompression()) where {T}
+function build_blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; representation=HssRepresentation()) where {T}
     @assert length(A) > 0 "Array A must not be empty"
     @assert size(A[1], 1) == size(A[1], 2) "Blocks must be square matrices"
     bs = size(A[1], 1)
@@ -101,6 +92,6 @@ function build_blockdiag(A::AbstractArray{<:AbstractMatrix{T},1}, d::Integer=0; 
             end
         end
     end
-    return build_blockdiag(_A, d, compression=compression)
+    return build_blockdiag(_A, d, representation=representation)
 end
 
