@@ -5,6 +5,33 @@
 Every simulation with this package follows the same four steps. The two
 [examples](generated/mqdm.md) are concrete instances of this workflow.
 
+A minimal runnable simulation (equilibrium quantum dot between two leads):
+
+```julia
+using NonEquilibriumGreenFunction
+
+δt, T = 0.05, 2.0
+ax = 0:δt:T                                    # time axis
+
+# 1. discretize the building blocks
+Γl, Γr, β = 1.0, 1.0, 100.0
+g   = RetardedKernel(ax, Stationary(τ -> ComplexF64(-2im)))       # bare dot g^R
+Σ_R = LocalKernel(ax, t -> -1im * (Γl + Γr))                       # wideband leads
+ρ   = AcausalKernel(ax, Stationary(τ -> ComplexF64(thermal_kernel(τ, β))))
+
+# 2. solve the retarded Dyson equation
+G_R = solve_dyson(g, g * Σ_R)
+
+# 3. dress the kinetic branch (wideband: Σ_K = -2i(Γl+Γr) ρ)
+Σ_K = LocalKernel(ax, t -> -2im * (Γl + Γr)) * ρ
+G_K = G_R * Σ_K * G_R'
+
+# 4. extract observables
+I_t = real.(diag(matrix(Σ_R * G_K - G_K * Σ_R)))   # current, time domain
+```
+
+The general shape, with problem-dependent functions:
+
 ```julia
 using NonEquilibriumGreenFunction
 
@@ -23,7 +50,7 @@ G_R = solve_dyson(g, g * Σ_R)
 G_K = G_R * Σ_K * G_R'
 
 # 4. extract observables
-I_avr = ... # products of G_R, G_K, Σ_R, Σ_K
+I_avr = ... # products of G_R, G_K, Σ_R, Σ_K; see the examples
 ```
 
 ## Kernels and causality
