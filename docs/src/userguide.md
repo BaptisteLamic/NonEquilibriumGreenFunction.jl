@@ -9,6 +9,7 @@ A minimal runnable simulation (equilibrium quantum dot between two leads):
 
 ```julia
 using NonEquilibriumGreenFunction
+using LinearAlgebra: diag
 
 δt, T = 0.05, 2.0
 ax = 0:δt:T                                    # time axis
