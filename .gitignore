@@ -3,6 +3,7 @@
 *.jl.mem
 dev.ipynb
 Manifest.toml
+/.DS_Store
 /.vscode
 
 # Benchmark results
