@@ -6,6 +6,28 @@ small ("flash") model. Do them in order; each is a separate commit on this branc
 
 Scope guard: docs/CI/hygiene only. No behavior changes, no API changes, no new deps.
 
+## Status (implemented on this branch, after PR #58 merged)
+
+- [x] 1. Backend pages added to `pages=` in `docs/make.jl`.
+- [x] 2. Stale `stationary=true` advice in `userguide.md` replaced with `Stationary(f)`.
+- [x] 3. N/A post-#58: `custom_compression.md` was already rewritten for the merged
+  interface (no future-tense NOTE left).
+- [x] 4. Design-doc primitive table aligned with the shipped `compress` signatures;
+  `MatrixFamilyBackend`/`backend` are exported since #58, contract page already lists
+  `compress` as core.
+- [x] 5. `theq_lesser_time_kernel` added to `api.md` (Utilities).
+- [x] 6. N/A post-#58: `CompressedLeaf`/`BindingNode` docstrings and the `op_norm`
+  comment were already fixed by the stage-2 rework.
+- [x] 7. `ci.yml` checkout/cache v3 -> v4, codecov v3 -> v5 (also in `docs.yml`).
+- [x] 8. Already landed via PR #56 (`'1.10'` matrix entry).
+- [x] 9. Already landed via PR #56 (dead loop variable, relative tolerance).
+- [x] 10. `.DS_Store`/`.vscode` untracked; `/.DS_Store` ignored.
+- [x] 11. `docs/lit/*.svg` ignored (committed figures live in `examples/`).
+- [x] 12. `AGENTS.md` refreshed (backend/DAG files, forcing points, thread safety).
+- [x] 13. Runnable quickstart added to `userguide.md`; placeholder sketch kept as the
+  general four-step form with a pointer to the examples.
+- [x] 14. "How to read the DAG code" section added to `internals.md`.
+
 ## 1. Docs: add the two backend pages to the site nav
 
 - File: `docs/make.jl`, `pages=` (lines 25-35).
