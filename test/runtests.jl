@@ -23,7 +23,6 @@ end
     using NonEquilibriumGreenFunction: build_blockdiag
     using SparseArrays
     for T = [Float32, Float64, ComplexF32, ComplexF64]
-        T = Float32
         m = randn(T, 12, 12)
         bs = 2
         dm = NonEquilibriumGreenFunction.extract_blockdiag(m, bs)

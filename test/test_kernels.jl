@@ -170,7 +170,8 @@ end
                 ax = LinRange(-Dt / 2, Dt, N)
                 A = randn(T, bs * N, bs * N)
                 GA = kernel(ax, A, bs, cpr)
-                @test norm(matrix(GA') - A') < 1E-10
+                # Relative tolerance: HSS reconstruction error scales with rtol * ||A||,
+                # so an absolute bound is not robust across BLAS/architectures.
                 @test norm(matrix(GA') - A') / norm(A) < 1E-10
             end
         end
