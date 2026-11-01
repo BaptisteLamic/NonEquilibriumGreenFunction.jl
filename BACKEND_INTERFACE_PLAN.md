@@ -25,8 +25,9 @@ tests in the same commit. Concretely:
   (or in `src/backend_interface_tests.jl` for backend-contract internals), run by
   `@run_package_tests`.
 - Every backend primitive change must keep `test_compression_interface` green for
-  `NONCompression`, `HssCompression`, and `JLArrayCompression` (the contract
-  audit), plus the DAG tests in `src/backend_interface_tests.jl`.
+  `DenseRepresentation` (formerly `NONCompression`), `HssRepresentation`, and
+  `JLArrayRepresentation` (the contract audit), plus the DAG tests in
+  `src/backend_interface_tests.jl`.
 - Every port (item 8) is verified by the **full suite** (`Pkg.test()`), not just
   the touched file — call-site ports are where silent breakage hides.
 - Docs-only items still need a build check: `julia --project=docs docs/make.jl`
@@ -41,6 +42,13 @@ Context decisions (from review discussion):
 - **Breaking changes are accepted** (pre-1.0). The old `AbstractCompression` name
   goes away outright — it now means two things (callable matrix-builder and
   parameter tag), which is exactly what the single-contract rework removes.
+- **A backend is not necessarily a compression.** A dense GPU-array family (e.g.
+  JLArray/CUDA dense) is a valid backend that compresses nothing. Naming must
+  therefore describe *representation + evaluation strategy*, not compression:
+  `HssCompression`/`NONCompression`/`JLArrayCompression` become representation
+  tags (e.g. `HssRepresentation`, `DenseRepresentation`), and the word
+  "compression" survives only where it is literally true (the `compress`
+  primitive, HSS parameters `atol`/`rtol`/`kest`/`leafsize`).
 
 ## 1. Define the single contract: make `compress` a real backend primitive
 
@@ -58,28 +66,40 @@ Context decisions (from review discussion):
   the legacy callable output for `MatrixFamilyBackend` and `HssMatricesBackend`
   (dense reference, `atol` from the backend params); run `Pkg.test()`.
 
-## 2. Rename the legacy type and make backends the primary concept
+## 2. Rename the legacy types to representation/backend names (not "compression")
 
-- Rationale: "compression" currently covers both the callable matrix-builder and
-  the parameter tag; the single contract removes the duality.
-- Introduce e.g. `AbstractMatrixRepresentation` (or `AbstractBackendParams`) as
-  the name for what is today the `AbstractCompression` callable subtype, and
-  **remove** `AbstractCompression` outright (breaking change accepted).
-  `HssCompression`/`NONCompression`/`JLArrayCompression` become subtypes of the
-  new abstract type but are now pure parameter holders; their callable methods
-  move to `compress(b, ...)` on the corresponding backend.
-- `backend(c)` becomes the identity-ish accessor `backend(r)` returning the
-  `AbstractCompressionBackend` carrying those parameters.
+- Rationale: "compression" covers both the callable matrix-builder and the
+  parameter tag today, and a backend need not compress at all — a dense GPU
+  array family is a first-class backend. The single contract removes the duality
+  and the name must stop implying compression.
+- Introduce e.g. `AbstractMatrixRepresentation` as the name for what is today
+  the `AbstractCompression` subtype, and **remove** `AbstractCompression`
+  outright (breaking change accepted). Rename the concrete tags accordingly:
+  `HssCompression` -> e.g. `HssRepresentation`, `NONCompression` ->
+  `DenseRepresentation` (CPU dense), `JLArrayCompression` ->
+  `JLArrayRepresentation`. They become pure parameter holders; their callable
+  methods move to `compress(b, ...)` on the corresponding backend. The kwarg
+  `compression=` on kernel constructors becomes e.g. `representation=` (or
+  `backend=`).
+- `backend(c)` becomes the accessor `backend(r)` returning the
+  `AbstractCompressionBackend` (itself renamed if it still says "compression",
+  e.g. `AbstractBackend`) carrying those parameters.
 - Touch points: `src/matrixinterface.jl` (definition), `src/compression.jl`
-  (subtypes + callables), `ext/JLArraysExt.jl`, `src/backend_interface.jl`
-  (bridge), `src/Kernels/*` (call sites of `c(...)`), exports in
+  (subtypes + callables; file may be renamed `representations.jl`),
+  `ext/JLArraysExt.jl`, `src/backend_interface.jl` (bridge + abstract backend
+  name), `src/Kernels/*` (kwarg + call sites of `c(...)`), exports in
   `src/NonEquilibriumGreenFunction.jl`, `docs/src/custom_compression.md` ->
-  rewrite as the backend-contract page, `test/test_compression_interface.jl`.
-- Verify: no remaining references to `AbstractCompression` (grep across src/,
-  ext/, test/, docs/); full `Pkg.test()` green; docs use the new name.
+  rewrite as the backend-contract page, `test/test_compression_interface.jl`,
+  `test/test_kernels.jl`, examples in `docs/lit/`.
+- Verify: no remaining references to `AbstractCompression`/`*Compression`
+  (grep across src/, ext/, test/, docs/, benchmark/); full `Pkg.test()` green;
+  docs use the new names.
 - Tests: rename-only churn is covered by the full suite; add one `@testitem` that
-  a user-facing constructor works end to end with the new type name
-  (`RetardedKernel(...; compression=HssCompression())` -> `solve_dyson` -> `matrix`).
+  a user-facing constructor works end to end with the new names
+  (`RetardedKernel(...; representation=HssRepresentation())` -> `solve_dyson`
+  -> `matrix`), and one test that a dense GPU-style representation (JLArray) is
+  accepted wherever a representation is (proving "not necessarily a
+  compression").
 
 ## 3. Make the matrix-family methods backend primitives, not duck-typed Base ops
 
@@ -211,10 +231,11 @@ Context decisions (from review discussion):
   `working_eltype` can disagree with `scalartype` for non-ComplexF64 kernels.
 - After the port, derive the working eltype from the representation/backend, and
   add a test asserting `working_eltype(backend(cpr))` matches the family for
-  `NONCompression()`/`HssCompression()` on a Float32 kernel.
+  `DenseRepresentation()`/`HssRepresentation()` on a Float32 kernel.
 - Verify: test passes.
 - Tests: `@testitem` asserting `working_eltype(backend(cpr)) == scalartype(k)`
-  for a Float32 kernel under both `NONCompression()` and `HssCompression()`.
+  for a Float32 kernel under both `DenseRepresentation()` and
+  `HssRepresentation()`.
 
 ## 12. Clarify `SolveNode` failure mode
 
