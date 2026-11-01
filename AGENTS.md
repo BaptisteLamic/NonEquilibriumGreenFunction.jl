@@ -9,7 +9,8 @@ Key files and layout
 - `README.md` — high-level purpose and example notebooks under `examples/`.
 - `src/NonEquilibriumGreenFunction.jl` — main module; it loads most implementation files via `include(...)` and exports the public API.
 - `src/` — core source. Notable subfolders:
-  - `src/Kernels/` — kernel definitions (`kernels.jl`), kernel algebra (`kernel_algebra.jl`: `+`, `-`, `*`, composition), and solver (`kernel_solver.jl`: `solve_dyson`).
+  - `src/Kernels/` — kernel definitions (`kernels.jl`), kernel algebra (`kernel_algebra.jl`: `+`, `-`, `*`, composition), solver (`kernel_solver.jl`: `solve_dyson`), and the lazy kernel-level DAG (`kernel_dag.jl`: `KernelProd`/`SumOperator`, `lower`, `materialize`).
+  - `src/backend_interface.jl` — the numeric-tier backend contract (`AbstractBackend`, `CORE_PRIMITIVES`, the `op_*` primitives, the concrete DAG nodes, `cse`/`evaluate_cse`); `src/hss_backend.jl` — the reference HSS backend. See `docs/src/backend_contract.md` for the full contract.
   - several single-file scripts included by the main module (e.g. `compression.jl`, `circulant_matrix.jl`, `operators.jl`).
 - `test/` — tests; see `test/runtests.jl` and per-feature tests.
 - `benchmark/` — benchmark suite, including `quick_benchmarks.jl` (smoke-tested from `test/runtests.jl` via `run_quick_benchmarks`).
@@ -26,6 +27,8 @@ Code and style patterns to follow
 - Files are plain Julia scripts included into the module (not nested modules). Keep edits local to the file you touch and ensure `include` order remains valid.
 - Naming: core module is `NonEquilibriumGreenFunction`. Many utilities are top-level functions exported by the main module (look at the `export` block in `src/NonEquilibriumGreenFunction.jl`).
 - Kernels live in `src/Kernels/` — `kernels.jl` (definitions), `kernel_algebra.jl` (algebra: `+`, `-`, `*`, composition), `kernel_solver.jl` (`solve_dyson`). Changes to kernel algebra often require keeping `kernel_algebra.jl` and `kernels.jl` consistent.
+- **Forcing points**: kernel-level DAG nodes (`KernelProd`, `SumOperator`) are lazy and cache their materialization; numeric work happens only at a forcing point — `matrix(op)`, `solve_dyson`, the observables (`same_time`, `keldysh_trace`), `norm`, `==`, or `compress!`. At a forcing point the whole tree lowers (`lower`) to one concrete DAG that the backend evaluates.
+- **Thread safety**: the lazy-node caches are not synchronized. Concurrent forcing is supported only over disjoint trees; forcing the *same* lazy node from two tasks races on the check-then-set cache. Materialize shared subtrees before handing them to several tasks, and keep the forcing point inside each spawned task.
 
 Testing and validation
 - Add focused tests under `test/` when changing behavior. Tests are discovered via `test/runtests.jl`.
