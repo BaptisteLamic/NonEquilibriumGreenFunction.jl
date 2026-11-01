@@ -14,9 +14,12 @@ only contract: the legacy types become thin adapters over it, then disappear.
 
 Each item is independently implementable and verifiable, sized for a flash model.
 Order matters: 1-4 define the single contract, 7-9 port the package and docs onto
-it, 5-6 and 10-12 are consistency/edge fixes that can land any time after 1-4,
-and 13 (the contract-audit suite) should exist before task 8 starts so the port is
-regression-checked as it goes.
+it, and 13 (the contract-audit suite) should exist before task 8 starts so the port
+is regression-checked as it goes. Task 2 is **rename-only**: it renames types,
+kwargs, files and exports but does **not** port call sites (that is task 8) — do not
+combine the two, or the diff becomes unreviewable. Task 11 depends on the port and
+must land **after task 8**, not earlier. Tasks 5-6 and 10-12 (minus 11) are
+consistency/edge fixes that can land any time after 1-4.
 
 **Testing policy (applies to every item below):** each task must land with its
 tests in the same commit. Concretely:
@@ -85,9 +88,10 @@ Context decisions (from review discussion):
   `AbstractCompressionBackend` (itself renamed if it still says "compression",
   e.g. `AbstractBackend`) carrying those parameters.
 - Touch points: `src/matrixinterface.jl` (definition), `src/compression.jl`
-  (subtypes + callables; file may be renamed `representations.jl`),
+  (subtypes + callables; **renamed to `src/representations.jl`** in this task),
   `ext/JLArraysExt.jl`, `src/backend_interface.jl` (bridge + abstract backend
-  name), `src/Kernels/*` (kwarg + call sites of `c(...)`), exports in
+  name), `src/Kernels/*` (kwarg only — call sites of `c(...)` are task 8),
+  exports in
   `src/NonEquilibriumGreenFunction.jl`, `docs/src/custom_compression.md` ->
   rewrite as the backend-contract page, `test/test_compression_interface.jl`,
   `test/test_kernels.jl`, examples in `docs/lit/`.
@@ -149,18 +153,20 @@ Context decisions (from review discussion):
   assert `mulcount == 1` for the repeated subchain and value equality with the
   dense reference; keep the existing chain-length 3/4 tests untouched.
 
-## 6. Wire `op_norm` into `norm(::AbstractOperator)` or mark it optional
+## 6. Mark `op_norm` optional, test-only (do not rewire `norm`)
 
 - File: `src/operators.jl:197-200` still does `norm(matrix(op)) / sqrt(prod(size))`,
   bypassing the mandatory `op_norm` primitive (only tests use it).
-- Either route operator norm through `evaluate(cpr, op_norm-node)` /
-  `op_norm(backend, matrix)` so structured families use `computeMatrixNorm`,
-  or mark `op_norm` "optional, test-only" in `backend_contract.md`.
-- Verify: `norm(::Kernel)` result unchanged within tolerance on HSS and dense.
-- Tests: if wired in, assert `norm(kernel)` via the DAG equals the old
-  `norm(matrix)/sqrt(prod(size))` within `rtol=1e-10` for HSS and dense kernels
-  (existing testitems in `test/test_kernels.jl` cover the value path — extend,
-  don't duplicate).
+- Decision: **demote, don't wire.** Rewiring `norm(::AbstractOperator)` would
+  replace an exact Frobenius computation with randomized probing on dense
+  (a user-facing value change) and, on HSS, compare against compressed
+  intermediates where `rtol=1e-10` is unattainably tight. Mark `op_norm`
+  "optional, test-only" in `backend_contract.md` and leave
+  `norm(::AbstractOperator)` as is.
+- Verify: `backend_contract.md` marks `op_norm` optional/test-only;
+  `norm(::Kernel)` results unchanged on HSS and dense.
+- Tests: none beyond the docs build check; the existing `op_norm` usage in
+  tests must keep passing unchanged.
 
 ## 7. Rewrite the docs around the single contract
 
@@ -170,8 +176,8 @@ Context decisions (from review discussion):
   contracts" reality; document one contract: backend subtype + core primitives +
   optional `evaluate` override, plus the acceptance test (`test_compression_interface`
   becomes a contract audit per migration step 6).
-- State the eltype-homogeneity requirement (item 3 below) and the opacity status
-  (item 7 below).
+- State the eltype-homogeneity requirement (task 4) and the opacity status
+  (task 9).
 - Verify: a reader can implement a new backend from the docs alone, listing
   exactly one method set.
 - Tests: docs build check (`julia --project=docs docs/make.jl`, no new warnings);
@@ -188,8 +194,10 @@ Context decisions (from review discussion):
 - Replace every `c(...)` / `cpr(blocks)` call with `compress(backend(cpr), ...)`;
   replace `recompress_inplace!(cpr, m)` with a backend primitive; delete the
   legacy callable methods once no call site remains.
-- Verify: `grep -rn "cpr(\|compression(\w*)(axis\|)(blocks" src/` returns nothing;
-  full `Pkg.test()` green.
+- Verify: `grep -rnE '\b(compression|cpr)\s*\(' src/` returns only the intended
+  survivors (reviewed manually — it also matches `compression(op::SumOperator)`
+  at `src/operators.jl:452`, which is the operator-level concept, not the
+  callable); full `Pkg.test()` green.
 - Tests: this is the big port — the **entire** suite (`Pkg.test()`, plus the
   circulant tests) is the acceptance gate; additionally add a
   `@testitem` per call-site file touched (`kernels.jl`, `kernel_dag.jl`,
@@ -261,9 +269,15 @@ Context decisions (from review discussion):
   (add/sub/scale/mul-chain/adjoint/solve), with chain comparisons at combined
   tolerance.
 - Add a meta-test that fails if a shipped backend lacks a method for any
-  documented core primitive (dispatch check via `hasmethod` over the contract
-  table).
-- Verify: full `Pkg.test()` green on Julia 1.10 and latest 1.x (CI matrix),
+  documented core primitive (dispatch check via `hasmethod`). To keep the
+  meta-test from drifting from the docs, define the primitive list **once** as a
+  `const` tuple (e.g. `CORE_PRIMITIVES = ((op_add, 2), (op_mul, 2), ...)`) in
+  `src/backend_interface.jl` next to the abstract-backend definition; the
+  meta-test iterates it, and the contract tables in `backend_contract.md`
+  reference the same list by name. If the docs ever disagree with the tuple,
+  the meta-test — not the prose — is the source of truth.
+- Verify: full `Pkg.test()` green on the CI matrix (Julia 1.11 and latest 1.x,
+  per `.github/workflows/ci.yml`; the package floor in `Project.toml` is 1.10),
   including the JLArray testitem.
 
 ## Deliberately out of scope
