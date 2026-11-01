@@ -14,7 +14,26 @@ only contract: the legacy types become thin adapters over it, then disappear.
 
 Each item is independently implementable and verifiable, sized for a flash model.
 Order matters: 1-4 define the single contract, 7-9 port the package and docs onto
-it, 5-6 and 10-12 are consistency/edge fixes that can land any time after 1-4.
+it, 5-6 and 10-12 are consistency/edge fixes that can land any time after 1-4,
+and 13 (the contract-audit suite) should exist before task 8 starts so the port is
+regression-checked as it goes.
+
+**Testing policy (applies to every item below):** each task must land with its
+tests in the same commit. Concretely:
+
+- Every new/changed public function gets at least one `@testitem` in `test/`
+  (or in `src/backend_interface_tests.jl` for backend-contract internals), run by
+  `@run_package_tests`.
+- Every backend primitive change must keep `test_compression_interface` green for
+  `NONCompression`, `HssCompression`, and `JLArrayCompression` (the contract
+  audit), plus the DAG tests in `src/backend_interface_tests.jl`.
+- Every port (item 8) is verified by the **full suite** (`Pkg.test()`), not just
+  the touched file — call-site ports are where silent breakage hides.
+- Docs-only items still need a build check: `julia --project=docs docs/make.jl`
+  with no new Documenter warnings.
+- No test may be weakened (tolerance loosened, assertion deleted) to make a task
+  pass; if a test legitimately changes meaning, say so in the commit message.
+- `Verify:` lines below list the minimum test commands in addition to greps.
 
 Context decisions (from review discussion):
 - `JLArrayCompression` is a **demonstration** of the matrix-family interface,
@@ -35,6 +54,9 @@ Context decisions (from review discussion):
   numeric tier. `MatrixFamilyBackend` implements them via the legacy callable;
   `HssMatricesBackend` via native HSS construction.
 - Verify: grep finds a definition matching every contract-table row.
+- Tests: new `@testitem` asserting `compress(b, axis, f)` / `compress(b, m)` match
+  the legacy callable output for `MatrixFamilyBackend` and `HssMatricesBackend`
+  (dense reference, `atol` from the backend params); run `Pkg.test()`.
 
 ## 2. Rename the legacy type and make backends the primary concept
 
@@ -55,6 +77,9 @@ Context decisions (from review discussion):
   rewrite as the backend-contract page, `test/test_compression_interface.jl`.
 - Verify: no remaining references to `AbstractCompression` (grep across src/,
   ext/, test/, docs/); full `Pkg.test()` green; docs use the new name.
+- Tests: rename-only churn is covered by the full suite; add one `@testitem` that
+  a user-facing constructor works end to end with the new type name
+  (`RetardedKernel(...; compression=HssCompression())` -> `solve_dyson` -> `matrix`).
 
 ## 3. Make the matrix-family methods backend primitives, not duck-typed Base ops
 
@@ -69,6 +94,9 @@ Context decisions (from review discussion):
   implementations. Delete the fallback free functions once call sites are ported.
 - Verify: contract table has no "fallback" column; every row has a method per
   shipped backend.
+- Tests: extend `test_compression_interface` so each moved primitive
+  (`blockdiag_blocks`, `to_cpu`, `same_time_blocks`, recompress) is asserted
+  against the dense reference for every shipped compression; full `Pkg.test()`.
 
 ## 4. State the eltype-homogeneity requirement in the contract
 
@@ -80,6 +108,9 @@ Context decisions (from review discussion):
 - Add one sentence: operands of binary primitives must share an eltype unless the
   backend explicitly widens (HSS does).
 - Verify: sentence present; HSS widening tests still pass.
+- Tests: add a mixed-eltype `op_mul`/`op_add` case (Float64 x ComplexF64) to the
+  HSS backend testitem, and a `@test_throws MethodError` case for the generic
+  family without promotion.
 
 ## 5. Run `cse` in the HSS `evaluate` override
 
@@ -94,6 +125,9 @@ Context decisions (from review discussion):
 - Verify: existing balanced-chain tests pass; add a test where a repeated
   subchain inside a pure-`MulNode` root is computed once (counting backend
   pattern from `backend_interface_tests.jl`).
+- Tests: the new counting-`op_mul` testitem goes in `src/backend_interface_tests.jl`;
+  assert `mulcount == 1` for the repeated subchain and value equality with the
+  dense reference; keep the existing chain-length 3/4 tests untouched.
 
 ## 6. Wire `op_norm` into `norm(::AbstractOperator)` or mark it optional
 
@@ -103,6 +137,10 @@ Context decisions (from review discussion):
   `op_norm(backend, matrix)` so structured families use `computeMatrixNorm`,
   or mark `op_norm` "optional, test-only" in `backend_contract.md`.
 - Verify: `norm(::Kernel)` result unchanged within tolerance on HSS and dense.
+- Tests: if wired in, assert `norm(kernel)` via the DAG equals the old
+  `norm(matrix)/sqrt(prod(size))` within `rtol=1e-10` for HSS and dense kernels
+  (existing testitems in `test/test_kernels.jl` cover the value path — extend,
+  don't duplicate).
 
 ## 7. Rewrite the docs around the single contract
 
@@ -116,6 +154,10 @@ Context decisions (from review discussion):
   (item 7 below).
 - Verify: a reader can implement a new backend from the docs alone, listing
   exactly one method set.
+- Tests: docs build check (`julia --project=docs docs/make.jl`, no new warnings);
+  the mock-backend testitem in `src/backend_interface_tests.jl` must still
+  implement exactly the documented method set — if it needs extra methods, the
+  docs are wrong, fix the docs.
 
 ## 8. Port the package's call sites onto the single contract
 
@@ -128,6 +170,11 @@ Context decisions (from review discussion):
   legacy callable methods once no call site remains.
 - Verify: `grep -rn "cpr(\|compression(\w*)(axis\|)(blocks" src/` returns nothing;
   full `Pkg.test()` green.
+- Tests: this is the big port — the **entire** suite (`Pkg.test()`, plus the
+  circulant tests) is the acceptance gate; additionally add a
+  `@testitem` per call-site file touched (`kernels.jl`, `kernel_dag.jl`,
+  `kernel_solver.jl`, `operators.jl`) exercising the ported path against a dense
+  reference.
 
 ## 9. State the opacity status honestly
 
@@ -138,6 +185,9 @@ Context decisions (from review discussion):
   currently `AbstractMatrix`-based; opacity is the target".
 - Verify: docs no longer promise opacity that the code doesn't deliver (or the
   wrapper exists and primitives dispatch on it).
+- Tests: if the opaque wrapper is introduced, every primitive needs a dispatch
+  test per family (dense/HSS) in `src/backend_interface_tests.jl`; if only the
+  doc is reworded, the docs build check suffices.
 
 ## 10. One DAG-path test for the JLArrays demonstration extension
 
@@ -148,6 +198,10 @@ Context decisions (from review discussion):
   DAG (`op_mul`/`op_add` over `CompressedLeaf`s of `JLArray`s) and evaluating via
   `evaluate(backend(cpr), ex)`.
 - Verify: new testitem passes (requires `using JLArrays`).
+- Tests: the testitem itself is the deliverable: build
+  `op_add(op_mul(CompressedLeaf(A), CompressedLeaf(B)), CompressedLeaf(C))` over
+  `JLArray`s, evaluate via `evaluate(backend(cpr), ex)`, compare to the dense
+  result with `rtol=1e-12`.
 - Note: demonstration-only per maintainer; keep this item last/optional.
 
 ## 11. `working_eltype` consistency check
@@ -159,6 +213,8 @@ Context decisions (from review discussion):
   add a test asserting `working_eltype(backend(cpr))` matches the family for
   `NONCompression()`/`HssCompression()` on a Float32 kernel.
 - Verify: test passes.
+- Tests: `@testitem` asserting `working_eltype(backend(cpr)) == scalartype(k)`
+  for a Float32 kernel under both `NONCompression()` and `HssCompression()`.
 
 ## 12. Clarify `SolveNode` failure mode
 
@@ -169,6 +225,25 @@ Context decisions (from review discussion):
   rejects.
 - Verify: constructing `SolveNode(b, l, r, StructureOptimizingSolve(10, 1e-8))`
   with `HssMatricesBackend` throws immediately; test covers it.
+- Tests: `@test_throws ArgumentError SolveNode(...)` for the unsupported
+  strategy, and a positive case that `DirectSolve()` still constructs and
+  evaluates.
+
+## 13. Contract-audit test suite for the single backend contract
+
+- Files: `test/test_compression_interface.jl`, `src/test_compression_interface.jl`,
+  `src/backend_interface_tests.jl`.
+- Turn `test_compression_interface` into the contract audit described by
+  migration step 6 of `docs/src/backend_interface_design.md`: (a) the semantic
+  tier checked once against the dense backend, (b) per-backend numeric `evaluate`
+  checked against the default interpreter on graphs covering every node type
+  (add/sub/scale/mul-chain/adjoint/solve), with chain comparisons at combined
+  tolerance.
+- Add a meta-test that fails if a shipped backend lacks a method for any
+  documented core primitive (dispatch check via `hasmethod` over the contract
+  table).
+- Verify: full `Pkg.test()` green on Julia 1.10 and latest 1.x (CI matrix),
+  including the JLArray testitem.
 
 ## Deliberately out of scope
 
